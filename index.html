@@ -1577,6 +1577,9 @@
       <div class="nav-item" data-tab="watchlist">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4l2.5 5.5L20 10l-4 4 1 5.5L12 17l-5 2.5 1-5.5-4-4 5.5-.5z"/></svg><span>關注</span>
       </div>
+      <div class="nav-item nav-admin" data-tab="admin" style="display:none;">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>管理</span>
+      </div>
     </div>
     <!-- User bar (logged in) / Login button -->
     <div id="user-section">
@@ -1624,6 +1627,14 @@
       <div class="card">
         <div class="card-title">&#x1F3E6; 三大法人今日動態</div>
         <div id="inst-summary-overview"><div class="loading-box"><div class="spinner"></div></div></div>
+      </div>
+      <div class="card" id="picks-card" style="display:none;">
+        <div class="card-title" style="color:var(--purple);">
+          <svg style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2"><path d="M12 4l2.5 5.5L20 10l-4 4 1 5.5L12 17l-5 2.5 1-5.5-4-4 5.5-.5z"/></svg>
+          謙堂投資 — 推薦名單
+        </div>
+        <div class="text-sm text-muted mb-12">由謙堂資本研究團隊發布，僅供參考，不構成投資建議。</div>
+        <div id="picks-container"><div class="loading-box"><div class="spinner"></div></div></div>
       </div>
     </div>
 
@@ -1795,6 +1806,104 @@
         </div>
       </div>
       <div id="watchlist-container"></div>
+    </div>
+
+    <!-- ==================== 管理後台 (Admin Only) ==================== -->
+    <div id="panel-admin" class="panel">
+      <!-- Stats Dashboard -->
+      <div class="card">
+        <div class="card-title">
+          <svg style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-4 3 3 5-6"/></svg>
+          管理後台 — 數據總覽
+        </div>
+        <div class="stat-grid" id="admin-stats">
+          <div class="loading-box"><div class="spinner"></div><div>載入中...</div></div>
+        </div>
+      </div>
+
+      <!-- Stock Picks Management -->
+      <div class="card">
+        <div class="card-title">
+          <svg style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          謙堂投資 — 買賣名單管理
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">股票代號</label>
+            <input class="input" id="pick-code" placeholder="例如 2330" style="width:100%;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">股票名稱</label>
+            <input class="input" id="pick-name" placeholder="例如 台積電" style="width:100%;">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">操作建議</label>
+            <select class="input" id="pick-action" style="width:100%;">
+              <option value="buy">買進</option>
+              <option value="sell">賣出</option>
+              <option value="hold">持有觀望</option>
+              <option value="short">放空</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">目標價</label>
+            <input class="input" id="pick-target" type="number" step="0.01" placeholder="0.00" style="width:100%;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">停損價</label>
+            <input class="input" id="pick-stoploss" type="number" step="0.01" placeholder="0.00" style="width:100%;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">信心分數</label>
+            <input class="input" id="pick-score" type="number" min="1" max="10" placeholder="1-10" style="width:100%;">
+          </div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">分析理由</label>
+          <textarea class="input" id="pick-reason" rows="3" placeholder="技術面、基本面分析理由..." style="width:100%;resize:vertical;"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="adminAddPick()" style="margin-bottom:20px;">發布投資建議</button>
+
+        <div class="card-title" style="margin-top:8px;">目前有效名單</div>
+        <div class="table-wrap" id="admin-picks-list">
+          <div class="loading-box"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- Member List -->
+      <div class="card">
+        <div class="card-title">
+          <svg style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          會員列表
+        </div>
+        <div class="table-wrap" id="admin-users-list">
+          <div class="loading-box"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- Activity Log -->
+      <div class="card">
+        <div class="card-title">
+          <svg style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          使用者行為紀錄（最近 200 筆）
+        </div>
+        <div class="table-wrap" id="admin-actions-list" style="max-height:400px;">
+          <div class="loading-box"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- Popular Stocks -->
+      <div class="card">
+        <div class="card-title">
+          <svg style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+          熱門關注排行（會員關注統計）
+        </div>
+        <div id="admin-popular-stocks">
+          <div class="loading-box"><div class="spinner"></div></div>
+        </div>
+      </div>
     </div>
 
   </main>
@@ -2580,6 +2689,8 @@ document.querySelectorAll('.nav-item').forEach(el => {
     if (el.dataset.tab === 'sectors') maybeLoadSectors();
     if (el.dataset.tab === 'global') maybeLoadGlobal();
     if (el.dataset.tab === 'daytrade') maybeLoadDayTrade();
+    if (el.dataset.tab === 'admin') loadAdminPanel();
+    trackAction('view_tab', el.dataset.tab);
   });
 });
 
@@ -4315,10 +4426,14 @@ function renderUserSection() {
       </div>
       <button class="user-logout" onclick="logout()">登出</button>
     </div>`;
+    // Show admin nav for admins
+    if (gCurrentUser.role === 'admin') showAdminNav();
+    else hideAdminNav();
   } else {
     box.innerHTML = `<div class="user-bar" style="padding:12px 18px;">
       <button class="login-btn" onclick="openAuthModal()">登入 / 註冊</button>
     </div>`;
+    hideAdminNav();
   }
 }
 
@@ -4406,6 +4521,278 @@ document.getElementById('auth-overlay').addEventListener('click', e => {
 });
 
 // ============================================================
+// ADMIN PANEL
+// ============================================================
+let gAdminLoaded = false;
+
+function showAdminNav() {
+  document.querySelectorAll('.nav-admin').forEach(el => { el.style.display = ''; });
+}
+
+function hideAdminNav() {
+  document.querySelectorAll('.nav-admin').forEach(el => { el.style.display = 'none'; });
+}
+
+async function loadAdminPanel() {
+  if (gAdminLoaded) return;
+  if (!gCurrentUser || gCurrentUser.role !== 'admin') return;
+  gAdminLoaded = true;
+
+  await Promise.allSettled([
+    loadAdminStats(),
+    loadAdminUsers(),
+    loadAdminActions(),
+    loadAdminPicks()
+  ]);
+}
+
+async function loadAdminStats() {
+  try {
+    const r = await authFetch('/api/admin/stats');
+    if (!r.ok) return;
+    const data = await r.json();
+
+    let popularHtml = '';
+    if (data.popular_stocks && data.popular_stocks.length > 0) {
+      const rows = data.popular_stocks.map((s, i) => {
+        const info = gStockDB[s.code];
+        const name = info ? info.name : '';
+        return [
+          i + 1,
+          `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
+          name,
+          `<b>${s.count}</b> 人關注`
+        ];
+      });
+      popularHtml = mkTable(['#', '代號', '名稱', '關注人數'], rows);
+    } else {
+      popularHtml = '<div class="text-muted" style="padding:16px;text-align:center;">尚無關注資料</div>';
+    }
+    document.getElementById('admin-popular-stocks').innerHTML = popularHtml;
+
+    document.getElementById('admin-stats').innerHTML = `
+      <div class="stat-box">
+        <div class="label">總會員數</div>
+        <div class="value" style="color:var(--cyan);">${data.total_users}</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">今日活躍</div>
+        <div class="value" style="color:var(--green);">${data.active_today}</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">有效投資建議</div>
+        <div class="value" style="color:var(--purple);">${data.total_picks}</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">最熱門關注</div>
+        <div class="value" style="font-size:16px;color:var(--yellow);">${data.popular_stocks.length > 0 ? data.popular_stocks[0].code : '--'}</div>
+      </div>
+    `;
+  } catch (e) {
+    document.getElementById('admin-stats').innerHTML = '<div class="text-muted">載入失敗</div>';
+  }
+}
+
+async function loadAdminUsers() {
+  try {
+    const r = await authFetch('/api/admin/users');
+    if (!r.ok) return;
+    const data = await r.json();
+
+    const rows = data.users.map(u => {
+      const roleTag = u.role === 'admin'
+        ? '<span class="tag" style="background:rgba(180,77,255,0.15);color:var(--purple);border:1px solid rgba(180,77,255,0.3);">Admin</span>'
+        : u.role === 'premium'
+        ? '<span class="tag" style="background:rgba(255,208,54,0.15);color:var(--yellow);border:1px solid rgba(255,208,54,0.3);">Premium</span>'
+        : '<span class="tag" style="background:rgba(0,240,255,0.08);color:var(--text2);border:1px solid var(--border);">Free</span>';
+      return [
+        u.id,
+        u.display_name,
+        u.email,
+        roleTag,
+        u.created_at ? u.created_at.slice(0, 16) : '--',
+        u.last_login ? u.last_login.slice(0, 16) : '從未',
+        u.login_count || 0
+      ];
+    });
+
+    document.getElementById('admin-users-list').innerHTML =
+      mkTable(['ID', '名稱', 'Email', '角色', '註冊時間', '最後登入', '登入次數'], rows);
+  } catch (e) {
+    document.getElementById('admin-users-list').innerHTML = '<div class="text-muted">載入失敗</div>';
+  }
+}
+
+async function loadAdminActions() {
+  try {
+    const r = await authFetch('/api/admin/actions');
+    if (!r.ok) return;
+    const data = await r.json();
+
+    const actionLabels = {
+      'register': '註冊',
+      'login': '登入',
+      'analyze': '分析股票',
+      'watchlist_sync': '同步關注',
+      'watchlist_remove': '移除關注',
+      'auth': '認證',
+      'admin_add_pick': '發布建議',
+      'view_tab': '切換分頁',
+    };
+
+    const rows = data.actions.slice(0, 100).map(a => {
+      const label = actionLabels[a.action] || a.action;
+      let detail = a.detail || '';
+      if (detail.length > 40) detail = detail.slice(0, 40) + '...';
+      return [
+        a.created_at ? a.created_at.slice(0, 19) : '--',
+        a.display_name || a.email || `#${a.user_id || '?'}`,
+        `<span style="color:var(--cyan);">${label}</span>`,
+        `<span class="text-muted">${detail}</span>`
+      ];
+    });
+
+    document.getElementById('admin-actions-list').innerHTML =
+      mkTable(['時間', '使用者', '動作', '詳情'], rows);
+  } catch (e) {
+    document.getElementById('admin-actions-list').innerHTML = '<div class="text-muted">載入失敗</div>';
+  }
+}
+
+async function loadAdminPicks() {
+  try {
+    const r = await authFetch('/api/picks');
+    if (!r.ok) return;
+    const data = await r.json();
+
+    if (!data.picks || data.picks.length === 0) {
+      document.getElementById('admin-picks-list').innerHTML =
+        '<div class="text-muted" style="padding:16px;text-align:center;">尚未發布任何投資建議</div>';
+      return;
+    }
+
+    const actionMap = { buy: '買進', sell: '賣出', hold: '觀望', short: '放空' };
+    const actionCls = { buy: 'up', sell: 'down', hold: '', short: 'down' };
+
+    const rows = data.picks.map(p => [
+      `<span class="clickable" onclick="goAnalyze('${p.code}')">${p.code}</span>`,
+      p.name || '--',
+      `<span class="${actionCls[p.action] || ''}" style="font-weight:600;">${actionMap[p.action] || p.action}</span>`,
+      p.target_price ? fmtNum(p.target_price, 2) : '--',
+      p.stop_loss ? fmtNum(p.stop_loss, 2) : '--',
+      p.score ? `<b>${p.score}</b>/10` : '--',
+      `<span class="text-sm text-muted">${(p.reason || '').slice(0, 30)}${(p.reason || '').length > 30 ? '...' : ''}</span>`,
+      p.created_at ? p.created_at.slice(0, 10) : '--',
+      `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px;" onclick="adminDeletePick(${p.id})">下架</button>`
+    ]);
+
+    document.getElementById('admin-picks-list').innerHTML =
+      mkTable(['代號', '名稱', '建議', '目標價', '停損', '信心', '理由', '日期', '操作'], rows);
+  } catch (e) {
+    document.getElementById('admin-picks-list').innerHTML = '<div class="text-muted">載入失敗</div>';
+  }
+}
+
+async function adminAddPick() {
+  const code = document.getElementById('pick-code').value.trim();
+  const name = document.getElementById('pick-name').value.trim();
+  const action = document.getElementById('pick-action').value;
+  const target = parseFloat(document.getElementById('pick-target').value) || null;
+  const stoploss = parseFloat(document.getElementById('pick-stoploss').value) || null;
+  const score = parseInt(document.getElementById('pick-score').value) || null;
+  const reason = document.getElementById('pick-reason').value.trim();
+
+  if (!code) { toast('請輸入股票代號'); return; }
+
+  // Auto-fill name from DB if empty
+  const finalName = name || (gStockDB[code] ? gStockDB[code].name : '');
+
+  try {
+    const r = await authFetch('/api/admin/picks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code, name: finalName, action, reason,
+        target_price: target, stop_loss: stoploss, score
+      })
+    });
+    if (r.ok) {
+      toast('投資建議已發布');
+      document.getElementById('pick-code').value = '';
+      document.getElementById('pick-name').value = '';
+      document.getElementById('pick-reason').value = '';
+      document.getElementById('pick-target').value = '';
+      document.getElementById('pick-stoploss').value = '';
+      document.getElementById('pick-score').value = '';
+      loadAdminPicks();
+      loadAdminStats();
+    } else {
+      const data = await r.json();
+      toast(data.error || '發布失敗');
+    }
+  } catch (e) {
+    toast('網路錯誤');
+  }
+}
+
+// Load picks for public display on overview
+async function loadPublicPicks() {
+  try {
+    const r = await fetch('/api/picks');
+    if (!r.ok) return;
+    const data = await r.json();
+    if (!data.picks || data.picks.length === 0) return;
+
+    document.getElementById('picks-card').style.display = '';
+
+    const actionMap = { buy: '買進', sell: '賣出', hold: '觀望', short: '放空' };
+    const actionTag = {
+      buy: '<span class="tag tag-buy">買進</span>',
+      sell: '<span class="tag tag-sell">賣出</span>',
+      hold: '<span class="tag tag-hold">觀望</span>',
+      short: '<span class="tag tag-sell">放空</span>'
+    };
+
+    let html = '<div class="stock-grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));">';
+    data.picks.forEach(p => {
+      const scoreColor = (p.score || 5) >= 7 ? 'var(--green)' : (p.score || 5) >= 5 ? 'var(--yellow)' : 'var(--red)';
+      html += `<div class="stock-card" onclick="goAnalyze('${p.code}')" style="cursor:pointer;">
+        <div class="sc-bar" style="background:linear-gradient(90deg,var(--purple),var(--cyan));"></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+          <div>
+            <div class="sc-code">${p.code} <span style="font-size:12px;font-weight:400;color:var(--text2);">${p.name || ''}</span></div>
+          </div>
+          <div>${actionTag[p.action] || ''}</div>
+        </div>
+        ${p.reason ? `<div style="font-size:12px;color:#c8d0e0;margin-bottom:8px;line-height:1.5;">${p.reason}</div>` : ''}
+        <div style="display:flex;gap:12px;font-size:11px;border-top:1px solid var(--border);padding-top:8px;">
+          ${p.target_price ? `<span class="text-muted">目標 <span class="up" style="font-weight:600;">${fmtNum(p.target_price, 2)}</span></span>` : ''}
+          ${p.stop_loss ? `<span class="text-muted">停損 <span class="down" style="font-weight:600;">${fmtNum(p.stop_loss, 2)}</span></span>` : ''}
+          ${p.score ? `<span class="text-muted">信心 <span style="color:${scoreColor};font-weight:700;">${p.score}/10</span></span>` : ''}
+        </div>
+        <div style="font-size:10px;color:var(--text2);margin-top:6px;">${p.created_at ? p.created_at.slice(0, 10) : ''}</div>
+      </div>`;
+    });
+    html += '</div>';
+    document.getElementById('picks-container').innerHTML = html;
+  } catch (e) { /* silent */ }
+}
+
+async function adminDeletePick(id) {
+  if (!confirm('確定要下架此投資建議？')) return;
+  try {
+    const r = await authFetch('/api/admin/picks/' + id, { method: 'DELETE' });
+    if (r.ok) {
+      toast('已下架');
+      loadAdminPicks();
+      loadAdminStats();
+    }
+  } catch (e) {
+    toast('操作失敗');
+  }
+}
+
+// ============================================================
 // BOOT
 // ============================================================
 init().then(() => {
@@ -4413,6 +4800,7 @@ init().then(() => {
   setInterval(loadTicker, 5 * 60 * 1000);
   startAutoRefresh();
   checkAuth();
+  loadPublicPicks();
 });
 </script>
 </body>
