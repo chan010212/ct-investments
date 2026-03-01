@@ -4377,20 +4377,27 @@ async function submitAuth() {
   const btn = document.getElementById('auth-submit');
 
   if (!email || !password) { errEl.textContent = '請填寫所有欄位'; return; }
+  if (password.length < 6) { errEl.textContent = '密碼至少需要 6 個字元'; return; }
 
   btn.disabled = true;
   btn.textContent = '處理中...';
+  errEl.textContent = '';
 
   try {
     const endpoint = gAuthMode === 'login' ? '/api/login' : '/api/register';
     const body = { email, password };
     if (gAuthMode === 'register' && name) body.name = name;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
     const r = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
     const data = await r.json();
 
     if (!r.ok) {
@@ -4406,7 +4413,11 @@ async function submitAuth() {
     toast(gAuthMode === 'login' ? `歡迎回來，${data.user.name}` : `註冊成功，歡迎 ${data.user.name}`);
     trackAction('auth', gAuthMode);
   } catch (e) {
-    errEl.textContent = '網路錯誤，請稍後再試';
+    if (e.name === 'AbortError') {
+      errEl.textContent = '伺服器回應逾時，請重新整理頁面後再試';
+    } else {
+      errEl.textContent = '網路錯誤：' + (e.message || '請稍後再試');
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = gAuthMode === 'login' ? '登入' : '註冊';
