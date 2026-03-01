@@ -54,6 +54,12 @@
       <div class="nav-item" data-tab="watchlist">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4l2.5 5.5L20 10l-4 4 1 5.5L12 17l-5 2.5 1-5.5-4-4 5.5-.5z"/></svg><span>關注</span>
       </div>
+      <div class="nav-item" data-tab="opinion">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1z"/>
+          <path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
+        </svg><span>觀點</span>
+      </div>
       <div class="nav-item nav-admin" data-tab="admin" style="display:none;">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>管理</span>
       </div>
@@ -104,14 +110,6 @@
       <div class="card">
         <div class="card-title">&#x1F3E6; 三大法人今日動態</div>
         <div id="inst-summary-overview"><div class="loading-box"><div class="spinner"></div></div></div>
-      </div>
-      <div class="card" id="picks-card" style="display:none;">
-        <div class="card-title" style="color:var(--purple);">
-          <svg style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2"><path d="M12 4l2.5 5.5L20 10l-4 4 1 5.5L12 17l-5 2.5 1-5.5-4-4 5.5-.5z"/></svg>
-          謙堂投資 — 推薦名單
-        </div>
-        <div class="text-sm text-muted mb-12">由謙堂資本研究團隊發布，僅供參考，不構成投資建議。</div>
-        <div id="picks-container"><div class="loading-box"><div class="spinner"></div></div></div>
       </div>
     </div>
 
@@ -283,6 +281,23 @@
         </div>
       </div>
       <div id="watchlist-container"></div>
+    </div>
+
+    <!-- ==================== 謙堂觀點 ==================== -->
+    <div id="panel-opinion" class="panel">
+      <div class="card">
+        <div class="card-title" style="color:var(--purple);">
+          <svg style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2">
+            <path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1z"/>
+            <path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
+          </svg>
+          謙堂觀點
+        </div>
+        <div class="text-sm text-muted mb-12">由謙堂資本研究團隊發布，僅供參考，不構成投資建議。</div>
+        <div id="opinion-container">
+          <div class="loading-box"><div class="spinner"></div></div>
+        </div>
+      </div>
     </div>
 
     <!-- ==================== 管理後台 (Admin Only) ==================== -->

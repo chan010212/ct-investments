@@ -741,6 +741,7 @@ document.querySelectorAll('.nav-item').forEach(el => {
     if (el.dataset.tab === 'sectors') maybeLoadSectors();
     if (el.dataset.tab === 'global') maybeLoadGlobal();
     if (el.dataset.tab === 'daytrade') maybeLoadDayTrade();
+    if (el.dataset.tab === 'opinion') maybeLoadOpinion();
     if (el.dataset.tab === 'admin') loadAdminPanel();
     trackAction('view_tab', el.dataset.tab);
   });
@@ -2158,6 +2159,8 @@ let gGlobalLoaded = false;
 let gGlobalSuccess = false;
 let gDayTradeLoaded = false;
 let gDayTradeSuccess = false;
+let gOpinionLoaded = false;
+let gOpinionSuccess = false;
 
 function maybeLoadSectors() {
   if (gSectorsLoaded) return;
@@ -2841,17 +2844,22 @@ async function adminAddPick() {
   }
 }
 
-// Load picks for public display on overview
-async function loadPublicPicks() {
+// Load opinion panel (謙堂觀點)
+async function maybeLoadOpinion() {
+  if (gOpinionLoaded && gOpinionSuccess) return;
+  gOpinionLoaded = true;
+  gOpinionSuccess = false;
+  document.getElementById('opinion-container').innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
   try {
     const r = await fetch('/api/picks');
-    if (!r.ok) return;
+    if (!r.ok) { gOpinionLoaded = false; return; }
     const data = await r.json();
-    if (!data.picks || data.picks.length === 0) return;
+    if (!data.picks || data.picks.length === 0) {
+      document.getElementById('opinion-container').innerHTML = '<div class="text-muted" style="text-align:center;padding:32px 0;">目前暫無觀點，敬請期待</div>';
+      gOpinionSuccess = true;
+      return;
+    }
 
-    document.getElementById('picks-card').style.display = '';
-
-    const actionMap = { buy: '買進', sell: '賣出', hold: '觀望', short: '放空' };
     const actionTag = {
       buy: '<span class="tag tag-buy">買進</span>',
       sell: '<span class="tag tag-sell">賣出</span>',
@@ -2880,8 +2888,11 @@ async function loadPublicPicks() {
       </div>`;
     });
     html += '</div>';
-    document.getElementById('picks-container').innerHTML = html;
-  } catch (e) { /* silent */ }
+    document.getElementById('opinion-container').innerHTML = html;
+    gOpinionSuccess = true;
+  } catch (e) {
+    gOpinionLoaded = false;
+  }
 }
 
 async function adminDeletePick(id) {
@@ -2906,5 +2917,4 @@ init().then(async () => {
   setInterval(loadTicker, 5 * 60 * 1000);
   startAutoRefresh();
   await checkAuth();
-  loadPublicPicks();
 });
