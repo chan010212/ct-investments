@@ -2517,6 +2517,7 @@ function logout() {
 
 function renderUserSection() {
   const box = document.getElementById('user-section');
+  const mobileBtn = document.getElementById('mobile-user-btn');
   if (gCurrentUser) {
     const initial = (gCurrentUser.name || gCurrentUser.email || '?')[0].toUpperCase();
     const roleLabel = gCurrentUser.role === 'admin' ? 'Admin' : gCurrentUser.role === 'premium' ? 'Premium' : 'Free';
@@ -2528,6 +2529,11 @@ function renderUserSection() {
       </div>
       <button class="user-logout" onclick="logout()">登出</button>
     </div>`;
+    if (mobileBtn) {
+      mobileBtn.querySelector('span').textContent = initial;
+      mobileBtn.setAttribute('onclick', 'logout()');
+      mobileBtn.style.color = 'var(--cyan)';
+    }
     // Show admin nav for admins
     if (gCurrentUser.role === 'admin') showAdminNav();
     else hideAdminNav();
@@ -2535,6 +2541,11 @@ function renderUserSection() {
     box.innerHTML = `<div class="user-bar" style="padding:12px 18px;">
       <button class="login-btn" onclick="openAuthModal()">登入 / 註冊</button>
     </div>`;
+    if (mobileBtn) {
+      mobileBtn.querySelector('span').textContent = '帳號';
+      mobileBtn.setAttribute('onclick', 'openAuthModal()');
+      mobileBtn.style.color = '';
+    }
     hideAdminNav();
   }
 }

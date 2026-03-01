@@ -198,6 +198,8 @@
       position: relative;
     }
 
+    .mobile-user-btn { display: none; }
+
     .nav-item:hover {
       background: linear-gradient(90deg, rgba(0, 240, 255, 0.06), transparent);
       color: var(--text);
@@ -851,6 +853,7 @@
       .status-bar { display: none; }
       .sidebar-footer { display: none; }
       #user-section { display: none; }
+      .mobile-user-btn { display: flex; }
 
       /* Main */
       .main {
