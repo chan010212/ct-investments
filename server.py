@@ -135,9 +135,11 @@ def jwt_decode(token):
         return None
 
 
+PBKDF2_ITERATIONS = 10000
+
 def hash_password(password):
     salt = os.urandom(16)
-    h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+    h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, PBKDF2_ITERATIONS)
     return base64.b64encode(salt + h).decode()
 
 
@@ -146,6 +148,10 @@ def verify_password(password, stored_hash):
         decoded = base64.b64decode(stored_hash)
         salt = decoded[:16]
         stored_h = decoded[16:]
+        # Try current iteration count first, fallback to legacy 100000
+        h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, PBKDF2_ITERATIONS)
+        if hmac.compare_digest(h, stored_h):
+            return True
         h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
         return hmac.compare_digest(h, stored_h)
     except Exception:
