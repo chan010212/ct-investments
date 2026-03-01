@@ -817,19 +817,22 @@
         flex: 1;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
       }
+      .nav::-webkit-scrollbar { display: none; }
 
       .nav-item {
         flex-direction: column;
         gap: 2px;
-        padding: 8px 10px 6px;
+        padding: 8px 8px 6px;
         font-size: 10px;
         font-weight: 500;
         letter-spacing: 0.5px;
         border-left: none;
         border-top: 2px solid transparent;
         white-space: nowrap;
-        min-width: 52px;
+        min-width: 48px;
+        flex-shrink: 0;
         text-align: center;
         justify-content: center;
         align-items: center;
@@ -933,8 +936,8 @@
     /* --- PHONE SMALL --- */
     @media (max-width: 480px) {
       .nav-item {
-        padding: 6px 6px;
-        min-width: 44px;
+        padding: 6px 5px;
+        min-width: 42px;
         font-size: 9px;
         gap: 1px;
       }

@@ -2867,7 +2867,7 @@ async function maybeLoadOpinion() {
       short: '<span class="tag tag-sell">放空</span>'
     };
 
-    let html = '<div class="stock-grid" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));">';
+    let html = '<div class="stock-grid">';
     data.picks.forEach(p => {
       const scoreColor = (p.score || 5) >= 7 ? 'var(--green)' : (p.score || 5) >= 5 ? 'var(--yellow)' : 'var(--red)';
       html += `<div class="stock-card" onclick="goAnalyze('${p.code}')" style="cursor:pointer;">
@@ -2879,7 +2879,7 @@ async function maybeLoadOpinion() {
           <div>${actionTag[p.action] || ''}</div>
         </div>
         ${p.reason ? `<div style="font-size:12px;color:#c8d0e0;margin-bottom:8px;line-height:1.5;">${p.reason}</div>` : ''}
-        <div style="display:flex;gap:12px;font-size:11px;border-top:1px solid var(--border);padding-top:8px;">
+        <div style="display:flex;flex-wrap:wrap;gap:8px 12px;font-size:11px;border-top:1px solid var(--border);padding-top:8px;">
           ${p.target_price ? `<span class="text-muted">目標 <span class="up" style="font-weight:600;">${fmtNum(p.target_price, 2)}</span></span>` : ''}
           ${p.stop_loss ? `<span class="text-muted">停損 <span class="down" style="font-weight:600;">${fmtNum(p.stop_loss, 2)}</span></span>` : ''}
           ${p.score ? `<span class="text-muted">信心 <span style="color:${scoreColor};font-weight:700;">${p.score}/10</span></span>` : ''}
