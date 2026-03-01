@@ -1872,24 +1872,39 @@ let gActiveUSGroup = Object.keys(US_STOCK_GROUPS)[0];
 
 // Use Yahoo Finance v8 API (public, no key needed)
 async function fetchYahooQuotes(symbols) {
-  // Try v7 first, fallback to v6
-  const urls = [
-    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}`,
-    `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}`,
-  ];
-  for (const url of urls) {
-    try {
-      const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
-      const r = await fetch(proxyUrl);
-      if (!r.ok) continue;
-      const d = await r.json();
-      const result = d.quoteResponse?.result || [];
-      if (result.length > 0) return result;
-    } catch (e) {
-      console.warn('Yahoo Finance fetch failed:', url, e);
-    }
-  }
-  return [];
+  // Use v8 chart API (v7 quote API is deprecated/401)
+  const results = await Promise.allSettled(
+    symbols.map(async (sym) => {
+      const hosts = ['query1.finance.yahoo.com', 'query2.finance.yahoo.com'];
+      for (const host of hosts) {
+        try {
+          const url = `https://${host}/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
+          const r = await fetch('/api/proxy?url=' + encodeURIComponent(url));
+          if (!r.ok) continue;
+          const d = await r.json();
+          const meta = d.chart?.result?.[0]?.meta;
+          if (!meta) continue;
+          const price = meta.regularMarketPrice || 0;
+          const prevClose = meta.chartPreviousClose || price;
+          const chg = price - prevClose;
+          const pct = prevClose ? (chg / prevClose) * 100 : 0;
+          return {
+            symbol: meta.symbol || sym,
+            regularMarketPrice: price,
+            regularMarketChange: chg,
+            regularMarketChangePercent: pct,
+            regularMarketVolume: meta.regularMarketVolume || 0,
+            regularMarketDayHigh: meta.regularMarketDayHigh || 0,
+            regularMarketDayLow: meta.regularMarketDayLow || 0,
+          };
+        } catch (e) { /* try next host */ }
+      }
+      return null;
+    })
+  );
+  return results
+    .filter(r => r.status === 'fulfilled' && r.value)
+    .map(r => r.value);
 }
 
 async function renderGlobalIndices() {
@@ -1898,8 +1913,8 @@ async function renderGlobalIndices() {
   const quotes = await fetchYahooQuotes(symbols);
 
   if (quotes.length === 0) {
-    box.innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">國際市場資料暫時無法取得（Yahoo Finance API 限制）</div>';
-    return;
+    box.innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">國際市場資料暫時無法取得，點擊分頁重試</div>';
+    return false;
   }
 
   const qMap = {};
@@ -1947,8 +1962,8 @@ async function renderUSStocks() {
   const quotes = await fetchYahooQuotes(symbols);
 
   if (quotes.length === 0) {
-    box.innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">美股資料暫時無法取得</div>';
-    return;
+    box.innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">美股資料暫時無法取得，點擊分頁重試</div>';
+    return false;
   }
 
   const qMap = {};
@@ -1961,7 +1976,6 @@ async function renderUSStocks() {
     const chg = q.regularMarketChange || 0;
     const pct = q.regularMarketChangePercent || 0;
     const vol = q.regularMarketVolume || 0;
-    const cap = q.marketCap || 0;
     const isUp = chg >= 0;
     return [
       `<b>${s.symbol}</b>`,
@@ -1970,11 +1984,10 @@ async function renderUSStocks() {
       `<span class="${isUp ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)}</span>`,
       `<span class="${isUp ? 'up' : 'down'}">${pct > 0 ? '+' : ''}${pct.toFixed(2)}%</span>`,
       fmtBig(vol),
-      cap > 1e12 ? (cap / 1e12).toFixed(2) + 'T' : cap > 1e9 ? (cap / 1e9).toFixed(1) + 'B' : fmtBig(cap),
     ];
   }).filter(Boolean);
 
-  box.innerHTML = mkTable(['代碼', '名稱', '股價', '漲跌', '漲跌%', '成交量', '市值'], rows);
+  box.innerHTML = mkTable(['代碼', '名稱', '股價', '漲跌', '漲跌%', '成交量'], rows);
 }
 
 // ============================================================
@@ -2142,7 +2155,9 @@ function stopRealtimeUpdates() {
 // ============================================================
 let gSectorsLoaded = false;
 let gGlobalLoaded = false;
+let gGlobalSuccess = false;
 let gDayTradeLoaded = false;
+let gDayTradeSuccess = false;
 
 function maybeLoadSectors() {
   if (gSectorsLoaded) return;
@@ -2152,36 +2167,49 @@ function maybeLoadSectors() {
 }
 
 async function maybeLoadGlobal() {
-  if (gGlobalLoaded) return;
+  if (gGlobalLoaded && gGlobalSuccess) return;
   gGlobalLoaded = true;
+  gGlobalSuccess = false;
   renderUSStockTabs();
-  await Promise.allSettled([renderGlobalIndices(), renderUSStocks()]);
+  const results = await Promise.allSettled([renderGlobalIndices(), renderUSStocks()]);
+  gGlobalSuccess = results.some(r => r.status === 'fulfilled' && r.value !== false);
+  if (!gGlobalSuccess) gGlobalLoaded = false;
 }
 
 async function maybeLoadDayTrade() {
-  if (gDayTradeLoaded) return;
+  if (gDayTradeLoaded && gDayTradeSuccess) return;
   gDayTradeLoaded = true;
+  gDayTradeSuccess = false;
   document.getElementById('dt-stats').innerHTML = '<div class="loading-box"><div class="spinner"></div><div>載入當沖資料...</div></div>';
   document.getElementById('dt-rank').innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
   try {
-    // Try gDate first, then fallback up to 7 days back (handles holidays/weekends)
-    let found = false;
+    // Build date list: gDate first (known trading date), then recent dates
+    const dates = [];
+    if (gDate) dates.push(gDate);
     for (let i = 0; i <= 7; i++) {
       const d = dateStr(i);
+      if (d !== gDate) dates.push(d);
+    }
+    let found = false;
+    for (const d of dates) {
       try {
         const data = await API_TWSE.dayTrade(d);
         if (renderDayTrade(data)) {
           found = true;
+          gDayTradeSuccess = true;
           break;
         }
-      } catch(e2) {}
+      } catch(e2) {
+        console.warn('dayTrade fetch failed for', d, e2);
+      }
     }
     if (!found) {
       document.getElementById('dt-stats').innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">近期無當沖資料（可能為非交易日）</div>';
       document.getElementById('dt-rank').innerHTML = '';
     }
   } catch(e) {
-    document.getElementById('dt-stats').innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">當沖資料載入失敗</div>';
+    gDayTradeLoaded = false;
+    document.getElementById('dt-stats').innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">當沖資料載入失敗，點擊分頁重試</div>';
     document.getElementById('dt-rank').innerHTML = '';
   }
 }
@@ -2208,12 +2236,7 @@ const TICKER_INDICES = [
 async function loadTicker() {
   try {
     const symbols = TICKER_INDICES.map(i => i.symbol);
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}`;
-    const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
-    const r = await fetch(proxyUrl);
-    if (!r.ok) return;
-    const d = await r.json();
-    const quotes = d.quoteResponse?.result || [];
+    const quotes = await fetchYahooQuotes(symbols);
     if (quotes.length === 0) return;
 
     const qMap = {};
