@@ -2269,7 +2269,23 @@ async function loadTicker() {
     addItems();
     addItems(); // duplicate for seamless scroll loop
 
-    document.getElementById('ticker-track').innerHTML = html;
+    const track = document.getElementById('ticker-track');
+    track.innerHTML = html;
+
+    // JS-based scroll animation (more reliable than CSS translateX(-50%) on iOS)
+    requestAnimationFrame(() => {
+      const halfWidth = track.scrollWidth / 2;
+      let pos = 0;
+      const speed = 0.5; // px per frame (~30px/s at 60fps)
+      if (window._tickerAnim) cancelAnimationFrame(window._tickerAnim);
+      function tick() {
+        pos -= speed;
+        if (pos <= -halfWidth) pos += halfWidth;
+        track.style.transform = `translateX(${pos}px)`;
+        window._tickerAnim = requestAnimationFrame(tick);
+      }
+      tick();
+    });
   } catch(e) {
     // Ticker is non-critical, silently fail
   }

@@ -1178,16 +1178,9 @@
     .ticker-track {
       display: flex;
       gap: 32px;
-      animation: tickerScroll 40s linear infinite;
       white-space: nowrap;
       padding: 0 16px;
-    }
-
-    .ticker-track:hover { animation-play-state: paused; }
-
-    @keyframes tickerScroll {
-      0% { transform: translateX(0); }
-      100% { transform: translateX(-50%); }
+      will-change: transform;
     }
 
     .ticker-item {
