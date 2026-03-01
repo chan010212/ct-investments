@@ -919,9 +919,9 @@
 
       /* Charts — smaller on mobile */
       .chart-box { border-radius: 6px; }
-      .chart-main { height: 300px; }
-      .chart-intraday { height: 180px; }
-      .chart-sm { height: 130px; }
+      .chart-main { height: 340px; }
+      .chart-intraday { height: 200px; }
+      .chart-sm { height: 160px; }
 
       /* Score ring */
       .score-ring { width: 70px; height: 70px; font-size: 22px; }
@@ -985,6 +985,10 @@
 
       .ob-table { font-size: 12px; }
       .ob-table td { padding: 4px 6px; }
+
+      .chart-main { height: 300px; }
+      .chart-intraday { height: 180px; }
+      .chart-sm { height: 145px; }
     }
 
     /* --- iOS PWA Standalone mode --- */

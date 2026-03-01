@@ -854,15 +854,16 @@ function initCharts() {
   if (gChartsReady) return;
   gChartsReady = true;
 
+  const isMobile = window.innerWidth <= 768;
   function opts(el, h) {
     return {
       width: el.clientWidth,
       height: h,
-      layout: { background: { color: 'transparent' }, textColor: '#6b7a99', fontSize: 11, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
-      grid: { vertLines: { color: 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: 'rgba(0, 240, 255, 0.04)' } },
-      crosshair: { mode: 0, vertLine: { color: 'rgba(0, 240, 255, 0.3)', style: 2 }, horzLine: { color: 'rgba(0, 240, 255, 0.3)', style: 2 } },
-      timeScale: { borderColor: 'rgba(0, 240, 255, 0.1)', timeVisible: false, fixLeftEdge: true, fixRightEdge: true },
-      rightPriceScale: { borderColor: 'rgba(0, 240, 255, 0.1)', autoScale: true, scaleMargins: { top: 0.1, bottom: 0.1 } },
+      layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: isMobile ? 10 : 11, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
+      grid: { vertLines: { color: isMobile ? 'rgba(0, 240, 255, 0.06)' : 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: isMobile ? 'rgba(0, 240, 255, 0.06)' : 'rgba(0, 240, 255, 0.04)' } },
+      crosshair: { mode: isMobile ? 1 : 0, vertLine: { color: 'rgba(0, 240, 255, 0.3)', style: 2, labelBackgroundColor: '#1a2540' }, horzLine: { color: 'rgba(0, 240, 255, 0.3)', style: 2, labelBackgroundColor: '#1a2540' } },
+      timeScale: { borderColor: 'rgba(0, 240, 255, 0.1)', timeVisible: false, fixLeftEdge: true, fixRightEdge: true, rightOffset: isMobile ? 3 : 5 },
+      rightPriceScale: { borderColor: 'rgba(0, 240, 255, 0.1)', autoScale: true, scaleMargins: { top: 0.1, bottom: 0.1 }, minimumWidth: isMobile ? 55 : 65 },
       handleScroll: true,
       handleScale: true,
     };
@@ -889,28 +890,28 @@ function initCharts() {
   });
   chtMain.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-  sMa5  = chtMain.addLineSeries({ color: '#ffd036', lineWidth: 1.5, title: 'MA5' });
-  sMa10 = chtMain.addLineSeries({ color: '#00d4ff', lineWidth: 1.5, title: 'MA10' });
-  sMa20 = chtMain.addLineSeries({ color: '#b44dff', lineWidth: 1.5, title: 'MA20' });
+  sMa5  = chtMain.addLineSeries({ color: '#ffd036', lineWidth: isMobile ? 1 : 1.5, title: 'MA5' });
+  sMa10 = chtMain.addLineSeries({ color: '#00d4ff', lineWidth: isMobile ? 1 : 1.5, title: 'MA10' });
+  sMa20 = chtMain.addLineSeries({ color: '#b44dff', lineWidth: isMobile ? 1 : 1.5, title: 'MA20' });
   sBbU  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2 });
   sBbL  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2 });
 
   const rc = document.getElementById('rsi-chart');
   chtRsi = LightweightCharts.createChart(rc, opts(rc, rc.clientHeight || 160));
   chtRsi.priceScale('right').applyOptions({ autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 } });
-  sRsi = chtRsi.addLineSeries({ color: '#ffd036', lineWidth: 2 });
+  sRsi = chtRsi.addLineSeries({ color: '#ffd036', lineWidth: isMobile ? 1.5 : 2 });
 
   const kc = document.getElementById('kd-chart');
   chtKd = LightweightCharts.createChart(kc, opts(kc, kc.clientHeight || 160));
   chtKd.priceScale('right').applyOptions({ autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 } });
-  sKK = chtKd.addLineSeries({ color: '#00d4ff', lineWidth: 2, title: 'K' });
-  sDD = chtKd.addLineSeries({ color: '#ff3860', lineWidth: 2, title: 'D' });
+  sKK = chtKd.addLineSeries({ color: '#00d4ff', lineWidth: isMobile ? 1.5 : 2, title: 'K' });
+  sDD = chtKd.addLineSeries({ color: '#ff3860', lineWidth: isMobile ? 1.5 : 2, title: 'D' });
 
   const mcc = document.getElementById('macd-chart');
   chtMacd = LightweightCharts.createChart(mcc, opts(mcc, mcc.clientHeight || 160));
   chtMacd.priceScale('right').applyOptions({ autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 } });
-  sDif = chtMacd.addLineSeries({ color: '#00d4ff', lineWidth: 2, title: 'DIF' });
-  sSig = chtMacd.addLineSeries({ color: '#ffd036', lineWidth: 2, title: 'Signal' });
+  sDif = chtMacd.addLineSeries({ color: '#00d4ff', lineWidth: isMobile ? 1.5 : 2, title: 'DIF' });
+  sSig = chtMacd.addLineSeries({ color: '#ffd036', lineWidth: isMobile ? 1.5 : 2, title: 'Signal' });
   sHist = chtMacd.addHistogramSeries({ title: 'MACD' });
 }
 
@@ -2006,14 +2007,15 @@ function initIntradayChart() {
   const el = document.getElementById('intraday-chart');
   if (!el || el.clientWidth === 0) return;
   if (chtIntraday) { chtIntraday.remove(); chtIntraday = null; }
+  const mob = window.innerWidth <= 768;
   chtIntraday = LightweightCharts.createChart(el, {
     width: el.clientWidth,
     height: el.clientHeight || 220,
-    layout: { background: { color: 'transparent' }, textColor: '#6b7a99', fontSize: 11, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
-    grid: { vertLines: { color: 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: 'rgba(0, 240, 255, 0.04)' } },
+    layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: mob ? 10 : 11, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
+    grid: { vertLines: { color: mob ? 'rgba(0, 240, 255, 0.06)' : 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: mob ? 'rgba(0, 240, 255, 0.06)' : 'rgba(0, 240, 255, 0.04)' } },
     timeScale: { borderColor: 'rgba(0, 240, 255, 0.1)', timeVisible: true, secondsVisible: false },
-    rightPriceScale: { borderColor: 'rgba(0, 240, 255, 0.1)', autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 } },
-    crosshair: { mode: 0, vertLine: { color: 'rgba(0, 240, 255, 0.3)', style: 2 }, horzLine: { color: 'rgba(0, 240, 255, 0.3)', style: 2 } },
+    rightPriceScale: { borderColor: 'rgba(0, 240, 255, 0.1)', autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 }, minimumWidth: mob ? 55 : 65 },
+    crosshair: { mode: mob ? 1 : 0, vertLine: { color: 'rgba(0, 240, 255, 0.3)', style: 2, labelBackgroundColor: '#1a2540' }, horzLine: { color: 'rgba(0, 240, 255, 0.3)', style: 2, labelBackgroundColor: '#1a2540' } },
   });
   sIntraLine = chtIntraday.addAreaSeries({
     lineColor: '#00d4ff',
