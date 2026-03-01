@@ -17,6 +17,7 @@ import time
 import urllib.request
 import urllib.parse
 import urllib.error
+import ssl
 from pathlib import Path
 from datetime import datetime
 
@@ -548,7 +549,15 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                 'Referer': f'https://{parsed.hostname}/',
             })
 
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            # TWSE has broken SSL cert (missing Subject Key Identifier)
+            # Use relaxed SSL context for TWSE domains
+            ctx = None
+            if 'twse.com.tw' in (parsed.hostname or ''):
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+
+            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
                 data = resp.read()
                 content_type = resp.headers.get('Content-Type', 'application/json')
 
