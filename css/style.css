@@ -860,10 +860,12 @@
         order: 1;
         flex: 1;
         min-height: 0;
+        padding-top: env(safe-area-inset-top, 0);
       }
 
       .panel {
-        padding: 12px;
+        padding: 10px;
+        padding-bottom: 16px;
       }
 
       /* Cards */
@@ -877,19 +879,19 @@
 
       /* Stat grid */
       .stat-grid {
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        grid-template-columns: 1fr 1fr;
         gap: 8px;
       }
 
-      .stat-box { padding: 12px; }
-      .stat-box .value { font-size: 18px; }
-      .stat-box .label { font-size: 11px; }
+      .stat-box { padding: 10px; }
+      .stat-box .value { font-size: 16px; }
+      .stat-box .label { font-size: 10px; }
 
       /* Tables */
-      .table-wrap { max-height: 400px; border-radius: 8px; }
-      table { font-size: 12px; }
-      thead th { padding: 8px 10px; font-size: 10px; }
-      td { padding: 7px 10px; }
+      .table-wrap { max-height: 400px; border-radius: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      table { font-size: 11px; min-width: 500px; }
+      thead th { padding: 6px 8px; font-size: 10px; }
+      td { padding: 6px 8px; }
 
       /* Tabs */
       .tab-bar {
@@ -947,21 +949,22 @@
 
       .nav-svg { width: 16px; height: 16px; }
 
-      .panel { padding: 10px; }
+      .panel { padding: 8px; padding-bottom: 12px; }
 
-      .card { padding: 12px; margin-bottom: 10px; }
-      .card-title { font-size: 13px; margin-bottom: 10px; }
+      .card { padding: 10px; margin-bottom: 8px; }
+      .card-title { font-size: 13px; margin-bottom: 8px; }
 
       .stat-grid {
         grid-template-columns: 1fr 1fr;
         gap: 6px;
       }
-      .stat-box { padding: 10px; }
-      .stat-box .value { font-size: 16px; }
+      .stat-box { padding: 8px; }
+      .stat-box .value { font-size: 15px; }
+      .stat-box .label { font-size: 10px; }
 
-      table { font-size: 11px; }
-      thead th { padding: 6px 8px; font-size: 9px; letter-spacing: 0; }
-      td { padding: 6px 8px; }
+      table { font-size: 10px; }
+      thead th { padding: 5px 6px; font-size: 9px; letter-spacing: 0; }
+      td { padding: 5px 6px; }
 
       .stock-card { padding: 12px 14px; }
       .stock-card .sc-price { font-size: 20px; }
