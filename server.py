@@ -6,6 +6,7 @@ All using Python stdlib only (no pip dependencies)
 """
 
 import http.server
+import socketserver
 import json
 import os
 import sys
@@ -613,11 +614,15 @@ def log_action(db, user_id, action, detail=''):
     db.commit()
 
 
+class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+
+
 if __name__ == '__main__':
     os.chdir(Path(__file__).parent)
     init_db()
-    server = http.server.HTTPServer(('0.0.0.0', PORT), StockProxyHandler)
-    print(f'CT Investments server started on port {PORT}')
+    server = ThreadingHTTPServer(('0.0.0.0', PORT), StockProxyHandler)
+    print(f'CT Investments server started on port {PORT} (threaded)')
     print(f'  Database: {DB_PATH}')
     print(f'  Open: http://localhost:{PORT}')
     try:
