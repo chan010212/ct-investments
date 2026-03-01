@@ -582,6 +582,10 @@
       overflow: hidden;
     }
 
+    .chart-main { height: 420px; }
+    .chart-intraday { height: 220px; }
+    .chart-sm { height: 160px; }
+
     /* ===== WATCHLIST ITEM ===== */
     .wl-item {
       display: flex;
@@ -773,15 +777,193 @@
       .grid-2 { grid-template-columns: 1fr; }
     }
 
+    /* --- TABLET --- */
     @media (max-width: 768px) {
-      .sidebar { width: 56px; }
-      .logo h1 { font-size: 0; }
-      .logo h1::after { content: 'CT'; font-size: 16px; -webkit-text-fill-color: var(--cyan); }
-      .logo .sub, .logo .co-tag { display: none; }
+      .app {
+        flex-direction: column;
+        height: 100vh;
+        height: 100dvh;
+      }
+
+      /* Sidebar → bottom tab bar */
+      .sidebar {
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        border-right: none;
+        border-top: 1px solid var(--border);
+        order: 2;
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex-shrink: 0;
+      }
+
+      .sidebar::after { display: none; }
+
+      .logo { display: none; }
+
+      .nav {
+        display: flex;
+        flex-direction: row;
+        padding: 0;
+        flex: 1;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .nav-item {
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 12px;
+        font-size: 10px;
+        border-left: none;
+        border-top: 2px solid transparent;
+        white-space: nowrap;
+        min-width: 56px;
+        text-align: center;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .nav-item.active {
+        border-left-color: transparent;
+        border-top-color: var(--cyan);
+        background: linear-gradient(180deg, rgba(0, 240, 255, 0.1), transparent);
+      }
+
+      .nav-item.active::before { display: none; }
+      .nav-icon { font-size: 18px; width: auto; }
+
+      .status-bar { display: none; }
+
+      /* Main */
+      .main {
+        order: 1;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .panel {
+        padding: 12px;
+      }
+
+      /* Cards */
+      .card {
+        padding: 14px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+      }
+
+      .card-title { font-size: 14px; margin-bottom: 12px; }
+
+      /* Stat grid */
+      .stat-grid {
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px;
+      }
+
+      .stat-box { padding: 12px; }
+      .stat-box .value { font-size: 18px; }
+      .stat-box .label { font-size: 11px; }
+
+      /* Tables */
+      .table-wrap { max-height: 400px; border-radius: 8px; }
+      table { font-size: 12px; }
+      thead th { padding: 8px 10px; font-size: 10px; }
+      td { padding: 7px 10px; }
+
+      /* Tabs */
+      .tab-bar {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+      }
+      .tab-btn { padding: 8px 14px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+
+      /* Stock cards */
+      .stock-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .stock-card .sc-price { font-size: 22px; }
+      .stock-card .sc-code { font-size: 16px; }
+      .stock-card .sc-stats { grid-template-columns: 1fr 1fr 1fr; }
+
+      /* Search */
+      .search-group {
+        flex-wrap: wrap;
+      }
+      .search-group .autocomplete-wrap { width: 100% !important; }
+      .search-group .btn { flex: 1; }
+
+      /* Charts — smaller on mobile */
+      .chart-box { border-radius: 6px; }
+      .chart-main { height: 300px; }
+      .chart-intraday { height: 180px; }
+      .chart-sm { height: 130px; }
+
+      /* Score ring */
+      .score-ring { width: 70px; height: 70px; font-size: 22px; }
+      .score-ring::after { inset: -3px; }
+
+      /* Ticker bar */
+      .ticker-bar { height: 30px; }
+      .ticker-item { font-size: 11px; }
+      .ticker-item .ti-name { font-size: 11px; }
+
+      /* Search modal */
+      .search-modal { width: 95vw; border-radius: 12px; }
+      .search-modal input { padding: 14px 16px; font-size: 15px; }
+    }
+
+    /* --- PHONE SMALL --- */
+    @media (max-width: 480px) {
+      .nav-item {
+        padding: 6px 8px;
+        min-width: 48px;
+        font-size: 9px;
+      }
+
       .nav-item span:not(.nav-icon) { display: none; }
-      .nav-item { padding: 12px; justify-content: center; }
-      .nav-icon { margin: 0; }
-      .main { padding: 12px; }
+      .nav-icon { font-size: 20px; }
+
+      .panel { padding: 10px; }
+
+      .card { padding: 12px; margin-bottom: 10px; }
+      .card-title { font-size: 13px; margin-bottom: 10px; }
+
+      .stat-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+      .stat-box { padding: 10px; }
+      .stat-box .value { font-size: 16px; }
+
+      table { font-size: 11px; }
+      thead th { padding: 6px 8px; font-size: 9px; letter-spacing: 0; }
+      td { padding: 6px 8px; }
+
+      .stock-card { padding: 12px 14px; }
+      .stock-card .sc-price { font-size: 20px; }
+      .stock-card .sc-code { font-size: 14px; }
+      .stock-card .sc-stat-label { font-size: 9px; }
+      .stock-card .sc-stat-val { font-size: 12px; }
+      .stock-card .sc-inst { font-size: 10px; flex-wrap: wrap; }
+
+      .flex-between { flex-wrap: wrap; gap: 8px; }
+      .search-group .btn { padding: 8px 14px; font-size: 13px; }
+
+      .ticker-bar { height: 28px; }
+      .ticker-item { gap: 5px; font-size: 10px; }
+
+      /* Individual analysis page adjustments */
+      #stock-title { font-size: 18px !important; }
+      #stock-price { font-size: 24px !important; }
+      #stock-change { font-size: 13px !important; }
+
+      .ob-table { font-size: 12px; }
+      .ob-table td { padding: 4px 6px; }
     }
 
     .clickable { cursor: pointer; color: var(--cyan); transition: all 0.2s; }
@@ -1251,7 +1433,7 @@
         <div class="grid-2">
           <div class="card">
             <div class="card-title">&#x23F1; 盤中即時走勢</div>
-            <div id="intraday-chart" class="chart-box" style="height:220px;"></div>
+            <div id="intraday-chart" class="chart-box chart-intraday"></div>
             <div class="text-sm text-muted" style="margin-top:6px;text-align:right;" id="intraday-status">非交易時段</div>
           </div>
           <div class="card">
@@ -1262,21 +1444,21 @@
         </div>
         <div class="card">
           <div class="card-title">&#x1F4C8; K 線圖 / 均線 / 布林通道</div>
-          <div id="main-chart" class="chart-box" style="height:420px;"></div>
+          <div id="main-chart" class="chart-box chart-main"></div>
         </div>
         <div class="grid-2">
           <div class="card">
             <div class="card-title">RSI (14)</div>
-            <div id="rsi-chart" class="chart-box" style="height:160px;"></div>
+            <div id="rsi-chart" class="chart-box chart-sm"></div>
           </div>
           <div class="card">
             <div class="card-title">KD 隨機指標</div>
-            <div id="kd-chart" class="chart-box" style="height:160px;"></div>
+            <div id="kd-chart" class="chart-box chart-sm"></div>
           </div>
         </div>
         <div class="card">
           <div class="card-title">MACD</div>
-          <div id="macd-chart" class="chart-box" style="height:160px;"></div>
+          <div id="macd-chart" class="chart-box chart-sm"></div>
         </div>
         <div class="grid-2">
           <div class="card">
@@ -2242,7 +2424,7 @@ function initCharts() {
   }
 
   const mc = document.getElementById('main-chart');
-  chtMain = LightweightCharts.createChart(mc, opts(mc, 420));
+  chtMain = LightweightCharts.createChart(mc, opts(mc, mc.clientHeight || 420));
 
   sCan = chtMain.addCandlestickSeries({
     upColor: '#ff3860', downColor: '#00e87b',
@@ -2269,18 +2451,18 @@ function initCharts() {
   sBbL  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2 });
 
   const rc = document.getElementById('rsi-chart');
-  chtRsi = LightweightCharts.createChart(rc, opts(rc, 160));
+  chtRsi = LightweightCharts.createChart(rc, opts(rc, rc.clientHeight || 160));
   chtRsi.priceScale('right').applyOptions({ autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 } });
   sRsi = chtRsi.addLineSeries({ color: '#ffd036', lineWidth: 2 });
 
   const kc = document.getElementById('kd-chart');
-  chtKd = LightweightCharts.createChart(kc, opts(kc, 160));
+  chtKd = LightweightCharts.createChart(kc, opts(kc, kc.clientHeight || 160));
   chtKd.priceScale('right').applyOptions({ autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 } });
   sKK = chtKd.addLineSeries({ color: '#00d4ff', lineWidth: 2, title: 'K' });
   sDD = chtKd.addLineSeries({ color: '#ff3860', lineWidth: 2, title: 'D' });
 
   const mcc = document.getElementById('macd-chart');
-  chtMacd = LightweightCharts.createChart(mcc, opts(mcc, 160));
+  chtMacd = LightweightCharts.createChart(mcc, opts(mcc, mcc.clientHeight || 160));
   chtMacd.priceScale('right').applyOptions({ autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 } });
   sDif = chtMacd.addLineSeries({ color: '#00d4ff', lineWidth: 2, title: 'DIF' });
   sSig = chtMacd.addLineSeries({ color: '#ffd036', lineWidth: 2, title: 'Signal' });
