@@ -860,7 +860,6 @@
         order: 1;
         flex: 1;
         min-height: 0;
-        padding-top: env(safe-area-inset-top, 0);
       }
 
       .panel {
@@ -929,7 +928,7 @@
       .score-ring::after { inset: -3px; }
 
       /* Ticker bar */
-      .ticker-bar { height: 30px; }
+      .ticker-bar { height: 30px; padding-top: env(safe-area-inset-top, 0); height: calc(30px + env(safe-area-inset-top, 0)); }
       .ticker-item { font-size: 11px; }
       .ticker-item .ti-name { font-size: 11px; }
 
@@ -976,7 +975,7 @@
       .flex-between { flex-wrap: wrap; gap: 8px; }
       .search-group .btn { padding: 8px 14px; font-size: 13px; }
 
-      .ticker-bar { height: 28px; }
+      .ticker-bar { height: 28px; padding-top: env(safe-area-inset-top, 0); height: calc(28px + env(safe-area-inset-top, 0)); }
       .ticker-item { gap: 5px; font-size: 10px; }
 
       /* Individual analysis page adjustments */
@@ -986,6 +985,22 @@
 
       .ob-table { font-size: 12px; }
       .ob-table td { padding: 4px 6px; }
+    }
+
+    /* --- iOS PWA Standalone mode --- */
+    @media (display-mode: standalone) {
+      .ticker-bar {
+        padding-top: env(safe-area-inset-top, 20px);
+        height: calc(36px + env(safe-area-inset-top, 20px));
+      }
+      .sidebar {
+        padding-bottom: env(safe-area-inset-bottom, 0);
+      }
+    }
+    @supports (-webkit-touch-callout: none) {
+      .app {
+        min-height: -webkit-fill-available;
+      }
     }
 
     .clickable { cursor: pointer; color: var(--cyan); transition: all 0.2s; text-decoration: none; }
