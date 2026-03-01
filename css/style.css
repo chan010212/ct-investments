@@ -928,7 +928,7 @@
       .score-ring::after { inset: -3px; }
 
       /* Ticker bar */
-      .ticker-bar { height: 30px; padding-top: env(safe-area-inset-top, 0); height: calc(30px + env(safe-area-inset-top, 0)); }
+      .ticker-bar { height: 30px; }
       .ticker-item { font-size: 11px; }
       .ticker-item .ti-name { font-size: 11px; }
 
@@ -975,7 +975,7 @@
       .flex-between { flex-wrap: wrap; gap: 8px; }
       .search-group .btn { padding: 8px 14px; font-size: 13px; }
 
-      .ticker-bar { height: 28px; padding-top: env(safe-area-inset-top, 0); height: calc(28px + env(safe-area-inset-top, 0)); }
+      .ticker-bar { height: 28px; }
       .ticker-item { gap: 5px; font-size: 10px; }
 
       /* Individual analysis page adjustments */
@@ -989,17 +989,15 @@
 
     /* --- iOS PWA Standalone mode --- */
     @media (display-mode: standalone) {
-      .ticker-bar {
-        padding-top: env(safe-area-inset-top, 20px);
-        height: calc(36px + env(safe-area-inset-top, 20px));
+      .main::before {
+        content: '';
+        display: block;
+        height: env(safe-area-inset-top, 0);
+        background: rgba(6, 11, 24, 0.9);
+        flex-shrink: 0;
       }
       .sidebar {
         padding-bottom: env(safe-area-inset-bottom, 0);
-      }
-    }
-    @supports (-webkit-touch-callout: none) {
-      .app {
-        min-height: -webkit-fill-available;
       }
     }
 
