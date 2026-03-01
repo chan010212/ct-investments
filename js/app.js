@@ -1104,6 +1104,8 @@ function renderDayTrade(data) {
       <div class="stat-box"><div class="label">當沖買進金額</div><div class="value">${fmtBig(parseNum(r[2]))}</div></div>
       <div class="stat-box"><div class="label">占市場比重</div><div class="value">${r[3]}</div></div>
     `;
+  } else {
+    document.getElementById('dt-stats').innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">當沖統計尚未公布（盤後更新）</div>';
   }
 
   if (hasRank) {
