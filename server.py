@@ -567,7 +567,14 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(500, str(e))
 
     def end_headers(self):
-        if not any(k.lower() == 'access-control-allow-origin' for k, v in self._headers):
+        # Check _headers_buffer for existing CORS header to avoid duplicates
+        has_cors = False
+        if hasattr(self, '_headers_buffer'):
+            for h in self._headers_buffer:
+                if b'access-control-allow-origin' in h.lower():
+                    has_cors = True
+                    break
+        if not has_cors:
             self.send_header('Access-Control-Allow-Origin', '*')
         super().end_headers()
 
