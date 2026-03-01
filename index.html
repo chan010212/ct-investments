@@ -2054,9 +2054,9 @@ async function _doFetch(url) {
   if (c) return c;
   await sleep(REQUEST_DELAY * Math.random());
 
-  // Route TPEx requests through proxy to bypass CORS
+  // Route all external API requests through proxy to bypass CORS
   let fetchUrl = url;
-  if (url.includes('tpex.org.tw')) {
+  if (url.includes('tpex.org.tw') || url.includes('twse.com.tw') || url.includes('yahoo.com')) {
     fetchUrl = '/api/proxy?url=' + encodeURIComponent(url);
   }
 
@@ -3820,17 +3820,24 @@ let gActiveUSGroup = Object.keys(US_STOCK_GROUPS)[0];
 
 // Use Yahoo Finance v8 API (public, no key needed)
 async function fetchYahooQuotes(symbols) {
-  try {
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}`;
-    const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
-    const r = await fetch(proxyUrl);
-    if (!r.ok) return [];
-    const d = await r.json();
-    return d.quoteResponse?.result || [];
-  } catch (e) {
-    console.warn('Yahoo Finance fetch failed:', e);
-    return [];
+  // Try v7 first, fallback to v6
+  const urls = [
+    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}`,
+    `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}`,
+  ];
+  for (const url of urls) {
+    try {
+      const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
+      const r = await fetch(proxyUrl);
+      if (!r.ok) continue;
+      const d = await r.json();
+      const result = d.quoteResponse?.result || [];
+      if (result.length > 0) return result;
+    } catch (e) {
+      console.warn('Yahoo Finance fetch failed:', url, e);
+    }
   }
+  return [];
 }
 
 async function renderGlobalIndices() {
