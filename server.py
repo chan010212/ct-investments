@@ -89,6 +89,29 @@ def init_db():
     )''')
 
     conn.commit()
+
+    # Seed admin account and default picks if database is fresh
+    if c.execute('SELECT COUNT(*) FROM users').fetchone()[0] == 0:
+        pw_hash = hash_password('chan0820')
+        c.execute(
+            'INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)',
+            ('chan010212@gmail.com', pw_hash, '謙堂', 'admin')
+        )
+        default_picks = [
+            ('6693', '廣閎科', 'buy'),
+            ('3141', '晶宏', 'buy'),
+            ('4971', 'IET-KY', 'buy'),
+            ('6849', '奇鼎科技', 'buy'),
+            ('4927', '泰鼎-KY', 'buy'),
+        ]
+        for code, name, action in default_picks:
+            c.execute(
+                'INSERT INTO stock_picks (stock_code, stock_name, action) VALUES (?, ?, ?)',
+                (code, name, action)
+            )
+        conn.commit()
+        print('[DB] Seeded admin account and default picks')
+
     conn.close()
     print(f'[DB] Database initialized at {DB_PATH}')
 
