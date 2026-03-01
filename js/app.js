@@ -2272,19 +2272,19 @@ async function loadTicker() {
     const track = document.getElementById('ticker-track');
     track.innerHTML = html;
 
-    // JS-based scroll animation (more reliable than CSS translateX(-50%) on iOS)
+    // Use Web Animations API with exact pixel values (reliable on iOS PWA)
+    if (window._tickerAnim) { window._tickerAnim.cancel(); window._tickerAnim = null; }
     requestAnimationFrame(() => {
       const halfWidth = track.scrollWidth / 2;
-      let pos = 0;
-      const speed = 0.5; // px per frame (~30px/s at 60fps)
-      if (window._tickerAnim) cancelAnimationFrame(window._tickerAnim);
-      function tick() {
-        pos -= speed;
-        if (pos <= -halfWidth) pos += halfWidth;
-        track.style.transform = `translateX(${pos}px)`;
-        window._tickerAnim = requestAnimationFrame(tick);
+      if (halfWidth > 0) {
+        window._tickerAnim = track.animate(
+          [
+            { transform: 'translate3d(0, 0, 0)' },
+            { transform: `translate3d(-${halfWidth}px, 0, 0)` }
+          ],
+          { duration: halfWidth * 25, iterations: Infinity, easing: 'linear' }
+        );
       }
-      tick();
     });
   } catch(e) {
     // Ticker is non-critical, silently fail

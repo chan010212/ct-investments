@@ -989,12 +989,8 @@
 
     /* --- iOS PWA Standalone mode --- */
     @media (display-mode: standalone) {
-      .main::before {
-        content: '';
-        display: block;
-        height: env(safe-area-inset-top, 0);
-        background: rgba(6, 11, 24, 0.9);
-        flex-shrink: 0;
+      .ticker-bar {
+        padding-top: env(safe-area-inset-top, 0);
       }
       .sidebar {
         padding-bottom: env(safe-area-inset-bottom, 0);
@@ -1180,7 +1176,6 @@
       gap: 32px;
       white-space: nowrap;
       padding: 0 16px;
-      will-change: transform;
     }
 
     .ticker-item {
