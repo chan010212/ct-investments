@@ -166,7 +166,10 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
     """Serves static files + proxies API requests + member API"""
 
     def do_GET(self):
-        if self.path.startswith('/api/proxy?'):
+        if self.path == '/api/health':
+            self.send_json({'status': 'ok', 'time': datetime.now().isoformat()})
+            return
+        elif self.path.startswith('/api/proxy?'):
             self.handle_proxy()
         elif self.path == '/api/me':
             self.handle_me()
