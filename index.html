@@ -2,8 +2,15 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CT Investments — 謙堂資本 技術分析儀表板</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>CT Investments — 謙堂資本</title>
+  <meta name="description" content="台灣股票技術分析儀表板 — 謙堂資本 CT Investments CO., LTD">
+  <meta name="theme-color" content="#060b18">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CT Invest">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%23060b18'/><text x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='system-ui' font-size='28' font-weight='800' fill='%2300f0ff'>CT</text></svg>">
   <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     /* ===== RESET & BASE ===== */
@@ -33,12 +40,18 @@
       --glow-green: 0 0 12px rgba(0, 232, 123, 0.25);
     }
 
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
     body {
       font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft JhengHei', sans-serif;
       background: var(--bg);
       color: var(--text);
       line-height: 1.5;
-      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     /* ===== ANIMATED BACKGROUND ===== */
@@ -223,10 +236,18 @@
       border-radius: 0 2px 2px 0;
     }
 
-    .nav-icon {
-      font-size: 18px;
-      width: 24px;
-      text-align: center;
+    .nav-svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      stroke: currentColor;
+      opacity: 0.7;
+      transition: opacity 0.3s;
+    }
+
+    .nav-item:hover .nav-svg,
+    .nav-item.active .nav-svg {
+      opacity: 1;
     }
 
     .sidebar-footer {
@@ -796,6 +817,8 @@
         overflow-x: auto;
         overflow-y: hidden;
         flex-shrink: 0;
+        padding-bottom: env(safe-area-inset-bottom, 0);
+        background: rgba(6, 11, 24, 0.97);
       }
 
       .sidebar::after { display: none; }
@@ -814,12 +837,14 @@
       .nav-item {
         flex-direction: column;
         gap: 2px;
-        padding: 8px 12px;
+        padding: 8px 10px 6px;
         font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.5px;
         border-left: none;
         border-top: 2px solid transparent;
         white-space: nowrap;
-        min-width: 56px;
+        min-width: 52px;
         text-align: center;
         justify-content: center;
         align-items: center;
@@ -828,13 +853,15 @@
       .nav-item.active {
         border-left-color: transparent;
         border-top-color: var(--cyan);
-        background: linear-gradient(180deg, rgba(0, 240, 255, 0.1), transparent);
+        background: linear-gradient(180deg, rgba(0, 240, 255, 0.08), transparent);
+        color: var(--cyan);
       }
 
       .nav-item.active::before { display: none; }
-      .nav-icon { font-size: 18px; width: auto; }
+      .nav-svg { width: 18px; height: 18px; }
 
       .status-bar { display: none; }
+      .sidebar-footer { display: none; }
 
       /* Main */
       .main {
@@ -920,13 +947,13 @@
     /* --- PHONE SMALL --- */
     @media (max-width: 480px) {
       .nav-item {
-        padding: 6px 8px;
-        min-width: 48px;
+        padding: 6px 6px;
+        min-width: 44px;
         font-size: 9px;
+        gap: 1px;
       }
 
-      .nav-item span:not(.nav-icon) { display: none; }
-      .nav-icon { font-size: 20px; }
+      .nav-svg { width: 16px; height: 16px; }
 
       .panel { padding: 10px; }
 
@@ -966,8 +993,19 @@
       .ob-table td { padding: 4px 6px; }
     }
 
-    .clickable { cursor: pointer; color: var(--cyan); transition: all 0.2s; }
+    .clickable { cursor: pointer; color: var(--cyan); transition: all 0.2s; text-decoration: none; }
     .clickable:hover { text-shadow: 0 0 8px var(--cyan); }
+
+    /* Professional disclaimer footer */
+    .disclaimer {
+      text-align: center;
+      font-size: 10px;
+      color: var(--text2);
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      opacity: 0.6;
+      letter-spacing: 0.3px;
+    }
 
     /* ===== ORDER BOOK ===== */
     .ob-table { width: 100%; font-size: 13px; border-collapse: collapse; }
@@ -1309,29 +1347,32 @@
     </div>
     <div class="nav">
       <div class="nav-item active" data-tab="overview">
-        <span class="nav-icon">&#x1F4CA;</span><span>市場總覽</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 16l4-4 3 3 5-6"/></svg><span>總覽</span>
       </div>
       <div class="nav-item" data-tab="institutional">
-        <span class="nav-icon">&#x1F3E6;</span><span>三大法人</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-4h6v4M9 9h1M14 9h1M9 13h1M14 13h1"/></svg><span>法人</span>
       </div>
       <div class="nav-item" data-tab="analysis">
-        <span class="nav-icon">&#x1F4C8;</span><span>個股分析</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 14l3-3 2 2 5-5"/><circle cx="17" cy="8" r="1.5"/></svg><span>個股</span>
       </div>
       <div class="nav-item" data-tab="daytrade">
-        <span class="nav-icon">&#x26A1;</span><span>當沖熱門</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span>當沖</span>
       </div>
       <div class="nav-item" data-tab="sectors">
-        <span class="nav-icon">&#x1F525;</span><span>熱門題材</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 2v10l7 4"/></svg><span>題材</span>
       </div>
       <div class="nav-item" data-tab="global">
-        <span class="nav-icon">&#x1F30D;</span><span>國際市場</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a16 16 0 0 1 0 20M12 2a16 16 0 0 0 0 20"/></svg><span>國際</span>
       </div>
       <div class="nav-item" data-tab="ai">
-        <span class="nav-icon">&#x1F916;</span><span>AI 選股</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M6 10v1a6 6 0 0 0 12 0v-1M8 18h8M10 22h4M12 18v4"/></svg><span>AI</span>
       </div>
       <div class="nav-item" data-tab="watchlist">
-        <span class="nav-icon">&#x2B50;</span><span>我的關注</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4l2.5 5.5L20 10l-4 4 1 5.5L12 17l-5 2.5 1-5.5-4-4 5.5-.5z"/></svg><span>關注</span>
       </div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="disclaimer">CT Investments CO., LTD</div>
     </div>
     <div class="status-bar">
       <div class="status-dot loading" id="status-dot"></div>
@@ -3205,7 +3246,7 @@ function rmWatchlist(code) {
 // ============================================================
 // RESIZE
 // ============================================================
-window.addEventListener('resize', () => {
+function handleResize() {
   if (gChartsReady) {
     [chtMain, chtRsi, chtKd, chtMacd, chtIntraday].forEach(c => {
       if (c && c.chartElement) {
@@ -3213,7 +3254,9 @@ window.addEventListener('resize', () => {
       }
     });
   }
-});
+}
+window.addEventListener('resize', handleResize);
+window.addEventListener('orientationchange', () => setTimeout(handleResize, 150));
 
 // ============================================================
 // APP INIT
@@ -3539,7 +3582,7 @@ function initIntradayChart() {
   if (chtIntraday) { chtIntraday.remove(); chtIntraday = null; }
   chtIntraday = LightweightCharts.createChart(el, {
     width: el.clientWidth,
-    height: 220,
+    height: el.clientHeight || 220,
     layout: { background: { color: 'transparent' }, textColor: '#6b7a99', fontSize: 11, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
     grid: { vertLines: { color: 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: 'rgba(0, 240, 255, 0.04)' } },
     timeScale: { borderColor: 'rgba(0, 240, 255, 0.1)', timeVisible: true, secondsVisible: false },

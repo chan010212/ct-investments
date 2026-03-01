@@ -80,7 +80,9 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(500, str(e))
 
     def end_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
+        # Only add CORS header if not already set (proxy handler sets it explicitly)
+        if not any(k.lower() == 'access-control-allow-origin' for k, v in self._headers):
+            self.send_header('Access-Control-Allow-Origin', '*')
         super().end_headers()
 
     def log_message(self, format, *args):
