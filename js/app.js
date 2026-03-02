@@ -181,11 +181,7 @@ function buildStockDB() {
 }
 
 function getMarket(code) {
-  if (gStockDB[code]) {
-    const m = gStockDB[code].market;
-    // Treat emerging (興櫃) as tpex for API compatibility
-    return m === 'emerging' ? 'tpex' : m;
-  }
+  if (gStockDB[code]) return gStockDB[code].market;
   return null; // unknown, will try both
 }
 
@@ -1706,6 +1702,45 @@ async function fetchTpexHistory(code) {
   return { rawRows, stockName, isTpex: true };
 }
 
+async function fetchYahooHistory(code) {
+  // Use Yahoo Finance for emerging market stocks (and as fallback)
+  // Try .TWO (OTC/emerging) first, then .TW (TWSE)
+  const suffixes = ['.TWO', '.TW'];
+  for (const suffix of suffixes) {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${code}${suffix}?interval=1d&range=6mo`;
+      const data = await apiFetch(url);
+      const result = data?.chart?.result?.[0];
+      if (!result || !result.timestamp || result.timestamp.length < 5) continue;
+      const ts = result.timestamp;
+      const q = result.indicators.quote[0];
+      const rawRows = [];
+      for (let i = 0; i < ts.length; i++) {
+        if (q.close[i] == null) continue;
+        const d = new Date(ts[i] * 1000);
+        const rocDate = `${d.getFullYear()-1911}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+        // Format rows same as TPEx: [date, volume, turnover, open, high, low, close, change, txCount]
+        const prev = i > 0 && q.close[i-1] != null ? q.close[i-1] : q.open[i];
+        const chg = q.close[i] - (prev || 0);
+        rawRows.push([
+          rocDate,
+          String(q.volume[i] || 0),
+          '0',
+          String(q.open[i] || 0),
+          String(q.high[i] || 0),
+          String(q.low[i] || 0),
+          String(q.close[i]),
+          String(chg.toFixed(2)),
+          '0'
+        ]);
+      }
+      const stockName = gStockDB[code]?.name || result.meta?.symbol || code;
+      return { rawRows, stockName, isTpex: true };
+    } catch(e) { /* try next suffix */ }
+  }
+  return { rawRows: [], stockName: '', isTpex: true };
+}
+
 async function analyzeStock(code) {
   code = code || document.getElementById('stock-input').value.trim();
   if (!code) { toast('請輸入股票代號'); return; }
@@ -1723,7 +1758,13 @@ async function analyzeStock(code) {
     let market = getMarket(code);
     let rawRows = [], stockName = '';
 
-    if (market === 'tpex') {
+    if (market === 'emerging') {
+      // Emerging market stock — use Yahoo Finance
+      const r = await fetchYahooHistory(code);
+      rawRows = r.rawRows;
+      stockName = r.stockName;
+      market = 'tpex'; // treat as tpex for subsequent API calls
+    } else if (market === 'tpex') {
       // Known TPEx stock
       const r = await fetchTpexHistory(code);
       rawRows = r.rawRows;
@@ -1734,7 +1775,7 @@ async function analyzeStock(code) {
       rawRows = r.rawRows;
       stockName = r.stockName;
     } else {
-      // Unknown — try TWSE first, then TPEx
+      // Unknown — try TWSE first, then TPEx, then Yahoo
       const r1 = await fetchTwseHistory(code);
       if (r1.rawRows.length > 0) {
         rawRows = r1.rawRows;
@@ -1742,9 +1783,16 @@ async function analyzeStock(code) {
         market = 'twse';
       } else {
         const r2 = await fetchTpexHistory(code);
-        rawRows = r2.rawRows;
-        stockName = r2.stockName;
-        market = 'tpex';
+        if (r2.rawRows.length > 0) {
+          rawRows = r2.rawRows;
+          stockName = r2.stockName;
+          market = 'tpex';
+        } else {
+          const r3 = await fetchYahooHistory(code);
+          rawRows = r3.rawRows;
+          stockName = r3.stockName;
+          market = 'tpex';
+        }
       }
     }
 
