@@ -1889,13 +1889,16 @@ async function init() {
     gDate = await findTradingDate();
     setStatus('loading', '載入市場資料（上市+上櫃）...');
 
-    // Fetch only essential data in parallel (dayTrade deferred to tab click)
+    // Fetch essential data + OpenAPI stock lists in parallel
     const results = await Promise.allSettled([
-      API_TWSE.instSummary(gDate),
-      API_TWSE.instStocks(gDate),
-      API_TWSE.allStocks(gDate),
-      API_TPEX.allStocks(gDate),
-      API_TPEX.instStocks(gDate),
+      API_TWSE.instSummary(gDate),        // [0]
+      API_TWSE.instStocks(gDate),         // [1]
+      API_TWSE.allStocks(gDate),          // [2]
+      API_TPEX.allStocks(gDate),          // [3]
+      API_TPEX.instStocks(gDate),         // [4]
+      apiFetch(OPENAPI_TWSE_ALL),         // [5] OpenAPI 上市 (reliable)
+      apiFetch(OPENAPI_TPEX_ALL),         // [6] OpenAPI 上櫃 (reliable)
+      apiFetch(OPENAPI_EMERGING),         // [7] OpenAPI 興櫃
     ]);
 
     const instSummary  = results[0].status === 'fulfilled' ? results[0].value : null;
@@ -1903,11 +1906,14 @@ async function init() {
     const allStocks    = results[2].status === 'fulfilled' ? results[2].value : null;
     const tpexAll      = results[3].status === 'fulfilled' ? results[3].value : null;
     const tpexInst     = results[4].status === 'fulfilled' ? results[4].value : null;
+    const openTwse     = results[5].status === 'fulfilled' ? results[5].value : null;
+    const openTpex     = results[6].status === 'fulfilled' ? results[6].value : null;
+    const openEmerging = results[7].status === 'fulfilled' ? results[7].value : null;
 
     if (allStocks && allStocks.stat === 'OK' && allStocks.data) gAllStocks = allStocks.data;
     if (instStocks && instStocks.stat === 'OK' && instStocks.data) gInstStocks = instStocks.data;
 
-    // TPEx data parsing
+    // TPEx data parsing (may be empty during trading hours!)
     if (tpexAll && tpexAll.tables && tpexAll.tables[0] && tpexAll.tables[0].data) {
       gTpexAllStocks = tpexAll.tables[0].data;
     } else if (tpexAll && tpexAll.aaData) {
@@ -1920,22 +1926,44 @@ async function init() {
       gTpexInstStocks = tpexInst.aaData;
     }
 
-    // Build search database from date-based APIs
+    // Build search database from ALL sources (date-based + OpenAPI)
     buildStockDB();
 
-    // Supplement from OpenAPI (reliable, no date dependency, includes 興櫃)
-    // Run async — don't block initial render
-    supplementStockDB().then(() => {
-      const count = Object.keys(gStockDB).length;
-      setStatus('', `已連線 (${gDate.slice(0,4)}/${gDate.slice(4,6)}/${gDate.slice(6,8)}) — ${count} 檔股票（含上市/上櫃/興櫃）`);
-    });
+    // OpenAPI supplement — always reliable, fills gaps from date-based APIs
+    if (Array.isArray(openTwse)) {
+      openTwse.forEach(item => {
+        const code = (item.Code || '').trim();
+        const name = (item.Name || '').trim();
+        if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
+          gStockDB[code] = { name, market: 'twse' };
+        }
+      });
+    }
+    if (Array.isArray(openTpex)) {
+      openTpex.forEach(item => {
+        const code = (item.SecuritiesCompanyCode || '').trim();
+        const name = (item.CompanyName || '').trim();
+        if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
+          gStockDB[code] = { name, market: 'tpex' };
+        }
+      });
+    }
+    if (Array.isArray(openEmerging)) {
+      openEmerging.forEach(item => {
+        const code = (item.SecuritiesCompanyCode || '').trim();
+        const name = (item.CompanyName || '').trim();
+        if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
+          gStockDB[code] = { name, market: 'emerging' };
+        }
+      });
+    }
 
     // Render overview first (shown to user immediately)
     renderOverview();
     if (instSummary) renderInstSummary(instSummary);
 
     const stockCount = Object.keys(gStockDB).length;
-    setStatus('', `已連線 (${gDate.slice(0,4)}/${gDate.slice(4,6)}/${gDate.slice(6,8)}) — ${stockCount} 檔股票`);
+    setStatus('', `已連線 (${gDate.slice(0,4)}/${gDate.slice(4,6)}/${gDate.slice(6,8)}) — ${stockCount} 檔股票（含上市/上櫃/興櫃）`);
 
     // Render secondary panels non-blocking (after first paint)
     requestAnimationFrame(() => {
@@ -2610,19 +2638,32 @@ function startAutoRefresh() {
     if (!isTrading) return;
 
     try {
-      // Refresh core data
+      // Refresh core data + OpenAPI fallback
       const results = await Promise.allSettled([
         API_TWSE.allStocks(gDate),
         API_TPEX.allStocks(gDate),
+        apiFetch(OPENAPI_TPEX_ALL),
       ]);
       const allStocks = results[0].status === 'fulfilled' ? results[0].value : null;
       const tpexAll = results[1].status === 'fulfilled' ? results[1].value : null;
+      const openTpex = results[2].status === 'fulfilled' ? results[2].value : null;
 
       if (allStocks && allStocks.stat === 'OK' && allStocks.data) gAllStocks = allStocks.data;
       if (tpexAll && tpexAll.tables && tpexAll.tables[0] && tpexAll.tables[0].data) gTpexAllStocks = tpexAll.tables[0].data;
       else if (tpexAll && tpexAll.aaData) gTpexAllStocks = tpexAll.aaData;
 
       buildStockDB();
+
+      // Fill TPEX gaps from OpenAPI (critical during trading hours)
+      if (Array.isArray(openTpex)) {
+        openTpex.forEach(item => {
+          const code = (item.SecuritiesCompanyCode || '').trim();
+          const name = (item.CompanyName || '').trim();
+          if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
+            gStockDB[code] = { name, market: 'tpex' };
+          }
+        });
+      }
 
       // Re-render active panel
       const activePanel = document.querySelector('.panel.active');
