@@ -785,6 +785,35 @@
       .grid-2 { grid-template-columns: 1fr; }
     }
 
+    /* --- Clickable stock codes/names --- */
+    .clickable { cursor: pointer; color: var(--cyan); transition: all 0.2s; text-decoration: none; }
+    .clickable:hover { text-shadow: 0 0 8px var(--cyan); }
+
+    /* --- News list --- */
+    .news-list { display: flex; flex-direction: column; gap: 2px; }
+    .news-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; border-radius: 8px;
+      text-decoration: none; color: var(--text);
+      transition: background 0.2s;
+      border-left: 3px solid transparent;
+    }
+    .news-item:hover { background: rgba(0, 240, 255, 0.05); }
+    .news-item.news-important {
+      border-left-color: var(--red);
+      background: rgba(255, 56, 96, 0.05);
+    }
+    .news-item.news-important:hover { background: rgba(255, 56, 96, 0.1); }
+    .news-badge {
+      flex-shrink: 0;
+      font-size: 10px; font-weight: 700;
+      padding: 2px 6px; border-radius: 4px;
+      background: var(--red); color: #fff;
+      letter-spacing: 0.5px;
+    }
+    .news-title { flex: 1; font-size: 13px; line-height: 1.4; }
+    .news-time { flex-shrink: 0; font-size: 11px; color: var(--text2); white-space: nowrap; }
+
     /* --- TABLET --- */
     @media (max-width: 768px) {
       .app {

@@ -28,10 +28,13 @@ DB_PATH = Path(__file__).parent / 'data' / 'ct_invest.db'
 
 ALLOWED_HOSTS = [
     'www.twse.com.tw',
+    'openapi.twse.com.tw',
     'www.tpex.org.tw',
     'mis.twse.com.tw',
     'query1.finance.yahoo.com',
     'query2.finance.yahoo.com',
+    'mops.twse.com.tw',
+    'api.cnyes.com',
 ]
 
 
@@ -583,10 +586,11 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                 'Referer': f'https://{parsed.hostname}/',
             })
 
-            # TWSE has broken SSL cert (missing Subject Key Identifier)
-            # Use relaxed SSL context for TWSE domains
+            # TWSE/MOPS have broken SSL cert (missing Subject Key Identifier)
+            # Use relaxed SSL context for these domains
             ctx = None
-            if 'twse.com.tw' in (parsed.hostname or ''):
+            hostname = parsed.hostname or ''
+            if 'twse.com.tw' in hostname or 'mops.twse.com.tw' in hostname:
                 ctx = ssl.create_default_context()
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE

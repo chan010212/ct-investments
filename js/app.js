@@ -108,7 +108,7 @@ async function _doFetch(url) {
 
   // Route all external API requests through proxy to bypass CORS
   let fetchUrl = url;
-  if (url.includes('tpex.org.tw') || url.includes('twse.com.tw') || url.includes('yahoo.com')) {
+  if (url.includes('tpex.org.tw') || url.includes('twse.com.tw') || url.includes('yahoo.com') || url.includes('cnyes.com')) {
     fetchUrl = '/api/proxy?url=' + encodeURIComponent(url);
   }
 
@@ -163,9 +163,9 @@ let gStockDB = {}; // { code: { name, market:'twse'|'tpex' } }
 
 function buildStockDB() {
   gAllStocks.forEach(s => {
-    const code = s[0].trim();
+    const code = (s[0] || '').trim();
     if (/^\d{4,6}$/.test(code)) {
-      gStockDB[code] = { name: s[1].trim(), market: 'twse' };
+      gStockDB[code] = { name: (s[1] || '').trim(), market: 'twse' };
     }
   });
   gTpexAllStocks.forEach(s => {
@@ -176,8 +176,66 @@ function buildStockDB() {
   });
 }
 
+// Supplement stock DB from OpenAPI (no date dependency, always reliable)
+async function supplementStockDB() {
+  try {
+    const results = await Promise.allSettled([
+      apiFetch(OPENAPI_TWSE_ALL),
+      apiFetch(OPENAPI_TPEX_ALL),
+      apiFetch(OPENAPI_EMERGING),
+    ]);
+    let added = 0;
+
+    // TWSE 上市 (JSON array with Code, Name)
+    if (results[0].status === 'fulfilled' && Array.isArray(results[0].value)) {
+      results[0].value.forEach(item => {
+        const code = (item.Code || '').trim();
+        const name = (item.Name || '').trim();
+        if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
+          gStockDB[code] = { name, market: 'twse' };
+          added++;
+        }
+      });
+    }
+
+    // TPEX 上櫃 (JSON array with SecuritiesCompanyCode, CompanyName)
+    if (results[1].status === 'fulfilled' && Array.isArray(results[1].value)) {
+      results[1].value.forEach(item => {
+        const code = (item.SecuritiesCompanyCode || '').trim();
+        const name = (item.CompanyName || '').trim();
+        if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
+          gStockDB[code] = { name, market: 'tpex' };
+          added++;
+        }
+      });
+    }
+
+    // 興櫃 (JSON array with SecuritiesCompanyCode, CompanyName)
+    if (results[2].status === 'fulfilled' && Array.isArray(results[2].value)) {
+      results[2].value.forEach(item => {
+        const code = (item.SecuritiesCompanyCode || '').trim();
+        const name = (item.CompanyName || '').trim();
+        if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
+          gStockDB[code] = { name, market: 'emerging' };
+          added++;
+        }
+      });
+    }
+
+    if (added > 0) {
+      console.log(`[StockDB] Supplemented ${added} stocks from OpenAPI, total: ${Object.keys(gStockDB).length}`);
+    }
+  } catch (e) {
+    console.warn('[StockDB] OpenAPI supplement failed:', e);
+  }
+}
+
 function getMarket(code) {
-  if (gStockDB[code]) return gStockDB[code].market;
+  if (gStockDB[code]) {
+    const m = gStockDB[code].market;
+    // Treat emerging (興櫃) as tpex for API compatibility
+    return m === 'emerging' ? 'tpex' : m;
+  }
   return null; // unknown, will try both
 }
 
@@ -686,6 +744,11 @@ let gInstStocks = [];     // TWSE institutional
 let gTpexInstStocks = []; // TPEx institutional
 let gChartsReady = false;
 
+// OpenAPI stock lists (reliable, no date dependency)
+const OPENAPI_TWSE_ALL = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
+const OPENAPI_TPEX_ALL = 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes';
+const OPENAPI_EMERGING = 'https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics';
+
 let chtMain, chtRsi, chtKd, chtMacd;
 let sCan, sVol, sMa5, sMa10, sMa20, sBbU, sBbL;
 let sRsi, sKK, sDD, sDif, sSig, sHist;
@@ -992,7 +1055,7 @@ function renderOverview() {
         : '<span class="tag-market tag-tpex">上櫃</span>';
       return [
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
-        s.name, mTag,
+        `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>`, mTag,
         fmtNum(s.close, 2),
         `<span class="${s.chg > 0 ? 'up' : 'down'}">${s.chg > 0 ? '+' : ''}${fmtNum(s.chg, 2)}</span>`,
         `<span class="${s.pct > 0 ? 'up' : 'down'}">${s.pct > 0 ? '+' : ''}${s.pct.toFixed(2)}%</span>`,
@@ -1073,7 +1136,7 @@ function renderInstRank(type) {
         : '<span class="tag-market tag-tpex">上櫃</span>';
       return [
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
-        s.name, mTag,
+        `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>`, mTag,
         `<span class="${s.net > 0 ? 'up' : 'down'}" style="font-weight:600">${s.net > 0 ? '+' : ''}${fmtShares(s.net)}</span>`
       ];
     }));
@@ -1121,7 +1184,7 @@ function renderDayTrade(data) {
         const pnl = s.sell - s.buy;
         return [
           `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
-          s.name, fmtShares(s.vol), fmtBig(s.buy), fmtBig(s.sell),
+          `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>`, fmtShares(s.vol), fmtBig(s.buy), fmtBig(s.sell),
           `<span class="${pnl >= 0 ? 'up' : 'down'}" style="font-weight:600">${pnl > 0 ? '+' : ''}${fmtBig(pnl)}</span>`
         ];
       })
@@ -1211,7 +1274,7 @@ function renderAIRank() {
       return [
         i + 1,
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
-        s.name, mTag,
+        `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>`, mTag,
         fmtNum(s.close, 2),
         `<span class="${s.pct > 0 ? 'up' : 'down'}">${s.pct > 0 ? '+' : ''}${s.pct.toFixed(2)}%</span>`,
         fmtBig(s.vol),
@@ -1427,7 +1490,7 @@ async function analyzeStock(code) {
     }
 
     if (rawRows.length === 0) {
-      document.getElementById('analysis-loading').innerHTML = `<div class="card"><div class="empty-state"><div class="icon">&#x26A0;</div><p>找不到股票 ${code} 的資料<br><span class="text-sm text-muted">請確認股票代號是否正確（支援上市及上櫃）</span></p></div></div>`;
+      document.getElementById('analysis-loading').innerHTML = `<div class="card"><div class="empty-state"><div class="icon">&#x26A0;</div><p>找不到股票 ${code} 的資料<br><span class="text-sm text-muted">請確認股票代號是否正確（支援上市、上櫃、興櫃）</span></p></div></div>`;
       return;
     }
 
@@ -1591,6 +1654,11 @@ async function analyzeStock(code) {
     document.getElementById('analysis-loading').style.display = 'none';
     document.getElementById('analysis-content').style.display = 'block';
 
+    // Async: Load revenue, quarterly, and news (non-blocking)
+    fetchStockRevenue(code, stockName);
+    fetchStockQuarterly(code);
+    fetchStockNews(code, stockName);
+
     // Start real-time updates + intraday chart
     startRealtimeUpdates(code);
 
@@ -1606,6 +1674,152 @@ async function analyzeStock(code) {
   } catch (e) {
     document.getElementById('analysis-loading').innerHTML =
       `<div class="card"><div class="empty-state"><div class="icon">&#x26A0;</div><p>載入失敗：${e.message}<br><span class="text-sm text-muted">可能是網路問題或證交所限制，請稍後再試</span></p></div></div>`;
+  }
+}
+
+// ============================================================
+// FETCH: Monthly Revenue
+// ============================================================
+async function fetchStockRevenue(code, stockName) {
+  const el = document.getElementById('stock-revenue');
+  el.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+  try {
+    const results = await Promise.allSettled([
+      apiFetch(OPENAPI_TWSE_ALL.replace('exchangeReport/STOCK_DAY_ALL', 'opendata/t187ap05_L')),
+      apiFetch('https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O'),
+    ]);
+    let found = null;
+    for (const r of results) {
+      if (r.status !== 'fulfilled' || !Array.isArray(r.value)) continue;
+      for (const item of r.value) {
+        const c = (item['公司代號'] || '').trim();
+        if (c === code) { found = item; break; }
+      }
+      if (found) break;
+    }
+    if (!found) {
+      el.innerHTML = '<div class="text-muted">暫無營收資料</div>';
+      return;
+    }
+    const curRev = parseFloat(found['營業收入-當月營收'] || '0');
+    const prevRev = parseFloat(found['營業收入-上月營收'] || '0');
+    const lastYearRev = parseFloat(found['營業收入-去年當月營收'] || '0');
+    const momPct = parseFloat(found['營業收入-上月比較增減(%)'] || '0');
+    const yoyPct = parseFloat(found['營業收入-去年同月增減(%)'] || '0');
+    const cumRev = parseFloat(found['累計營業收入-當月累計營收'] || '0');
+    const cumLastYear = parseFloat(found['累計營業收入-去年累計營收'] || '0');
+    const cumPct = parseFloat(found['累計營業收入-前期比較增減(%)'] || '0');
+    const period = found['資料年月'] || '';
+    const yr = period.slice(0, 3);
+    const mo = period.slice(3);
+    const periodStr = yr && mo ? `${parseInt(yr)+1911}年${parseInt(mo)}月` : '';
+
+    el.innerHTML = `
+      <div class="text-sm" style="margin-bottom:8px;color:var(--cyan);font-weight:600;">${periodStr} 營收報告</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="label">當月營收</div><div class="value">${fmtBig(curRev)}</div></div>
+        <div class="stat-box"><div class="label">月增率 (MoM)</div><div class="value ${momPct>=0?'up':'down'}">${momPct>0?'+':''}${momPct.toFixed(2)}%</div></div>
+        <div class="stat-box"><div class="label">年增率 (YoY)</div><div class="value ${yoyPct>=0?'up':'down'}">${yoyPct>0?'+':''}${yoyPct.toFixed(2)}%</div></div>
+      </div>
+      <div class="stat-grid" style="margin-top:10px;">
+        <div class="stat-box"><div class="label">上月營收</div><div class="value">${fmtBig(prevRev)}</div></div>
+        <div class="stat-box"><div class="label">去年同月營收</div><div class="value">${fmtBig(lastYearRev)}</div></div>
+        <div class="stat-box"><div class="label">累計營收 YoY</div><div class="value ${cumPct>=0?'up':'down'}">${cumPct>0?'+':''}${cumPct.toFixed(2)}%</div></div>
+      </div>`;
+  } catch (e) {
+    el.innerHTML = '<div class="text-muted">營收資料載入失敗</div>';
+  }
+}
+
+// ============================================================
+// FETCH: Quarterly Financial Report
+// ============================================================
+async function fetchStockQuarterly(code) {
+  const el = document.getElementById('stock-quarterly');
+  el.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+  try {
+    const results = await Promise.allSettled([
+      apiFetch('https://openapi.twse.com.tw/v1/opendata/t187ap14_L'),
+      apiFetch('https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap14_O'),
+    ]);
+    let found = null;
+    for (const r of results) {
+      if (r.status !== 'fulfilled' || !Array.isArray(r.value)) continue;
+      for (const item of r.value) {
+        const c = (item['公司代號'] || item['SecuritiesCompanyCode'] || '').trim();
+        if (c === code) { found = item; break; }
+      }
+      if (found) break;
+    }
+    if (!found) {
+      el.innerHTML = '<div class="text-muted">暫無季度財報</div>';
+      return;
+    }
+    const year = found['年度'] || found['Year'] || '';
+    const quarter = found['季別'] || '';
+    const eps = found['基本每股盈餘(元)'] || found['EPS'] || '--';
+    const revenue = parseFloat(found['營業收入'] || found['Revenue'] || '0');
+    const opIncome = parseFloat(found['營業利益'] || found['OperatingIncome'] || '0');
+    const nonOp = parseFloat(found['營業外收入及支出'] || '0');
+    const netIncome = parseFloat(found['稅後淨利'] || found['NetIncome'] || '0');
+    const yearStr = year ? `${parseInt(year)+1911}年` : '';
+    const qStr = quarter ? `Q${quarter}` : '';
+
+    const opMargin = revenue > 0 ? (opIncome / revenue * 100).toFixed(2) : '--';
+    const netMargin = revenue > 0 ? (netIncome / revenue * 100).toFixed(2) : '--';
+
+    el.innerHTML = `
+      <div class="text-sm" style="margin-bottom:8px;color:var(--cyan);font-weight:600;">${yearStr} ${qStr} 財報摘要</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="label">基本每股盈餘</div><div class="value" style="color:var(--yellow);font-size:20px;">${eps} 元</div></div>
+        <div class="stat-box"><div class="label">營業收入</div><div class="value">${fmtBig(revenue)}</div></div>
+        <div class="stat-box"><div class="label">稅後淨利</div><div class="value ${netIncome>=0?'up':'down'}">${fmtBig(netIncome)}</div></div>
+      </div>
+      <div class="stat-grid" style="margin-top:10px;">
+        <div class="stat-box"><div class="label">營業利益</div><div class="value">${fmtBig(opIncome)}</div></div>
+        <div class="stat-box"><div class="label">營業利益率</div><div class="value">${opMargin}%</div></div>
+        <div class="stat-box"><div class="label">淨利率</div><div class="value">${netMargin}%</div></div>
+      </div>`;
+  } catch (e) {
+    el.innerHTML = '<div class="text-muted">財報載入失敗</div>';
+  }
+}
+
+// ============================================================
+// FETCH: Stock News (CNYES)
+// ============================================================
+const IMPORTANT_KEYWORDS = ['重大', '法說', '併購', '營收', '財報', '漲停', '跌停', '除權', '除息', '減資', '增資', '下市', '違約', '警示', '暫停交易', '召回', '裁罰', '虧損'];
+
+async function fetchStockNews(code, stockName) {
+  const el = document.getElementById('stock-news');
+  el.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+  try {
+    const keyword = encodeURIComponent(stockName || code);
+    const url = `https://api.cnyes.com/media/api/v1/newslist/category/tw_stock?page=1&limit=10&keyword=${keyword}`;
+    const data = await apiFetch(url);
+    const items = (data && data.items && data.items.data) ? data.items.data : [];
+    if (items.length === 0) {
+      el.innerHTML = '<div class="text-muted">暫無相關新聞</div>';
+      return;
+    }
+    let html = '<div class="news-list">';
+    items.forEach(n => {
+      const title = n.title || '';
+      const ts = n.publishAt || 0;
+      const dt = ts ? new Date(ts * 1000) : null;
+      const timeStr = dt ? `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` : '';
+      const newsUrl = `https://news.cnyes.com/news/id/${n.newsId}`;
+      const isImportant = IMPORTANT_KEYWORDS.some(kw => title.includes(kw));
+      html += `<a href="${newsUrl}" target="_blank" rel="noopener" class="news-item${isImportant ? ' news-important' : ''}">
+        ${isImportant ? '<span class="news-badge">重要</span>' : ''}
+        <span class="news-title">${title}</span>
+        <span class="news-time">${timeStr}</span>
+      </a>`;
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div class="text-muted">新聞載入失敗</div>';
   }
 }
 
@@ -1706,8 +1920,15 @@ async function init() {
       gTpexInstStocks = tpexInst.aaData;
     }
 
-    // Build search database
+    // Build search database from date-based APIs
     buildStockDB();
+
+    // Supplement from OpenAPI (reliable, no date dependency, includes 興櫃)
+    // Run async — don't block initial render
+    supplementStockDB().then(() => {
+      const count = Object.keys(gStockDB).length;
+      setStatus('', `已連線 (${gDate.slice(0,4)}/${gDate.slice(4,6)}/${gDate.slice(6,8)}) — ${count} 檔股票（含上市/上櫃/興櫃）`);
+    });
 
     // Render overview first (shown to user immediately)
     renderOverview();
@@ -1807,7 +2028,7 @@ function renderSectorStocks() {
     const mTag = m === 'twse' ? '<span class="tag-market tag-twse">上市</span>' : '<span class="tag-market tag-tpex">上櫃</span>';
     rows.push([
       `<span class="clickable" onclick="goAnalyze('${code}')">${code}</span>`,
-      name, mTag,
+      `<span class="clickable" onclick="goAnalyze('${code}')">${name}</span>`, mTag,
       fmtNum(close, 2),
       `<span class="${chg >= 0 ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)}</span>`,
       `<span class="${pct >= 0 ? 'up' : 'down'}">${pct > 0 ? '+' : ''}${pct.toFixed(2)}%</span>`,
