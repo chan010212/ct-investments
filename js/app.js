@@ -3205,7 +3205,6 @@ function stopRealtimeUpdates() {
 let gSectorsLoaded = false;
 let gGlobalLoaded = false;
 let gGlobalSuccess = false;
-let gDayTradeLoaded = false;
 let gDayTradeSuccess = false;
 let gOpinionLoaded = false;
 let gOpinionSuccess = false;
@@ -3227,40 +3226,58 @@ async function maybeLoadGlobal() {
   if (!gGlobalSuccess) gGlobalLoaded = false;
 }
 
-async function maybeLoadDayTrade() {
-  if (gDayTradeLoaded && gDayTradeSuccess) return;
-  gDayTradeLoaded = true;
-  gDayTradeSuccess = false;
+let gDayTradeCache = null; // cache successful day trade data
+
+async function maybeLoadDayTrade(forceRefresh) {
+  // Use cache if available
+  if (!forceRefresh && gDayTradeCache) {
+    renderDayTrade(gDayTradeCache);
+    return;
+  }
+
   document.getElementById('dt-stats').innerHTML = '<div class="loading-box"><div class="spinner"></div><div>載入當沖資料...</div></div>';
   document.getElementById('dt-rank').innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+
   try {
-    // Build date list: gDate first (known trading date), then recent dates
-    const dates = [];
+    // Build unique date list
+    var dates = [];
     if (gDate) dates.push(gDate);
-    for (let i = 0; i <= 7; i++) {
-      const d = dateStr(i);
-      if (d !== gDate) dates.push(d);
+    for (var i = 0; i <= 5; i++) {
+      var d = dateStr(i);
+      if (dates.indexOf(d) === -1) dates.push(d);
     }
-    let found = false;
-    for (const d of dates) {
-      try {
-        const data = await API_TWSE.dayTrade(d);
-        if (renderDayTrade(data)) {
-          found = true;
+
+    // Fetch ALL dates in parallel (much faster than sequential)
+    var results = await Promise.allSettled(
+      dates.map(function(d) {
+        return API_TWSE.dayTrade(d).then(function(data) { return { date: d, data: data }; });
+      })
+    );
+
+    // Find first successful result with actual data
+    var found = false;
+    for (var j = 0; j < dates.length; j++) {
+      var r = results[j];
+      if (r.status === 'fulfilled' && r.value && r.value.data) {
+        if (renderDayTrade(r.value.data)) {
+          gDayTradeCache = r.value.data;
           gDayTradeSuccess = true;
+          found = true;
           break;
         }
-      } catch(e2) {
-        console.warn('dayTrade fetch failed for', d, e2);
       }
     }
+
     if (!found) {
-      document.getElementById('dt-stats').innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">近期無當沖資料（可能為非交易日）</div>';
+      document.getElementById('dt-stats').innerHTML =
+        '<div class="text-muted" style="padding:20px;text-align:center;">近期無當沖資料（可能為非交易日或盤後尚未公布）<br><br>'
+        + '<button class="btn btn-primary" onclick="maybeLoadDayTrade(true)">重新載入</button></div>';
       document.getElementById('dt-rank').innerHTML = '';
     }
   } catch(e) {
-    gDayTradeLoaded = false;
-    document.getElementById('dt-stats').innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">當沖資料載入失敗，點擊分頁重試</div>';
+    document.getElementById('dt-stats').innerHTML =
+      '<div class="text-muted" style="padding:20px;text-align:center;">當沖資料載入失敗<br><br>'
+      + '<button class="btn btn-primary" onclick="maybeLoadDayTrade(true)">重新載入</button></div>';
     document.getElementById('dt-rank').innerHTML = '';
   }
 }
