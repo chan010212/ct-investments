@@ -766,24 +766,59 @@ function mkTable(headers, rows) {
 }
 
 // ============================================================
-// NAVIGATION
+// NAVIGATION (with History API for back gesture support)
 // ============================================================
-document.querySelectorAll('.nav-item').forEach(el => {
-  el.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    el.classList.add('active');
-    const panel = document.getElementById('panel-' + el.dataset.tab);
+let navHistoryDepth = 0;
+
+function switchTab(tabName, pushHistory) {
+  if (pushHistory === undefined) pushHistory = true;
+  const currentNav = document.querySelector('.nav-item.active');
+  const currentTab = currentNav ? currentNav.dataset.tab : null;
+  if (currentTab === tabName && pushHistory) return;
+
+  if (pushHistory && currentTab) {
+    history.pushState({ tab: tabName }, '', '');
+    navHistoryDepth++;
+  }
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  const navEl = document.querySelector('[data-tab="' + tabName + '"]');
+  if (navEl) navEl.classList.add('active');
+  const panel = document.getElementById('panel-' + tabName);
+  if (panel) {
     panel.classList.add('active');
     panel.scrollTo({ top: 0, behavior: 'instant' });
-    if (el.dataset.tab === 'analysis' && !gChartsReady) initCharts();
-    if (el.dataset.tab === 'watchlist') renderWatchlist();
-    if (el.dataset.tab === 'sectors') maybeLoadSectors();
-    if (el.dataset.tab === 'global') maybeLoadGlobal();
-    if (el.dataset.tab === 'daytrade') maybeLoadDayTrade();
-    if (el.dataset.tab === 'opinion') maybeLoadOpinion();
-    if (el.dataset.tab === 'admin') loadAdminPanel();
-    trackAction('view_tab', el.dataset.tab);
+  }
+
+  if (tabName === 'analysis' && !gChartsReady) initCharts();
+  if (tabName === 'watchlist') renderWatchlist();
+  if (tabName === 'sectors') maybeLoadSectors();
+  if (tabName === 'global') maybeLoadGlobal();
+  if (tabName === 'daytrade') maybeLoadDayTrade();
+  if (tabName === 'opinion') maybeLoadOpinion();
+  if (tabName === 'admin') loadAdminPanel();
+  trackAction('view_tab', tabName);
+  updateBackBtn();
+}
+
+window.addEventListener('popstate', function(e) {
+  navHistoryDepth = Math.max(0, navHistoryDepth - 1);
+  if (e.state && e.state.tab) {
+    switchTab(e.state.tab, false);
+  } else {
+    switchTab('overview', false);
+  }
+});
+
+function updateBackBtn() {
+  var btn = document.getElementById('back-btn');
+  if (btn) btn.style.display = navHistoryDepth > 0 ? 'flex' : 'none';
+}
+
+document.querySelectorAll('.nav-item[data-tab]').forEach(el => {
+  el.addEventListener('click', () => {
+    switchTab(el.dataset.tab);
   });
 });
 
@@ -2461,10 +2496,7 @@ function scrollToSection(id) {
 }
 
 function goAnalyze(code) {
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelector('[data-tab="analysis"]').classList.add('active');
-  document.getElementById('panel-analysis').classList.add('active');
+  switchTab('analysis');
   analyzeStock(code);
 }
 
@@ -4063,18 +4095,17 @@ init().then(async () => {
   setInterval(updateClock, 1000);
   await checkAuth();
 
+  // Set initial history state
+  history.replaceState({ tab: 'overview' }, '', '');
+
   // Deep-link: ?tab=analysis&stock=2330
   const params = new URLSearchParams(window.location.search);
   const tabParam = params.get('tab');
-  if (tabParam) {
-    const navEl = document.querySelector(`[data-tab="${tabParam}"]`);
-    if (navEl) navEl.click();
-  }
+  if (tabParam) switchTab(tabParam, false);
   const stockParam = params.get('stock');
   if (stockParam) {
     document.getElementById('stock-input').value = stockParam;
-    const navA = document.querySelector('[data-tab="analysis"]');
-    if (navA && !navA.classList.contains('active')) navA.click();
+    if (tabParam !== 'analysis') switchTab('analysis', false);
     setTimeout(() => analyzeStock(), 300);
   }
 });

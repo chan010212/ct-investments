@@ -1527,6 +1527,30 @@
       height: 2px;
     }
 
+    /* ===== BACK BUTTON (mobile) ===== */
+    .nav-back {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      color: var(--cyan);
+      cursor: pointer;
+      flex-shrink: 0;
+      background: rgba(0, 240, 255, 0.03);
+      border-bottom: 1px solid var(--border);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .nav-back:active {
+      background: rgba(0, 240, 255, 0.1);
+    }
+    .nav-back svg {
+      flex-shrink: 0;
+    }
+    @media (min-width: 769px) {
+      .nav-back { display: none !important; }
+    }
+
     /* ===== TICKER BAR ===== */
     .ticker-bar {
       display: flex;
