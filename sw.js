@@ -1,5 +1,5 @@
 // CT Investments — Service Worker
-const CACHE_NAME = 'ct-invest-v1';
+const CACHE_NAME = 'ct-invest-v2';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -40,19 +40,14 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Static assets: cache first, fallback to network
+  // Static assets: network first, fallback to cache (ensures updates are seen immediately)
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const networkFetch = fetch(e.request).then(response => {
-        // Update cache with fresh version
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-        }
-        return response;
-      }).catch(() => cached);
-
-      return cached || networkFetch;
-    })
+    fetch(e.request).then(response => {
+      if (response.ok) {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+      }
+      return response;
+    }).catch(() => caches.match(e.request))
   );
 });
