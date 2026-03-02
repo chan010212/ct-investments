@@ -718,6 +718,26 @@ let gTpexAllStocks = [];  // TPEx
 let gInstStocks = [];     // TWSE institutional
 let gTpexInstStocks = []; // TPEx institutional
 let gChartsReady = false;
+let gStockMap = {};   // cached: code → { data, market }
+let gInstMap = {};    // cached: code → { f, t, d }
+
+function rebuildMaps() {
+  gStockMap = {};
+  gAllStocks.forEach(s => { gStockMap[s[0].trim()] = { data: s, market: 'twse' }; });
+  gTpexAllStocks.forEach(s => {
+    var c = (s[0]||'').trim();
+    if (c) gStockMap[c] = { data: s, market: 'tpex' };
+  });
+  gInstMap = {};
+  gInstStocks.forEach(r => {
+    var c = r[0].trim();
+    gInstMap[c] = { f: parseNum(r[4]), t: parseNum(r[10]), d: parseNum(r[11]) };
+  });
+  gTpexInstStocks.forEach(r => {
+    var c = (r[0]||'').trim();
+    try { gInstMap[c] = { f: parseNum(r[10]), t: parseNum(r[13]), d: parseNum(r[22]) }; } catch(e) {}
+  });
+}
 
 // OpenAPI stock lists (reliable, no date dependency)
 const OPENAPI_TWSE_ALL = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
@@ -1546,13 +1566,15 @@ function renderAIRank() {
 // ============================================================
 let gWlSort = 'default';
 
+let gWlPendingRefresh = false;
+
 function renderWatchlist() {
   const list = wlGet();
   const box = document.getElementById('watchlist-container');
   const countEl = document.getElementById('wl-count');
   const sortBar = document.getElementById('wl-sort-bar');
 
-  if (countEl) countEl.textContent = list.length > 0 ? `(${list.length})` : '';
+  if (countEl) countEl.textContent = list.length > 0 ? '(' + list.length + ')' : '';
   if (sortBar) sortBar.style.display = list.length > 1 ? '' : 'none';
 
   if (list.length === 0) {
@@ -1560,109 +1582,119 @@ function renderWatchlist() {
     return;
   }
 
-  // Build lookup maps
-  const sMap = {};
-  gAllStocks.forEach(s => { sMap[s[0].trim()] = { data: s, market: 'twse' }; });
-  gTpexAllStocks.forEach(s => {
-    const code = (s[0]||'').trim();
-    if (code) sMap[code] = { data: s, market: 'tpex' };
-  });
+  // Check if market data is ready
+  var dataReady = Object.keys(gStockMap).length > 0;
 
-  const iMap = {};
-  gInstStocks.forEach(r => {
-    const c = r[0].trim();
-    iMap[c] = { f: parseNum(r[4]), t: parseNum(r[10]), d: parseNum(r[11]) };
-  });
-  gTpexInstStocks.forEach(r => {
-    const c = (r[0]||'').trim();
-    try { iMap[c] = { f: parseNum(r[10]), t: parseNum(r[13]), d: parseNum(r[22]) }; } catch(e) {}
-  });
-
-  // Sort if needed
-  let sortedList = [...list];
-  if (gWlSort !== 'default') {
-    const getSortVal = (code) => {
-      const entry = sMap[code];
-      if (!entry) return { pct: 0, vol: 0, name: code };
-      const s = entry.data;
-      const m = entry.market;
-      const close = m === 'twse' ? parseNum(s[7]) : parseNum(s[2]);
-      const chg = m === 'twse' ? parseNum(s[8]) : parseNum(s[3]);
-      const vol = m === 'twse' ? parseNum(s[2]) : parseNum(s[7]);
-      const prev = close - chg;
-      const pct = prev > 0 ? (chg / prev * 100) : 0;
-      const name = m === 'twse' ? s[1].trim() : (s[1]||'').trim();
-      return { pct, vol, name };
-    };
-    if (gWlSort === 'change') sortedList.sort((a, b) => getSortVal(b).pct - getSortVal(a).pct);
-    else if (gWlSort === 'volume') sortedList.sort((a, b) => getSortVal(b).vol - getSortVal(a).vol);
-    else if (gWlSort === 'name') sortedList.sort((a, b) => getSortVal(a).name.localeCompare(getSortVal(b).name));
+  // If data not ready, show loading + schedule retry
+  if (!dataReady) {
+    var loadingHtml = '<div class="stock-grid">';
+    list.forEach(function(code) {
+      var dbInfo = gStockDB[code];
+      loadingHtml += '<div class="stock-card" onclick="goAnalyze(\'' + code + '\')">'
+        + '<div class="sc-bar" style="background:linear-gradient(90deg,var(--cyan),var(--purple));"></div>'
+        + '<div class="sc-top"><div><div class="sc-code">' + code + '</div>'
+        + '<div class="sc-name">' + (dbInfo ? dbInfo.name : '') + '</div></div>'
+        + '<div><div class="sc-price" style="color:var(--text2);">--</div></div></div>'
+        + '<div class="text-muted text-sm" style="padding:4px 0;">市場資料載入中...</div>'
+        + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
+        + '</div>';
+    });
+    loadingHtml += '</div>';
+    box.innerHTML = loadingHtml;
+    // Auto-retry when data arrives
+    if (!gWlPendingRefresh) {
+      gWlPendingRefresh = true;
+      var retryTimer = setInterval(function() {
+        if (Object.keys(gStockMap).length > 0) {
+          clearInterval(retryTimer);
+          gWlPendingRefresh = false;
+          renderWatchlist();
+        }
+      }, 500);
+    }
+    return;
   }
 
-  let html = '<div class="stock-grid">';
-  sortedList.forEach(code => {
-    const entry = sMap[code];
-    const inst = iMap[code];
-    const dbInfo = gStockDB[code];
+  // Use cached maps (rebuilt in init/autoRefresh via rebuildMaps)
+  var sMap = gStockMap;
+  var iMap = gInstMap;
+
+  // Sort helper
+  function getSortVal(code) {
+    var entry = sMap[code];
+    if (!entry) return { pct: 0, vol: 0, name: code };
+    var s = entry.data, m = entry.market;
+    var close = m === 'twse' ? parseNum(s[7]) : parseNum(s[2]);
+    var chg = m === 'twse' ? parseNum(s[8]) : parseNum(s[3]);
+    var vol = m === 'twse' ? parseNum(s[2]) : parseNum(s[7]);
+    var prev = close - chg;
+    return { pct: prev > 0 ? (chg / prev * 100) : 0, vol: vol, name: m === 'twse' ? s[1].trim() : (s[1]||'').trim() };
+  }
+
+  var sortedList = list.slice();
+  if (gWlSort === 'change') sortedList.sort(function(a, b) { return getSortVal(b).pct - getSortVal(a).pct; });
+  else if (gWlSort === 'volume') sortedList.sort(function(a, b) { return getSortVal(b).vol - getSortVal(a).vol; });
+  else if (gWlSort === 'name') sortedList.sort(function(a, b) { return getSortVal(a).name.localeCompare(getSortVal(b).name); });
+
+  var html = '<div class="stock-grid">';
+  sortedList.forEach(function(code) {
+    var entry = sMap[code];
+    var inst = iMap[code];
+    var dbInfo = gStockDB[code];
 
     if (!entry) {
-      // Data not loaded yet — show placeholder card
-      html += `<div class="stock-card" onclick="goAnalyze('${code}')">
-        <div class="sc-bar" style="background:linear-gradient(90deg,var(--cyan),var(--purple));"></div>
-        <div class="sc-top"><div><div class="sc-code">${code}</div><div class="sc-name">${dbInfo ? dbInfo.name : '載入中...'}</div></div></div>
-        <div class="text-muted text-sm" style="padding:10px 0;">點擊查看完整分析</div>
-        <div class="sc-del" onclick="event.stopPropagation();rmWatchlist('${code}')">&#x2715;</div>
-      </div>`;
+      html += '<div class="stock-card" onclick="goAnalyze(\'' + code + '\')">'
+        + '<div class="sc-bar" style="background:linear-gradient(90deg,var(--cyan),var(--purple));"></div>'
+        + '<div class="sc-top"><div><div class="sc-code">' + code + '</div>'
+        + '<div class="sc-name">' + (dbInfo ? dbInfo.name : '') + '</div></div></div>'
+        + '<div class="text-muted text-sm" style="padding:10px 0;">點擊查看完整分析</div>'
+        + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
+        + '</div>';
       return;
     }
 
-    const s = entry.data;
-    const market = entry.market;
-    let close, chg, vol, name, turnover;
+    var s = entry.data, market = entry.market;
+    var close, chg, vol, name, turnover;
     if (market === 'twse') {
       close = parseNum(s[7]); chg = parseNum(s[8]); vol = parseNum(s[2]); name = s[1].trim(); turnover = parseNum(s[3]);
     } else {
       close = parseNum(s[2]); chg = parseNum(s[3]); vol = parseNum(s[7]); name = (s[1]||'').trim(); turnover = parseNum(s[8] || 0);
     }
-    const prev = close - chg;
-    const pct = prev > 0 ? (chg / prev * 100) : 0;
-    const isUp = chg > 0;
-    const lots = vol >= 1000 ? fmtNum(Math.round(vol / 1000), 0) + ' 張' : fmtNum(vol, 0) + ' 股';
-    const barColor = isUp ? 'linear-gradient(90deg, var(--red), rgba(255,56,96,0.3))' : chg < 0 ? 'linear-gradient(90deg, var(--green), rgba(0,232,123,0.3))' : 'linear-gradient(90deg, var(--cyan), rgba(0,240,255,0.2))';
-    const mTag = market === 'twse' ? '<span class="tag-market tag-twse">上市</span>' : '<span class="tag-market tag-tpex">上櫃</span>';
+    var prev = close - chg;
+    var pct = prev > 0 ? (chg / prev * 100) : 0;
+    var isUp = chg > 0;
+    var lots = vol >= 1000 ? fmtNum(Math.round(vol / 1000), 0) + ' 張' : fmtNum(vol, 0) + ' 股';
+    var barColor = isUp ? 'linear-gradient(90deg, var(--red), rgba(255,56,96,0.3))' : chg < 0 ? 'linear-gradient(90deg, var(--green), rgba(0,232,123,0.3))' : 'linear-gradient(90deg, var(--cyan), rgba(0,240,255,0.2))';
+    var mTag = market === 'twse' ? '<span class="tag-market tag-twse">上市</span>' : '<span class="tag-market tag-tpex">上櫃</span>';
 
-    // Institutional mini display
-    let instHtml = '';
+    var instHtml = '';
     if (inst) {
-      const fCls = inst.f > 0 ? 'up' : inst.f < 0 ? 'down' : '';
-      const tCls = inst.t > 0 ? 'up' : inst.t < 0 ? 'down' : '';
-      const dCls = inst.d > 0 ? 'up' : inst.d < 0 ? 'down' : '';
-      instHtml = `<div class="sc-inst">
-        <div class="sc-inst-item"><span class="sc-inst-label">外資</span><span class="${fCls}">${inst.f > 0 ? '+' : ''}${fmtShares(inst.f)}</span></div>
-        <div class="sc-inst-item"><span class="sc-inst-label">投信</span><span class="${tCls}">${inst.t > 0 ? '+' : ''}${fmtShares(inst.t)}</span></div>
-        <div class="sc-inst-item"><span class="sc-inst-label">自營</span><span class="${dCls}">${inst.d > 0 ? '+' : ''}${fmtShares(inst.d)}</span></div>
-      </div>`;
+      var fCls = inst.f > 0 ? 'up' : inst.f < 0 ? 'down' : '';
+      var tCls = inst.t > 0 ? 'up' : inst.t < 0 ? 'down' : '';
+      var dCls = inst.d > 0 ? 'up' : inst.d < 0 ? 'down' : '';
+      instHtml = '<div class="sc-inst">'
+        + '<div class="sc-inst-item"><span class="sc-inst-label">外資</span><span class="' + fCls + '">' + (inst.f > 0 ? '+' : '') + fmtShares(inst.f) + '</span></div>'
+        + '<div class="sc-inst-item"><span class="sc-inst-label">投信</span><span class="' + tCls + '">' + (inst.t > 0 ? '+' : '') + fmtShares(inst.t) + '</span></div>'
+        + '<div class="sc-inst-item"><span class="sc-inst-label">自營</span><span class="' + dCls + '">' + (inst.d > 0 ? '+' : '') + fmtShares(inst.d) + '</span></div>'
+        + '</div>';
     }
 
-    html += `<div class="stock-card" onclick="goAnalyze('${code}')">
-      <div class="sc-bar" style="background:${barColor};"></div>
-      <div class="sc-del" onclick="event.stopPropagation();rmWatchlist('${code}')">&#x2715;</div>
-      <div class="sc-top">
-        <div>
-          <div class="sc-code">${code} <span style="font-size:12px;font-weight:400;color:var(--text2);">${name}</span> ${mTag}</div>
-        </div>
-        <div>
-          <div class="sc-price ${isUp ? 'up' : chg < 0 ? 'down' : ''}">${fmtNum(close, 2)}</div>
-          <div class="sc-change ${isUp ? 'up' : chg < 0 ? 'down' : ''}">${chg > 0 ? '&#x25B2;+' : chg < 0 ? '&#x25BC;' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</div>
-        </div>
-      </div>
-      <div class="sc-stats">
-        <div class="sc-stat"><div class="sc-stat-label">成交量</div><div class="sc-stat-val">${lots}</div></div>
-        <div class="sc-stat"><div class="sc-stat-label">成交額</div><div class="sc-stat-val">${fmtBig(turnover)}</div></div>
-        <div class="sc-stat"><div class="sc-stat-label">漲跌幅</div><div class="sc-stat-val ${isUp ? 'up' : chg < 0 ? 'down' : ''}">${pct > 0 ? '+' : ''}${pct.toFixed(2)}%</div></div>
-      </div>
-      ${instHtml}
-    </div>`;
+    html += '<div class="stock-card" onclick="goAnalyze(\'' + code + '\')">'
+      + '<div class="sc-bar" style="background:' + barColor + ';"></div>'
+      + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
+      + '<div class="sc-top"><div>'
+      + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + name + '</span> ' + mTag + '</div>'
+      + '</div><div>'
+      + '<div class="sc-price ' + (isUp ? 'up' : chg < 0 ? 'down' : '') + '">' + fmtNum(close, 2) + '</div>'
+      + '<div class="sc-change ' + (isUp ? 'up' : chg < 0 ? 'down' : '') + '">' + (chg > 0 ? '&#x25B2;+' : chg < 0 ? '&#x25BC;' : '') + fmtNum(chg, 2) + ' (' + (pct > 0 ? '+' : '') + pct.toFixed(2) + '%)</div>'
+      + '</div></div>'
+      + '<div class="sc-stats">'
+      + '<div class="sc-stat"><div class="sc-stat-label">成交量</div><div class="sc-stat-val">' + lots + '</div></div>'
+      + '<div class="sc-stat"><div class="sc-stat-label">成交額</div><div class="sc-stat-val">' + fmtBig(turnover) + '</div></div>'
+      + '<div class="sc-stat"><div class="sc-stat-label">漲跌幅</div><div class="sc-stat-val ' + (isUp ? 'up' : chg < 0 ? 'down' : '') + '">' + (pct > 0 ? '+' : '') + pct.toFixed(2) + '%</div></div>'
+      + '</div>'
+      + instHtml
+      + '</div>';
   });
   html += '</div>';
   box.innerHTML = html;
@@ -2625,6 +2657,9 @@ async function init() {
       });
     }
 
+    // Build cached lookup maps for fast watchlist / screener rendering
+    rebuildMaps();
+
     // Render overview first (shown to user immediately)
     renderOverview();
     if (instSummary) renderInstSummary(instSummary);
@@ -3323,6 +3358,7 @@ function startAutoRefresh() {
       else if (tpexAll && tpexAll.aaData) gTpexAllStocks = tpexAll.aaData;
 
       buildStockDB();
+      rebuildMaps();
 
       // Fill TPEX gaps from OpenAPI (critical during trading hours)
       if (Array.isArray(openTpex)) {
