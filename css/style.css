@@ -1039,9 +1039,19 @@
         flex-shrink: 0;
         padding-bottom: env(safe-area-inset-bottom, 0);
         background: rgba(6, 11, 24, 0.97);
+        position: relative;
       }
 
-      .sidebar::after { display: none; }
+      /* Scroll fade hint on right edge */
+      .sidebar::after {
+        content: '';
+        position: absolute;
+        top: 0; bottom: 0; right: 0;
+        width: 24px;
+        background: linear-gradient(90deg, transparent, rgba(6, 11, 24, 0.95));
+        pointer-events: none;
+        z-index: 2;
+      }
 
       .logo { display: none; }
 
@@ -1059,14 +1069,14 @@
       .nav-item {
         flex-direction: column;
         gap: 2px;
-        padding: 8px 8px 6px;
+        padding: 7px 6px 5px;
         font-size: 10px;
         font-weight: 500;
-        letter-spacing: 0.5px;
+        letter-spacing: 0;
         border-left: none;
         border-top: 2px solid transparent;
         white-space: nowrap;
-        min-width: 48px;
+        min-width: 46px;
         flex-shrink: 0;
         text-align: center;
         justify-content: center;
@@ -1186,6 +1196,18 @@
       /* Grid-2 stacks on mobile */
       .grid-2 { grid-template-columns: 1fr; }
 
+      /* Stock header — stack on mobile */
+      #stock-header .flex-between {
+        flex-direction: column;
+        gap: 4px;
+      }
+      #stock-header .flex-between > div:last-child {
+        text-align: left;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+
       /* Chip summary mobile */
       .chip-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
       .chip-card { padding: 10px; }
@@ -1196,6 +1218,8 @@
       .filter-section { padding: 10px 12px; }
       .filter-check { font-size: 12px; }
       .filter-input { width: 72px !important; font-size: 12px !important; }
+      .filter-row { flex-wrap: wrap; gap: 6px; }
+      .filter-label { width: 100%; font-size: 12px; }
 
       /* Sector bars mobile */
       .sector-name { width: 72px; font-size: 11px; }
@@ -1207,13 +1231,44 @@
       .rank-card-name { font-size: 12px; }
       .rank-card-pct { font-size: 13px; }
       .rank-card-body { font-size: 11px; }
+
+      /* Watchlist header mobile */
+      #panel-watchlist .flex-between {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+      }
+      #panel-watchlist .search-group {
+        width: 100%;
+        flex-wrap: nowrap;
+      }
+      #panel-watchlist #wl-add-input {
+        flex: 1;
+        width: auto !important;
+        min-width: 0;
+      }
+
+      /* Admin panel mobile */
+      .admin-grid-4 {
+        grid-template-columns: 1fr 1fr !important;
+      }
+
+      /* TAIEX chart shorter on mobile */
+      #taiex-chart { height: 180px !important; }
+
+      /* DT cards mobile */
+      .dt-card { padding: 8px 10px; }
+      .dt-card-code { font-size: 13px; }
+      .dt-card-name { font-size: 12px; }
+      .dt-card-pnl { font-size: 13px; }
+      .dt-card-body { font-size: 11px; }
     }
 
     /* --- PHONE SMALL --- */
     @media (max-width: 480px) {
       .nav-item {
-        padding: 6px 5px;
-        min-width: 42px;
+        padding: 5px 4px;
+        min-width: 40px;
         font-size: 9px;
         gap: 1px;
       }
@@ -1253,7 +1308,7 @@
       /* Individual analysis page adjustments */
       #stock-title { font-size: 18px !important; }
       #stock-price { font-size: 24px !important; }
-      #stock-change { font-size: 13px !important; }
+      #stock-change { font-size: 13px !important; margin-left: 0 !important; }
 
       .ob-table { font-size: 12px; }
       .ob-table td { padding: 4px 6px; }
@@ -1272,6 +1327,41 @@
       .chip-inst-label { font-size: 11px; width: 30px; }
       .chip-inst-bar-wrap { height: 12px; }
       .chip-inst-val { width: 58px; font-size: 10px; }
+
+      /* Screener small phone */
+      .filter-row { gap: 5px; }
+      .filter-check { font-size: 11px; padding: 5px 8px; }
+      .filter-input { width: 64px !important; }
+
+      /* Admin panel small phone */
+      .admin-grid-2 {
+        grid-template-columns: 1fr !important;
+      }
+      .admin-grid-4 {
+        grid-template-columns: 1fr 1fr !important;
+      }
+
+      /* Rank cards smaller */
+      .rank-card { padding: 7px 8px; }
+      .rank-card-num { font-size: 11px; width: 18px; height: 18px; }
+      .rank-card-code { font-size: 12px; }
+      .rank-card-name { font-size: 11px; }
+      .rank-card-pct { font-size: 12px; }
+      .rank-card-body { font-size: 10px; gap: 3px; }
+
+      /* DT cards smaller */
+      .dt-card { padding: 7px 8px; }
+      .dt-card-rank { font-size: 11px; width: 18px; height: 18px; }
+      .dt-card-code { font-size: 12px; }
+      .dt-card-name { font-size: 11px; }
+      .dt-card-pnl { font-size: 12px; }
+      .dt-card-body { font-size: 10px; }
+
+      /* TAIEX chart even shorter */
+      #taiex-chart { height: 160px !important; }
+
+      /* Watchlist sort tabs smaller */
+      .tab-btn { padding: 6px 10px; font-size: 11px; }
     }
 
     /* --- iOS PWA Standalone mode --- */
