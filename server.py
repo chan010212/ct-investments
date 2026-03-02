@@ -624,6 +624,10 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                     break
         if not has_cors:
             self.send_header('Access-Control-Allow-Origin', '*')
+        # Service worker must not be cached by browser
+        if self.path == '/sw.js':
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            self.send_header('Service-Worker-Allowed', '/')
         super().end_headers()
 
     def log_message(self, fmt, *args):

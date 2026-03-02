@@ -3,16 +3,39 @@
   "short_name": "CT Invest",
   "description": "台灣股票技術分析儀表板 — 謙堂資本 CT Investments CO., LTD",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#060b18",
   "theme_color": "#060b18",
   "orientation": "any",
+  "categories": ["finance", "business"],
+  "lang": "zh-TW",
   "icons": [
     {
       "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='%23060b18'/><text x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='system-ui' font-size='240' font-weight='800' fill='%2300f0ff'>CT</text></svg>",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='%23060b18'/><text x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='system-ui' font-size='240' font-weight='800' fill='%2300f0ff'>CT</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "個股分析",
+      "short_name": "個股",
+      "url": "/?tab=analysis",
+      "icons": [{"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect width='96' height='96' rx='16' fill='%23060b18'/><text x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-size='48'>📈</text></svg>", "sizes": "96x96"}]
+    },
+    {
+      "name": "我的關注",
+      "short_name": "關注",
+      "url": "/?tab=watchlist",
+      "icons": [{"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect width='96' height='96' rx='16' fill='%23060b18'/><text x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-size='48'>⭐</text></svg>", "sizes": "96x96"}]
     }
   ]
 }

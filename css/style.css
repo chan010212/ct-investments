@@ -501,6 +501,7 @@
     .tag-market { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 6px; letter-spacing: 0.5px; }
     .tag-twse { background: rgba(0,212,255,0.12); color: var(--cyan); border: 1px solid rgba(0,212,255,0.2); }
     .tag-tpex { background: rgba(180,77,255,0.12); color: var(--purple); border: 1px solid rgba(180,77,255,0.2); }
+    .tag-emerging { background: rgba(255,140,66,0.12); color: var(--orange); border: 1px solid rgba(255,140,66,0.2); }
 
     /* ===== SIGNALS ===== */
     .signal-list { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -830,6 +831,189 @@
     .news-title { flex: 1; font-size: 13px; line-height: 1.4; }
     .news-time { flex-shrink: 0; font-size: 11px; color: var(--text2); white-space: nowrap; }
 
+    /* ===== RECENT CHIPS ===== */
+    .recent-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .recent-chip {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      background: rgba(0,240,255,0.06);
+      border: 1px solid rgba(0,240,255,0.12);
+      color: var(--text2);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .recent-chip:hover {
+      background: rgba(0,240,255,0.12);
+      border-color: rgba(0,240,255,0.3);
+      color: var(--cyan);
+    }
+
+    /* ===== ANALYSIS QUICK NAV ===== */
+    .analysis-nav {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      padding: 10px 0;
+      margin-bottom: 8px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: linear-gradient(180deg, var(--bg) 60%, transparent);
+    }
+    .analysis-nav-btn {
+      padding: 5px 12px;
+      border-radius: 16px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text2);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .analysis-nav-btn:hover, .analysis-nav-btn.active {
+      background: rgba(0,240,255,0.1);
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+
+    /* ===== DAYTRADE MOBILE CARDS ===== */
+    .dt-card-list { display: flex; flex-direction: column; gap: 8px; }
+    .dt-card {
+      background: rgba(6,11,24,0.5);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .dt-card:hover { border-color: var(--cyan); }
+    .dt-card-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .dt-card-rank {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: rgba(0,240,255,0.1);
+      color: var(--cyan);
+      font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .dt-card-code { font-weight: 700; color: var(--cyan); font-size: 14px; }
+    .dt-card-name { color: var(--text2); font-size: 13px; flex: 1; }
+    .dt-card-pnl { font-weight: 700; font-size: 14px; }
+    .dt-card-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      font-size: 12px;
+    }
+    .dt-card-body > div { display: flex; flex-direction: column; }
+    .dt-label { font-size: 10px; color: var(--text2); margin-bottom: 2px; }
+
+    /* ===== SCREENER FILTERS ===== */
+    .screener-filters {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .filter-section {
+      background: rgba(6,11,24,0.5);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .filter-section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--cyan);
+      margin-bottom: 8px;
+      letter-spacing: 0.3px;
+    }
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 14px;
+    }
+    .filter-check {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .filter-check input[type="checkbox"] {
+      accent-color: var(--cyan);
+      width: 15px;
+      height: 15px;
+      cursor: pointer;
+    }
+    .filter-label {
+      font-size: 12px;
+      color: var(--text2);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .filter-input {
+      width: 90px !important;
+      padding: 6px 10px !important;
+      font-size: 13px !important;
+    }
+
+    /* ===== RANK CARD (mobile ranking list) ===== */
+    .rank-card-list { display: flex; flex-direction: column; gap: 6px; }
+    .rank-card {
+      background: rgba(6,11,24,0.5);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .rank-card:hover { border-color: var(--cyan); }
+    .rank-card-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .rank-card-num {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: rgba(0,240,255,0.1);
+      color: var(--cyan);
+      font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .rank-card-code { font-weight: 700; color: var(--cyan); font-size: 14px; }
+    .rank-card-name { color: var(--text2); font-size: 13px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rank-card-pct { font-weight: 700; font-size: 14px; flex-shrink: 0; }
+    .rank-card-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+    .rank-card-body > div { display: flex; flex-direction: column; }
+
+    /* ===== CARD FADE-IN ANIMATION ===== */
+    @keyframes cardFadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .card { animation: cardFadeIn 0.3s ease-out; }
+
     /* --- TABLET --- */
     @media (max-width: 768px) {
       .app {
@@ -980,6 +1164,45 @@
       /* Search modal */
       .search-modal { width: 95vw; border-radius: 12px; }
       .search-modal input { padding: 14px 16px; font-size: 15px; }
+
+      /* Analysis quick nav on mobile */
+      .analysis-nav {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 8px 0;
+      }
+      .analysis-nav::-webkit-scrollbar { display: none; }
+      .analysis-nav-btn { font-size: 11px; padding: 4px 10px; flex-shrink: 0; }
+
+      /* Recent chips mobile */
+      .recent-chip { font-size: 11px; padding: 3px 8px; }
+
+      /* Grid-2 stacks on mobile */
+      .grid-2 { grid-template-columns: 1fr; }
+
+      /* Chip summary mobile */
+      .chip-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .chip-card { padding: 10px; }
+      .chip-card-big { font-size: 18px; }
+      .chip-inst-val { width: 64px; font-size: 11px; }
+
+      /* Screener mobile */
+      .filter-section { padding: 10px 12px; }
+      .filter-check { font-size: 12px; }
+      .filter-input { width: 72px !important; font-size: 12px !important; }
+
+      /* Sector bars mobile */
+      .sector-name { width: 72px; font-size: 11px; }
+      .sector-pct { width: 52px; font-size: 11px; }
+
+      /* Rank cards mobile */
+      .rank-card { padding: 8px 10px; }
+      .rank-card-code { font-size: 13px; }
+      .rank-card-name { font-size: 12px; }
+      .rank-card-pct { font-size: 13px; }
+      .rank-card-body { font-size: 11px; }
     }
 
     /* --- PHONE SMALL --- */
@@ -1034,6 +1257,17 @@
       .chart-main { height: 300px; }
       .chart-intraday { height: 180px; }
       .chart-sm { height: 145px; }
+
+      /* Chip summary small phone */
+      .chip-grid { gap: 6px; }
+      .chip-card { padding: 8px; border-radius: 8px; }
+      .chip-card-title { font-size: 10px; }
+      .chip-card-big { font-size: 16px; }
+      .chip-card-sub { font-size: 10px; }
+      .chip-section-title { font-size: 12px; }
+      .chip-inst-label { font-size: 11px; width: 30px; }
+      .chip-inst-bar-wrap { height: 12px; }
+      .chip-inst-val { width: 58px; font-size: 10px; }
     }
 
     /* --- iOS PWA Standalone mode --- */
@@ -1564,6 +1798,101 @@
     }
 
     .login-btn:hover { background: rgba(0, 240, 255, 0.1); border-color: var(--border-bright); }
+
+    /* ===== CHIP SUMMARY (籌碼速覽) ===== */
+    .chip-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .chip-card {
+      background: rgba(6, 11, 24, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+
+    .chip-card:hover {
+      border-color: var(--border-bright);
+    }
+
+    .chip-card-title {
+      font-size: 11px;
+      color: var(--text2);
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .chip-card-big {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.2;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .chip-card-sub {
+      font-size: 11px;
+      margin-top: 4px;
+      color: var(--text2);
+    }
+
+    .chip-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.3px;
+    }
+
+    .chip-inst {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .chip-inst-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .chip-inst-label {
+      width: 36px;
+      font-size: 12px;
+      color: var(--text2);
+      flex-shrink: 0;
+      text-align: right;
+    }
+
+    .chip-inst-bar-wrap {
+      flex: 1;
+      height: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .chip-inst-bar {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      min-width: 2px;
+    }
+
+    .chip-inst-val {
+      width: 72px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: right;
+      flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
+    }
 
     /* ===== SCANLINE EFFECT (subtle) ===== */
     .scanline {

@@ -51,6 +51,9 @@
       <div class="nav-item" data-tab="ai">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M6 10v1a6 6 0 0 0 12 0v-1M8 18h8M10 22h4M12 18v4"/></svg><span>AI</span>
       </div>
+      <div class="nav-item" data-tab="screener">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 4h18v2H3zM5 10h14v2H5zM8 16h8v2H8z"/></svg><span>篩選</span>
+      </div>
       <div class="nav-item" data-tab="watchlist">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4l2.5 5.5L20 10l-4 4 1 5.5L12 17l-5 2.5 1-5.5-4-4 5.5-.5z"/></svg><span>關注</span>
       </div>
@@ -97,11 +100,19 @@
     <!-- ==================== 市場總覽 ==================== -->
     <div id="panel-overview" class="panel active">
       <div class="card">
-        <div class="card-title"><span class="icon">&#x1F4CA;</span> 市場總覽</div>
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span><span class="icon">&#x1F4CA;</span> 市場總覽</span>
+          <span id="live-clock" style="font-size:13px;color:var(--text2);font-weight:400;font-variant-numeric:tabular-nums;"></span>
+        </div>
         <div id="market-date" class="text-sm text-muted mb-16"></div>
         <div class="stat-grid" id="market-stats">
           <div class="loading-box"><div class="spinner"></div><div>正在載入市場資料...</div></div>
         </div>
+      </div>
+      <div class="card">
+        <div class="card-title">&#x1F4C8; 加權指數走勢</div>
+        <div id="taiex-chart" class="chart-box" style="height:220px;"></div>
+        <div class="text-sm text-muted" style="margin-top:4px;text-align:right;" id="taiex-status"></div>
       </div>
       <div class="grid-2">
         <div class="card">
@@ -129,6 +140,11 @@
           <div class="card-title" style="color:var(--green);">&#9660; 跌幅排行 TOP 15</div>
           <div class="table-wrap" id="top-losers"><div class="loading-box"><div class="spinner"></div></div></div>
         </div>
+      </div>
+      <div class="card">
+        <div class="card-title">&#x1F4CA; 成交量排行 TOP 15</div>
+        <div class="text-sm text-muted mb-12">依今日成交量（股）排序，反映市場資金聚焦方向</div>
+        <div class="table-wrap" id="top-volume"><div class="loading-box"><div class="spinner"></div></div></div>
       </div>
       <div class="card">
         <div class="card-title">&#x1F3E6; 三大法人今日動態</div>
@@ -174,6 +190,7 @@
           <button class="btn btn-primary" onclick="analyzeStock()">開始分析</button>
           <button class="btn btn-secondary" onclick="addToWatchlistFromAnalysis()">&#x2B50; 加入關注</button>
         </div>
+        <div id="recent-stocks" style="display:none;"></div>
         <div id="stock-header" style="display:none;">
           <div class="flex-between">
             <div>
@@ -193,6 +210,26 @@
       </div>
 
       <div id="analysis-content" style="display:none;">
+        <div class="analysis-nav" id="analysis-nav">
+          <button class="analysis-nav-btn" onclick="scrollToSection('chip-summary')">籌碼</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('intraday-chart')">走勢</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('main-chart')">K線</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('ai-score-ring')">AI</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('stock-fundamentals')">基本面</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('stock-margin')">融資券</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('stock-revenue')">營收</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('stock-quarterly')">財報</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('stock-dividend')">股利</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('stock-news')">新聞</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('ai-deep-analysis')">AI報告</button>
+        </div>
+
+        <!-- 籌碼摘要面板 (籌碼K style) -->
+        <div class="card" id="chip-summary">
+          <div class="card-title">&#x1F4CA; 籌碼速覽</div>
+          <div id="chip-summary-content"><div class="text-muted">載入中...</div></div>
+        </div>
+
         <div class="grid-2">
           <div class="card">
             <div class="card-title">&#x23F1; 盤中即時走勢</div>
@@ -265,6 +302,12 @@
         </div>
 
         <div class="card">
+          <div class="card-title">&#x1F4B5; 股利政策</div>
+          <div class="text-sm text-muted mb-12">歷年股利發放紀錄</div>
+          <div id="stock-dividend"><div class="text-muted">載入中...</div></div>
+        </div>
+
+        <div class="card">
           <div class="card-title">&#x1F4F0; 相關新聞</div>
           <div id="stock-news"><div class="text-muted">載入中...</div></div>
         </div>
@@ -323,13 +366,104 @@
       </div>
     </div>
 
+    <!-- ==================== 股票篩選器 ==================== -->
+    <div id="panel-screener" class="panel">
+      <div class="card">
+        <div class="card-title">&#x1F50D; 股票篩選器</div>
+        <div class="text-sm text-muted mb-12">從上市 + 上櫃全部股票中，依條件快速篩選。點擊代號進入詳細分析。</div>
+
+        <div class="screener-filters" id="screener-filters">
+          <!-- Row 1: 法人條件 -->
+          <div class="filter-section">
+            <div class="filter-section-title">法人條件</div>
+            <div class="filter-row">
+              <label class="filter-check"><input type="checkbox" id="f-foreign-buy"> 外資買超</label>
+              <label class="filter-check"><input type="checkbox" id="f-trust-buy"> 投信買超</label>
+              <label class="filter-check"><input type="checkbox" id="f-dealer-buy"> 自營商買超</label>
+              <label class="filter-check"><input type="checkbox" id="f-all-buy"> 三大法人同買</label>
+              <label class="filter-check"><input type="checkbox" id="f-all-sell"> 三大法人同賣</label>
+            </div>
+          </div>
+
+          <!-- Row 2: 漲跌幅 -->
+          <div class="filter-section">
+            <div class="filter-section-title">漲跌幅</div>
+            <div class="filter-row">
+              <label class="filter-check"><input type="checkbox" id="f-limit-up"> 漲停</label>
+              <label class="filter-check"><input type="checkbox" id="f-limit-down"> 跌停</label>
+              <label class="filter-check"><input type="checkbox" id="f-up3"> 漲幅 &ge; 3%</label>
+              <label class="filter-check"><input type="checkbox" id="f-down3"> 跌幅 &ge; 3%</label>
+            </div>
+            <div class="filter-row" style="margin-top:6px;">
+              <span class="filter-label">自訂漲跌幅</span>
+              <input type="number" class="input filter-input" id="f-pct-min" placeholder="最低 %" step="0.1">
+              <span class="text-muted">~</span>
+              <input type="number" class="input filter-input" id="f-pct-max" placeholder="最高 %" step="0.1">
+            </div>
+          </div>
+
+          <!-- Row 3: 價格 -->
+          <div class="filter-section">
+            <div class="filter-section-title">股價區間</div>
+            <div class="filter-row">
+              <span class="filter-label">價格</span>
+              <input type="number" class="input filter-input" id="f-price-min" placeholder="最低" step="1">
+              <span class="text-muted">~</span>
+              <input type="number" class="input filter-input" id="f-price-max" placeholder="最高" step="1">
+            </div>
+          </div>
+
+          <!-- Row 4: 成交量 -->
+          <div class="filter-section">
+            <div class="filter-section-title">成交量</div>
+            <div class="filter-row">
+              <label class="filter-check"><input type="checkbox" id="f-vol-burst"> 大量（&gt; 3,000 張）</label>
+              <label class="filter-check"><input type="checkbox" id="f-vol-up"> 中量（&gt; 1,000 張）</label>
+              <label class="filter-check"><input type="checkbox" id="f-vol-shrink"> 冷門（&lt; 500 張）</label>
+            </div>
+            <div class="filter-row" style="margin-top:6px;">
+              <span class="filter-label">成交量(張)</span>
+              <input type="number" class="input filter-input" id="f-vol-min" placeholder="最低" step="1">
+              <span class="text-muted">~</span>
+              <input type="number" class="input filter-input" id="f-vol-max" placeholder="最高" step="1">
+            </div>
+          </div>
+
+          <!-- Row 5: 市場 -->
+          <div class="filter-section">
+            <div class="filter-section-title">市場</div>
+            <div class="filter-row">
+              <label class="filter-check"><input type="checkbox" id="f-mkt-twse" checked> 上市</label>
+              <label class="filter-check"><input type="checkbox" id="f-mkt-tpex" checked> 上櫃</label>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:14px;margin-bottom:16px;">
+          <button class="btn btn-primary" onclick="runScreener()">開始篩選</button>
+          <button class="btn btn-secondary" onclick="clearScreener()">清除條件</button>
+        </div>
+
+        <div id="screener-status" class="text-sm text-muted" style="margin-bottom:10px;"></div>
+        <div id="screener-results"></div>
+      </div>
+    </div>
+
     <!-- ==================== 我的關注 ==================== -->
     <div id="panel-watchlist" class="panel">
       <div class="flex-between mb-16">
-        <div class="card-title" style="margin:0;font-size:20px;">&#x2B50; 我的關注清單</div>
+        <div class="card-title" style="margin:0;font-size:20px;">&#x2B50; 我的關注清單 <span id="wl-count" class="text-sm text-muted" style="font-weight:400;"></span></div>
         <div class="search-group">
           <input type="text" class="input" id="wl-add-input" placeholder="輸入代號新增" style="width:160px;">
           <button class="btn btn-primary" onclick="addWatchlistFromInput()">+ 新增</button>
+        </div>
+      </div>
+      <div id="wl-sort-bar" style="display:none;margin-bottom:12px;">
+        <div class="tab-bar">
+          <button class="tab-btn active" data-wlsort="default">預設排序</button>
+          <button class="tab-btn" data-wlsort="change">漲跌幅</button>
+          <button class="tab-btn" data-wlsort="volume">成交量</button>
+          <button class="tab-btn" data-wlsort="name">名稱</button>
         </div>
       </div>
       <div id="watchlist-container"></div>
@@ -490,5 +624,19 @@
 </div>
 
 <script src="/js/app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      nw.addEventListener('statechange', () => {
+        if (nw.state === 'activated' && navigator.serviceWorker.controller) {
+          console.log('CT Investments 已更新，重新整理即可使用最新版');
+        }
+      });
+    });
+  });
+}
+</script>
 </body>
 </html>
