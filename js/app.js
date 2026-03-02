@@ -128,6 +128,10 @@ const API_TWSE = {
   allStocks:   (d) => apiFetch(`${TWSE}/afterTrading/STOCK_DAY_ALL?response=json&date=${d}`),
   stockMonth:  (code, d) => apiFetch(`${TWSE}/afterTrading/STOCK_DAY?response=json&date=${d}&stockNo=${code}`),
   dayTrade:    (d) => apiFetch(`${TWSE}/dayTrading/TWTB4U?response=json&date=${d}`),
+  sectorIndex: (d) => apiFetch(`${TWSE}/TAIEX/MI_5MINS_INDEX?response=json&date=${d}`),
+  marketDaily: (d) => apiFetch(`${TWSE}/afterTrading/FMTQIK?response=json&date=${d}`),
+  pePbYield:   (d) => apiFetch(`${TWSE}/afterTrading/BWIBBU_d?response=json&date=${d}&selectType=ALL`),
+  marginTrade: (d) => apiFetch(`${TWSE}/marginTrading/MI_MARGN?response=json&date=${d}&selectType=STOCK`),
 };
 
 // ============================================================
@@ -1066,6 +1070,110 @@ function renderOverview() {
 
   document.getElementById('top-gainers').innerHTML = rankHTML(gainers);
   document.getElementById('top-losers').innerHTML = rankHTML(losers);
+
+  // Advance/Decline visual
+  const adEl = document.getElementById('advance-decline');
+  if (adEl) {
+    const total = upN + dnN + flatN;
+    adEl.innerHTML = `
+      <div style="display:flex;gap:12px;align-items:flex-end;justify-content:center;margin-bottom:12px;">
+        <div style="text-align:center;">
+          <div class="up" style="font-size:28px;font-weight:800;">${upN}</div>
+          <div class="text-sm text-muted">上漲</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:20px;font-weight:600;color:var(--text2);">${flatN}</div>
+          <div class="text-sm text-muted">持平</div>
+        </div>
+        <div style="text-align:center;">
+          <div class="down" style="font-size:28px;font-weight:800;">${dnN}</div>
+          <div class="text-sm text-muted">下跌</div>
+        </div>
+      </div>
+      <div class="ad-bar">
+        <div class="ad-up" style="width:${total>0?(upN/total*100):0}%;"></div>
+        <div class="ad-flat" style="width:${total>0?(flatN/total*100):0}%;"></div>
+        <div class="ad-down" style="width:${total>0?(dnN/total*100):0}%;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;">
+        <span class="up text-sm">${total>0?(upN/total*100).toFixed(1):0}%</span>
+        <span class="text-sm text-muted">共 ${total} 檔</span>
+        <span class="down text-sm">${total>0?(dnN/total*100).toFixed(1):0}%</span>
+      </div>`;
+  }
+
+  // Market turnover
+  const mtEl = document.getElementById('market-turnover');
+  if (mtEl) {
+    mtEl.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-box"><div class="label">成交金額</div><div class="value">${fmtBig(totalVal)}</div></div>
+        <div class="stat-box"><div class="label">成交量(股)</div><div class="value">${fmtBig(totalVol)}</div></div>
+      </div>`;
+  }
+}
+
+// ============================================================
+// RENDER: SECTOR INDEX RANKING (from MI_5MINS_INDEX)
+// ============================================================
+const SECTOR_INDEX_NAMES = [
+  '加權指數', '未含金融', '未含電子', '未含金融電子',
+  '水泥', '食品', '塑膠', '紡織', '電機', '電纜',
+  '化學生技醫療', '化學', '生技醫療', '玻璃', '造紙', '鋼鐵',
+  '橡膠', '汽車', '電子', '半導體', '電腦週邊', '光電',
+  '通信網路', '電子零組件', '電子通路', '資訊服務', '其他電子',
+  '建材營造', '航運', '觀光餐旅', '金融保險', '貿易百貨',
+  '油電燃氣', '綠能環保', '數位雲端', '運動休閒', '居家生活', '其他'
+];
+
+async function renderSectorRanking() {
+  const el = document.getElementById('sector-ranking');
+  if (!el) return;
+  try {
+    const data = await API_TWSE.sectorIndex(gDate);
+    if (!data || data.stat !== 'OK' || !data.data || data.data.length < 2) {
+      el.innerHTML = '<div class="text-muted">盤中產業指數尚未公布</div>';
+      return;
+    }
+    const rows = data.data;
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+
+    const sectors = [];
+    // Skip index 0 (time), start from index 1 (加權指數)
+    for (let i = 1; i < first.length && i < last.length; i++) {
+      const openVal = parseNum(first[i]);
+      const closeVal = parseNum(last[i]);
+      if (openVal <= 0) continue;
+      const chg = closeVal - openVal;
+      const pct = (chg / openVal * 100);
+      const name = SECTOR_INDEX_NAMES[i - 1] || `類${i}`;
+      // Skip composite indices (first 4)
+      if (i <= 4) continue;
+      sectors.push({ name, open: openVal, close: closeVal, chg, pct });
+    }
+
+    sectors.sort((a, b) => b.pct - a.pct);
+    const maxAbs = Math.max(...sectors.map(s => Math.abs(s.pct)), 1);
+
+    let html = '<div class="sector-bars">';
+    sectors.forEach(s => {
+      const barWidth = Math.abs(s.pct) / maxAbs * 100;
+      const isUp = s.pct >= 0;
+      const color = isUp ? 'var(--red)' : 'var(--green)';
+      html += `<div class="sector-bar-row">
+        <span class="sector-name">${s.name}</span>
+        <div class="sector-bar-track">
+          <div class="sector-bar-fill ${isUp?'bar-up':'bar-down'}" style="width:${barWidth}%;"></div>
+        </div>
+        <span class="sector-pct" style="color:${color};">${s.pct>0?'+':''}${s.pct.toFixed(2)}%</span>
+      </div>`;
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div class="text-muted">產業指數載入失敗</div>';
+  }
 }
 
 // ============================================================
@@ -1654,9 +1762,11 @@ async function analyzeStock(code) {
     document.getElementById('analysis-loading').style.display = 'none';
     document.getElementById('analysis-content').style.display = 'block';
 
-    // Async: Load revenue, quarterly, and news (non-blocking)
+    // Async: Load financial data, news (non-blocking)
     fetchStockRevenue(code, stockName);
     fetchStockQuarterly(code);
+    fetchStockFundamentals(code);
+    fetchStockMargin(code);
     fetchStockNews(code, stockName);
 
     // Start real-time updates + intraday chart
@@ -1823,6 +1933,135 @@ async function fetchStockNews(code, stockName) {
   }
 }
 
+// ============================================================
+// FETCH: Stock Fundamentals (PE/PB/Yield)
+// ============================================================
+async function fetchStockFundamentals(code) {
+  const el = document.getElementById('stock-fundamentals');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+  try {
+    // Try today first, then fall back to recent dates
+    let data = null;
+    for (let i = 0; i < 7; i++) {
+      const d = dateStr(i);
+      try {
+        const res = await API_TWSE.pePbYield(d);
+        if (res && res.stat === 'OK' && res.data && res.data.length > 0) {
+          data = res;
+          break;
+        }
+      } catch(e) {}
+    }
+    if (!data || !data.data) {
+      el.innerHTML = '<div class="text-muted">暫無基本面資料</div>';
+      return;
+    }
+    const found = data.data.find(r => (r[0] || '').trim() === code);
+    if (!found) {
+      el.innerHTML = '<div class="text-muted">此股票無本益比資料</div>';
+      return;
+    }
+    // Fields: 代號, 名稱, 收盤價, 殖利率(%), 股利年度, 本益比, 股價淨值比, 財報年/季
+    const price = found[2] || '--';
+    const yield_ = found[3] || '--';
+    const pe = found[5] || '--';
+    const pb = found[6] || '--';
+    const period = found[7] || '';
+
+    el.innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-box">
+          <div class="label">本益比 (PE)</div>
+          <div class="value" style="color:var(--cyan);font-size:20px;">${pe === '-' ? 'N/A' : pe}</div>
+        </div>
+        <div class="stat-box">
+          <div class="label">股價淨值比 (PB)</div>
+          <div class="value" style="color:var(--purple);font-size:20px;">${pb}</div>
+        </div>
+        <div class="stat-box">
+          <div class="label">殖利率</div>
+          <div class="value" style="color:var(--yellow);font-size:20px;">${yield_}%</div>
+        </div>
+      </div>
+      <div class="text-sm text-muted" style="margin-top:8px;">財報期間：${period}</div>`;
+  } catch (e) {
+    el.innerHTML = '<div class="text-muted">基本面資料載入失敗</div>';
+  }
+}
+
+// ============================================================
+// FETCH: Stock Margin Trading (融資融券)
+// ============================================================
+async function fetchStockMargin(code) {
+  const el = document.getElementById('stock-margin');
+  if (!el) return;
+  el.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+  try {
+    let data = null;
+    for (let i = 0; i < 7; i++) {
+      const d = dateStr(i);
+      try {
+        const res = await API_TWSE.marginTrade(d);
+        if (res && res.stat === 'OK' && res.tables && res.tables.length > 1) {
+          const t = res.tables[1];
+          if (t.data && t.data.length > 0) {
+            data = res;
+            break;
+          }
+        }
+      } catch(e) {}
+    }
+    if (!data) {
+      el.innerHTML = '<div class="text-muted">暫無融資融券資料</div>';
+      return;
+    }
+    const rows = data.tables[1].data;
+    const found = rows.find(r => (r[0] || '').trim() === code);
+    if (!found) {
+      el.innerHTML = '<div class="text-muted">此股票無融資融券資料</div>';
+      return;
+    }
+    // Fields: 代號,名稱, 融資:買進,賣出,現金償還,前日餘額,今日餘額,限額, 融券:買進,賣出,現金償還,前日餘額,今日餘額,限額, 資券互抵
+    const mBuy = fmtNum(parseNum(found[2]));
+    const mSell = fmtNum(parseNum(found[3]));
+    const mPrevBal = fmtNum(parseNum(found[5]));
+    const mBal = fmtNum(parseNum(found[6]));
+    const mChg = parseNum(found[6]) - parseNum(found[5]);
+    const sBuy = fmtNum(parseNum(found[8]));
+    const sSell = fmtNum(parseNum(found[9]));
+    const sPrevBal = fmtNum(parseNum(found[11]));
+    const sBal = fmtNum(parseNum(found[12]));
+    const sChg = parseNum(found[12]) - parseNum(found[11]);
+    const offset = found[14] || '0';
+
+    el.innerHTML = `
+      <div class="grid-2" style="gap:16px;">
+        <div>
+          <div class="text-sm" style="color:var(--red);font-weight:600;margin-bottom:8px;">融資（張）</div>
+          <div class="stat-grid">
+            <div class="stat-box"><div class="label">買進</div><div class="value">${mBuy}</div></div>
+            <div class="stat-box"><div class="label">賣出</div><div class="value">${mSell}</div></div>
+            <div class="stat-box"><div class="label">餘額</div><div class="value">${mBal}</div></div>
+          </div>
+          <div class="text-sm ${mChg>=0?'up':'down'}" style="margin-top:4px;">增減：${mChg>0?'+':''}${fmtNum(mChg)}</div>
+        </div>
+        <div>
+          <div class="text-sm" style="color:var(--green);font-weight:600;margin-bottom:8px;">融券（張）</div>
+          <div class="stat-grid">
+            <div class="stat-box"><div class="label">買進</div><div class="value">${sBuy}</div></div>
+            <div class="stat-box"><div class="label">賣出</div><div class="value">${sSell}</div></div>
+            <div class="stat-box"><div class="label">餘額</div><div class="value">${sBal}</div></div>
+          </div>
+          <div class="text-sm ${sChg>=0?'down':'up'}" style="margin-top:4px;">增減：${sChg>0?'+':''}${fmtNum(sChg)}</div>
+        </div>
+      </div>
+      <div class="text-sm text-muted" style="margin-top:8px;">資券互抵：${fmtNum(parseNum(offset))}</div>`;
+  } catch (e) {
+    el.innerHTML = '<div class="text-muted">融資融券載入失敗</div>';
+  }
+}
+
 function goAnalyze(code) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -1970,6 +2209,7 @@ async function init() {
       renderInstRank('foreign');
       renderAIRank();
       renderWatchlist();
+      renderSectorRanking(); // Sector index performance
     });
 
   } catch (e) {

@@ -789,6 +789,22 @@
     .clickable { cursor: pointer; color: var(--cyan); transition: all 0.2s; text-decoration: none; }
     .clickable:hover { text-shadow: 0 0 8px var(--cyan); }
 
+    /* --- Advance/Decline bar --- */
+    .ad-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; }
+    .ad-up { background: var(--red); }
+    .ad-flat { background: var(--text2); opacity: 0.3; }
+    .ad-down { background: var(--green); }
+
+    /* --- Sector ranking bars --- */
+    .sector-bars { display: flex; flex-direction: column; gap: 4px; }
+    .sector-bar-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+    .sector-name { width: 90px; font-size: 12px; color: var(--text); flex-shrink: 0; text-align: right; }
+    .sector-bar-track { flex: 1; height: 16px; background: rgba(255,255,255,0.03); border-radius: 4px; overflow: hidden; }
+    .sector-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+    .bar-up { background: linear-gradient(90deg, rgba(255,56,96,0.3), rgba(255,56,96,0.7)); }
+    .bar-down { background: linear-gradient(90deg, rgba(0,232,123,0.3), rgba(0,232,123,0.7)); }
+    .sector-pct { width: 60px; font-size: 12px; font-weight: 600; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
     /* --- News list --- */
     .news-list { display: flex; flex-direction: column; gap: 2px; }
     .news-item {

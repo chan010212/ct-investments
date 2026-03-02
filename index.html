@@ -105,6 +105,23 @@
       </div>
       <div class="grid-2">
         <div class="card">
+          <div class="card-title">&#x1F4C8; 漲跌家數統計</div>
+          <div id="advance-decline"><div class="loading-box"><div class="spinner"></div></div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">&#x1F4B9; 今日成交概況</div>
+          <div id="market-turnover"><div class="loading-box"><div class="spinner"></div></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">&#x1F3ED; 產業漲跌排行</div>
+        <div class="text-sm text-muted mb-12">依今日指數漲跌幅排序，反映各產業強弱</div>
+        <div id="sector-ranking"><div class="loading-box"><div class="spinner"></div></div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
           <div class="card-title" style="color:var(--red);">&#9650; 漲幅排行 TOP 15</div>
           <div class="table-wrap" id="top-gainers"><div class="loading-box"><div class="spinner"></div></div></div>
         </div>
@@ -219,9 +236,20 @@
             <div id="signal-box" class="signal-list"></div>
           </div>
         </div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">&#x1F3E6; 三大法人今日買賣超</div>
+            <div id="stock-inst-info"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">&#x1F4CA; 基本面指標</div>
+            <div id="stock-fundamentals"><div class="text-muted">載入中...</div></div>
+          </div>
+        </div>
+
         <div class="card">
-          <div class="card-title">&#x1F3E6; 三大法人今日買賣超</div>
-          <div id="stock-inst-info"></div>
+          <div class="card-title">&#x1F4B3; 融資融券</div>
+          <div id="stock-margin"><div class="text-muted">載入中...</div></div>
         </div>
 
         <div class="card">
