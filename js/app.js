@@ -5,8 +5,8 @@ const TWSE = 'https://www.twse.com.tw/rwd/zh';
 const TPEX_OLD = 'https://www.tpex.org.tw/web/stock';
 const TPEX_NEW = 'https://www.tpex.org.tw/www/zh-tw';
 const CACHE_MS = 10 * 60 * 1000;
-const REQUEST_DELAY = 250;
-const MAX_CONCURRENT = 3;
+const REQUEST_DELAY = 80;
+const MAX_CONCURRENT = 5;
 
 // ============================================================
 // UTILITIES
@@ -150,12 +150,14 @@ const API_TPEX = {
 // FIND LATEST TRADING DATE
 // ============================================================
 async function findTradingDate() {
-  for (let i = 0; i < 7; i++) {
-    const d = dateStr(i);
-    try {
-      const res = await apiFetch(`${TWSE}/fund/BFI82U?response=json&date=${d}`);
-      if (res && res.stat === 'OK') return d;
-    } catch (e) { /* try next day */ }
+  // Try multiple dates in parallel for speed (weekends/holidays)
+  const dates = [];
+  for (let i = 0; i < 5; i++) dates.push(dateStr(i));
+  const results = await Promise.allSettled(
+    dates.map(d => apiFetch(`${TWSE}/fund/BFI82U?response=json&date=${d}`).then(r => ({ d, r })))
+  );
+  for (const res of results) {
+    if (res.status === 'fulfilled' && res.value.r && res.value.r.stat === 'OK') return res.value.d;
   }
   return dateStr(0);
 }
@@ -1704,7 +1706,6 @@ async function fetchTpexHistory(code) {
 
 async function fetchYahooHistory(code) {
   // Use Yahoo Finance for emerging market stocks (and as fallback)
-  // Try .TWO (OTC/emerging) first, then .TW (TWSE)
   const suffixes = ['.TWO', '.TW'];
   for (const suffix of suffixes) {
     try {
@@ -1719,26 +1720,27 @@ async function fetchYahooHistory(code) {
         if (q.close[i] == null) continue;
         const d = new Date(ts[i] * 1000);
         const rocDate = `${d.getFullYear()-1911}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
-        // Format rows same as TPEx: [date, volume, turnover, open, high, low, close, change, txCount]
         const prev = i > 0 && q.close[i-1] != null ? q.close[i-1] : q.open[i];
         const chg = q.close[i] - (prev || 0);
+        // Round Yahoo floats to 2 decimal places
+        const rnd = v => v != null ? Math.round(v * 100) / 100 : 0;
         rawRows.push([
           rocDate,
           String(q.volume[i] || 0),
           '0',
-          String(q.open[i] || 0),
-          String(q.high[i] || 0),
-          String(q.low[i] || 0),
-          String(q.close[i]),
-          String(chg.toFixed(2)),
+          String(rnd(q.open[i])),
+          String(rnd(q.high[i])),
+          String(rnd(q.low[i])),
+          String(rnd(q.close[i])),
+          String(rnd(chg)),
           '0'
         ]);
       }
       const stockName = gStockDB[code]?.name || result.meta?.symbol || code;
-      return { rawRows, stockName, isTpex: true };
+      return { rawRows, stockName, isTpex: true, isYahoo: true };
     } catch(e) { /* try next suffix */ }
   }
-  return { rawRows: [], stockName: '', isTpex: true };
+  return { rawRows: [], stockName: '', isTpex: true, isYahoo: false };
 }
 
 async function analyzeStock(code) {
@@ -1756,13 +1758,15 @@ async function analyzeStock(code) {
   try {
     // Determine market
     let market = getMarket(code);
-    let rawRows = [], stockName = '';
+    let rawRows = [], stockName = '', isYahoo = false;
+    const isEmerging = market === 'emerging';
 
     if (market === 'emerging') {
       // Emerging market stock — use Yahoo Finance
       const r = await fetchYahooHistory(code);
       rawRows = r.rawRows;
       stockName = r.stockName;
+      isYahoo = r.isYahoo;
       market = 'tpex'; // treat as tpex for subsequent API calls
     } else if (market === 'tpex') {
       // Known TPEx stock
@@ -1791,6 +1795,7 @@ async function analyzeStock(code) {
           const r3 = await fetchYahooHistory(code);
           rawRows = r3.rawRows;
           stockName = r3.stockName;
+          isYahoo = r3.isYahoo;
           market = 'tpex';
         }
       }
@@ -1826,12 +1831,13 @@ async function analyzeStock(code) {
       });
     } else {
       // TPEx new API: 0=date, 1=vol(張/lots), 2=turnover(仟元), 3=open, 4=high, 5=low, 6=close, 7=chg, 8=txn
-      // Volume is in 張(lots), convert to shares: 1張 = 1000股
+      // Yahoo data: volume already in shares; TPEx volume is in 張(lots), convert to shares
+      const volMultiplier = isYahoo ? 1 : 1000;
       rows.forEach(r => {
         const o = parseNum(r[3]), h = parseNum(r[4]), l = parseNum(r[5]), c = parseNum(r[6]);
         if (c === 0 && o === 0) return; // skip no-trade days
         dates.push(rocToISO(r[0]));
-        V.push(parseNum(r[1]) * 1000); // 張 -> 股
+        V.push(parseNum(r[1]) * volMultiplier);
         O.push(o);
         H.push(h);
         L.push(l);
@@ -1847,9 +1853,11 @@ async function analyzeStock(code) {
     // Header
     if (!stockName && gStockDB[code]) stockName = gStockDB[code].name;
     document.getElementById('stock-title').textContent = code + ' ' + stockName;
-    const mTag = market === 'twse'
-      ? '<span class="tag-market tag-twse">上市</span>'
-      : '<span class="tag-market tag-tpex">上櫃</span>';
+    const mTag = isEmerging
+      ? '<span class="tag-market tag-emerging">興櫃</span>'
+      : market === 'twse'
+        ? '<span class="tag-market tag-twse">上市</span>'
+        : '<span class="tag-market tag-tpex">上櫃</span>';
     document.getElementById('stock-market-tag').innerHTML = mTag;
     document.getElementById('stock-price').textContent = fmtNum(lastC, 2);
     document.getElementById('stock-price').className = chg >= 0 ? 'up' : 'down';

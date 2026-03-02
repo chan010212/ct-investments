@@ -1012,7 +1012,11 @@
       from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    .card { animation: cardFadeIn 0.3s ease-out; }
+    .card { animation: cardFadeIn 0.2s ease-out; }
+
+    /* ===== PERFORMANCE ===== */
+    .panel { will-change: scroll-position; -webkit-overflow-scrolling: touch; }
+    .nav-item, .btn, .stock-card, .rank-card, .dt-card { -webkit-tap-highlight-color: transparent; }
 
     /* --- TABLET --- */
     @media (max-width: 768px) {
