@@ -760,7 +760,7 @@ async function fetchWatchlistMissing(codes) {
     // If some failed, retry with opposite suffix
     var found = {};
     quotes.forEach(function(q) {
-      var c = q.symbol.replace('.TW', '').replace('.TWO', '');
+      var c = q.symbol.replace('.TWO', '').replace('.TW', '');
       found[c] = true;
       gWlYahooCache[c] = {
         price: q.regularMarketPrice || 0,
@@ -779,7 +779,7 @@ async function fetchWatchlistMissing(codes) {
       });
       var retryQuotes = await fetchYahooQuotes(retrySymbols);
       retryQuotes.forEach(function(q) {
-        var c = q.symbol.replace('.TW', '').replace('.TWO', '');
+        var c = q.symbol.replace('.TWO', '').replace('.TW', '');
         gWlYahooCache[c] = {
           price: q.regularMarketPrice || 0,
           chg: q.regularMarketChange || 0,
