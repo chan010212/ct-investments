@@ -720,6 +720,8 @@ let gTpexInstStocks = []; // TPEx institutional
 let gChartsReady = false;
 let gStockMap = {};   // cached: code → { data, market }
 let gInstMap = {};    // cached: code → { f, t, d }
+let gWlYahooCache = {}; // Yahoo Finance fallback cache for watchlist: code → { price, chg, pct, vol }
+let gWlFetching = false; // prevent duplicate Yahoo fetches
 
 function rebuildMaps() {
   gStockMap = {};
@@ -743,6 +745,57 @@ function rebuildMaps() {
 const OPENAPI_TWSE_ALL = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
 const OPENAPI_TPEX_ALL = 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes';
 const OPENAPI_EMERGING = 'https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics';
+
+// Fetch missing watchlist stocks from Yahoo Finance
+async function fetchWatchlistMissing(codes) {
+  if (codes.length === 0 || gWlFetching) return;
+  gWlFetching = true;
+  try {
+    var symbols = codes.map(function(code) {
+      var info = gStockDB[code];
+      if (info && (info.market === 'tpex' || info.market === 'emerging')) return code + '.TWO';
+      return code + '.TW';
+    });
+    var quotes = await fetchYahooQuotes(symbols);
+    // If some failed, retry with opposite suffix
+    var found = {};
+    quotes.forEach(function(q) {
+      var c = q.symbol.replace('.TW', '').replace('.TWO', '');
+      found[c] = true;
+      gWlYahooCache[c] = {
+        price: q.regularMarketPrice || 0,
+        chg: q.regularMarketChange || 0,
+        pct: q.regularMarketChangePercent || 0,
+        vol: q.regularMarketVolume || 0,
+      };
+    });
+    // Retry missing with opposite suffix
+    var retry = codes.filter(function(c) { return !found[c]; });
+    if (retry.length > 0) {
+      var retrySymbols = retry.map(function(code) {
+        var info = gStockDB[code];
+        if (info && (info.market === 'tpex' || info.market === 'emerging')) return code + '.TW';
+        return code + '.TWO';
+      });
+      var retryQuotes = await fetchYahooQuotes(retrySymbols);
+      retryQuotes.forEach(function(q) {
+        var c = q.symbol.replace('.TW', '').replace('.TWO', '');
+        gWlYahooCache[c] = {
+          price: q.regularMarketPrice || 0,
+          chg: q.regularMarketChange || 0,
+          pct: q.regularMarketChangePercent || 0,
+          vol: q.regularMarketVolume || 0,
+        };
+      });
+    }
+    // Re-render if user is still on watchlist
+    var activePanel = document.querySelector('.panel.active');
+    if (activePanel && activePanel.id === 'panel-watchlist') {
+      renderWatchlist();
+    }
+  } catch(e) { /* silent */ }
+  gWlFetching = false;
+}
 
 let chtMain, chtRsi, chtKd, chtMacd;
 let sCan, sVol, sMa5, sMa10, sMa20, sBbU, sBbL;
@@ -1622,7 +1675,12 @@ function renderWatchlist() {
   // Sort helper
   function getSortVal(code) {
     var entry = sMap[code];
-    if (!entry) return { pct: 0, vol: 0, name: code };
+    if (!entry) {
+      var yc = gWlYahooCache[code];
+      var dbi = gStockDB[code];
+      if (yc) return { pct: yc.pct || 0, vol: yc.vol || 0, name: dbi ? dbi.name : code };
+      return { pct: 0, vol: 0, name: dbi ? dbi.name : code };
+    }
     var s = entry.data, m = entry.market;
     var close = m === 'twse' ? parseNum(s[7]) : parseNum(s[2]);
     var chg = m === 'twse' ? parseNum(s[8]) : parseNum(s[3]);
@@ -1636,6 +1694,7 @@ function renderWatchlist() {
   else if (gWlSort === 'volume') sortedList.sort(function(a, b) { return getSortVal(b).vol - getSortVal(a).vol; });
   else if (gWlSort === 'name') sortedList.sort(function(a, b) { return getSortVal(a).name.localeCompare(getSortVal(b).name); });
 
+  var missingCodes = [];
   var html = '<div class="stock-grid">';
   sortedList.forEach(function(code) {
     var entry = sMap[code];
@@ -1643,13 +1702,39 @@ function renderWatchlist() {
     var dbInfo = gStockDB[code];
 
     if (!entry) {
-      html += '<div class="stock-card" onclick="goAnalyze(\'' + code + '\')">'
-        + '<div class="sc-bar" style="background:linear-gradient(90deg,var(--cyan),var(--purple));"></div>'
-        + '<div class="sc-top"><div><div class="sc-code">' + code + '</div>'
-        + '<div class="sc-name">' + (dbInfo ? dbInfo.name : '') + '</div></div></div>'
-        + '<div class="text-muted text-sm" style="padding:10px 0;">點擊查看完整分析</div>'
-        + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
-        + '</div>';
+      // Try Yahoo Finance cache
+      var yc = gWlYahooCache[code];
+      if (yc && yc.price) {
+        var yName = dbInfo ? dbInfo.name : '';
+        var yIsUp = yc.chg > 0;
+        var yLots = yc.vol >= 1000 ? fmtNum(Math.round(yc.vol / 1000), 0) + ' 張' : fmtNum(yc.vol, 0) + ' 股';
+        var yBarColor = yIsUp ? 'linear-gradient(90deg, var(--red), rgba(255,56,96,0.3))' : yc.chg < 0 ? 'linear-gradient(90deg, var(--green), rgba(0,232,123,0.3))' : 'linear-gradient(90deg, var(--cyan), rgba(0,240,255,0.2))';
+        var yMkt = dbInfo && dbInfo.market === 'twse' ? '<span class="tag-market tag-twse">上市</span>' : dbInfo && dbInfo.market === 'tpex' ? '<span class="tag-market tag-tpex">上櫃</span>' : '<span class="tag-market" style="border-color:var(--yellow);color:var(--yellow);">興櫃</span>';
+        html += '<div class="stock-card" onclick="goAnalyze(\'' + code + '\')">'
+          + '<div class="sc-bar" style="background:' + yBarColor + ';"></div>'
+          + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
+          + '<div class="sc-top"><div>'
+          + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + yName + '</span> ' + yMkt + '</div>'
+          + '</div><div>'
+          + '<div class="sc-price ' + (yIsUp ? 'up' : yc.chg < 0 ? 'down' : '') + '">' + fmtNum(yc.price, 2) + '</div>'
+          + '<div class="sc-change ' + (yIsUp ? 'up' : yc.chg < 0 ? 'down' : '') + '">' + (yc.chg > 0 ? '&#x25B2;+' : yc.chg < 0 ? '&#x25BC;' : '') + fmtNum(yc.chg, 2) + ' (' + (yc.pct > 0 ? '+' : '') + yc.pct.toFixed(2) + '%)</div>'
+          + '</div></div>'
+          + '<div class="sc-stats">'
+          + '<div class="sc-stat"><div class="sc-stat-label">成交量</div><div class="sc-stat-val">' + yLots + '</div></div>'
+          + '<div class="sc-stat"><div class="sc-stat-label">漲跌幅</div><div class="sc-stat-val ' + (yIsUp ? 'up' : yc.chg < 0 ? 'down' : '') + '">' + (yc.pct > 0 ? '+' : '') + yc.pct.toFixed(2) + '%</div></div>'
+          + '</div></div>';
+      } else {
+        // No data yet — show placeholder and mark for fetching
+        html += '<div class="stock-card" onclick="goAnalyze(\'' + code + '\')">'
+          + '<div class="sc-bar" style="background:linear-gradient(90deg,var(--cyan),var(--purple));"></div>'
+          + '<div class="sc-top"><div><div class="sc-code">' + code + '</div>'
+          + '<div class="sc-name">' + (dbInfo ? dbInfo.name : '') + '</div></div>'
+          + '<div><div class="sc-price" style="color:var(--text2);">--</div></div></div>'
+          + '<div class="text-muted text-sm" style="padding:4px 0;"><div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:6px;"></div>載入報價中...</div>'
+          + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
+          + '</div>';
+        missingCodes.push(code);
+      }
       return;
     }
 
@@ -1698,6 +1783,11 @@ function renderWatchlist() {
   });
   html += '</div>';
   box.innerHTML = html;
+
+  // Fetch missing stock data from Yahoo Finance
+  if (missingCodes.length > 0) {
+    fetchWatchlistMissing(missingCodes);
+  }
 }
 
 // Watchlist sort buttons
