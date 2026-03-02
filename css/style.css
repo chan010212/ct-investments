@@ -1364,13 +1364,10 @@
       .tab-btn { padding: 6px 10px; font-size: 11px; }
     }
 
-    /* --- iOS PWA Standalone mode --- */
-    @media (display-mode: standalone) {
+    /* --- iOS safe area (Safari + PWA) --- */
+    @media (max-width: 768px) {
       .ticker-bar {
         padding-top: env(safe-area-inset-top, 0);
-      }
-      .sidebar {
-        padding-bottom: env(safe-area-inset-bottom, 0);
       }
     }
 
