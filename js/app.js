@@ -5,8 +5,8 @@ const TWSE = 'https://www.twse.com.tw/rwd/zh';
 const TPEX_OLD = 'https://www.tpex.org.tw/web/stock';
 const TPEX_NEW = 'https://www.tpex.org.tw/www/zh-tw';
 const CACHE_MS = 10 * 60 * 1000;
-const REQUEST_DELAY = 80;
-const MAX_CONCURRENT = 5;
+const REQUEST_DELAY = 50;
+const MAX_CONCURRENT = 6;
 
 // ============================================================
 // UTILITIES
@@ -197,14 +197,13 @@ const API_TPEX = {
 // FIND LATEST TRADING DATE
 // ============================================================
 async function findTradingDate() {
-  // Try multiple dates in parallel for speed (weekends/holidays)
-  const dates = [];
-  for (let i = 0; i < 5; i++) dates.push(dateStr(i));
-  const results = await Promise.allSettled(
-    dates.map(d => apiFetch(`${TWSE}/fund/BFI82U?response=json&date=${d}`).then(r => ({ d, r })))
-  );
-  for (const res of results) {
-    if (res.status === 'fulfilled' && res.value.r && res.value.r.stat === 'OK') return res.value.d;
+  // Try today first (fast path for weekdays), then fall back to previous days
+  for (let i = 0; i < 7; i++) {
+    try {
+      const d = dateStr(i);
+      const r = await apiFetch(`${TWSE}/fund/BFI82U?response=json&date=${d}`);
+      if (r && r.stat === 'OK') return d;
+    } catch(e) {}
   }
   return dateStr(0);
 }
@@ -2839,6 +2838,37 @@ function zoomChart(action) {
 }
 
 // ============================================================
+// BACKGROUND: Retry T86 institutional data (non-blocking)
+// ============================================================
+async function retryT86InBackground() {
+  console.log('[CT] T86 empty for today, retrying in background...');
+  await sleep(1500);
+  for (let i = 1; i <= 7; i++) {
+    try {
+      const prevDate = dateStr(i);
+      const [prevInst, prevTpexInst] = await Promise.allSettled([
+        API_TWSE.instStocks(prevDate),
+        API_TPEX.instStocks(prevDate),
+      ]);
+      const pi = prevInst.status === 'fulfilled' ? prevInst.value : null;
+      const pti = prevTpexInst.status === 'fulfilled' ? prevTpexInst.value : null;
+      if (pi && pi.stat === 'OK' && pi.data && pi.data.length > 0) {
+        gInstStocks = pi.data;
+        if (pti && pti.tables && pti.tables[0] && pti.tables[0].data && pti.tables[0].data.length > 0) gTpexInstStocks = pti.tables[0].data;
+        else if (pti && pti.aaData && pti.aaData.length > 0) gTpexInstStocks = pti.aaData;
+        console.log('[CT] T86 loaded from ' + prevDate + ' (' + gInstStocks.length + ' rows)');
+        // Re-render institutional panel with the data
+        renderInstRank('foreign');
+        rebuildMaps();
+        return;
+      }
+    } catch(e) {}
+    await sleep(1000);
+  }
+  console.warn('[CT] T86 not available from any recent date');
+}
+
+// ============================================================
 // APP INIT
 // ============================================================
 async function init() {
@@ -2883,33 +2913,6 @@ async function init() {
       gTpexInstStocks = tpexInst.tables[0].data;
     } else if (tpexInst && tpexInst.aaData && tpexInst.aaData.length > 0) {
       gTpexInstStocks = tpexInst.aaData;
-    }
-
-    // If institutional per-stock data is empty (T86 not ready during trading hours),
-    // try previous trading days with delay to avoid TWSE rate-limiting
-    if (gInstStocks.length === 0) {
-      console.log('[CT] T86 empty for today, trying previous dates...');
-      await sleep(2000); // wait for TWSE rate limit to reset
-      for (let i = 1; i <= 7; i++) {
-        try {
-          const prevDate = dateStr(i);
-          console.log('[CT] Trying T86 for ' + prevDate + '...');
-          const [prevInst, prevTpexInst] = await Promise.allSettled([
-            API_TWSE.instStocks(prevDate),
-            API_TPEX.instStocks(prevDate),
-          ]);
-          const pi = prevInst.status === 'fulfilled' ? prevInst.value : null;
-          const pti = prevTpexInst.status === 'fulfilled' ? prevTpexInst.value : null;
-          if (pi && pi.stat === 'OK' && pi.data && pi.data.length > 0) {
-            gInstStocks = pi.data;
-            if (pti && pti.tables && pti.tables[0] && pti.tables[0].data && pti.tables[0].data.length > 0) gTpexInstStocks = pti.tables[0].data;
-            else if (pti && pti.aaData && pti.aaData.length > 0) gTpexInstStocks = pti.aaData;
-            console.log('[CT] T86 loaded from ' + prevDate + ' (' + gInstStocks.length + ' rows)');
-            break;
-          }
-        } catch(e) { console.warn('[CT] T86 retry error:', e); }
-        await sleep(1500); // respect TWSE rate limit between retries
-      }
     }
 
     // Build search database from ALL sources (date-based + OpenAPI)
@@ -2963,6 +2966,12 @@ async function init() {
       renderTaiexChart();
       renderRecentStocks();
     });
+
+    // If institutional per-stock data is empty (T86 not ready during trading hours),
+    // retry previous dates in background (non-blocking, won't delay UI)
+    if (gInstStocks.length === 0) {
+      retryT86InBackground();
+    }
 
   } catch (e) {
     setStatus('error', '連線失敗');

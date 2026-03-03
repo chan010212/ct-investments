@@ -1,5 +1,5 @@
 // CT Investments — Service Worker
-const CACHE_NAME = 'ct-invest-v13';
+const CACHE_NAME = 'ct-invest-v14';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
