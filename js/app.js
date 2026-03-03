@@ -1005,10 +1005,11 @@ function switchTab(tabName, pushHistory) {
 
   if (tabName === 'analysis' && !gChartsReady) initCharts();
   if (tabName === 'watchlist') {
-    renderWatchlist();
-    // Fetch MIS real-time quotes in background, then re-render
     var wlCodes = wlGet();
-    if (wlCodes.length > 0) fetchMisBatch(wlCodes).then(function() { renderWatchlist(); });
+    if (wlCodes.length > 0) {
+      fetchMisBatch(wlCodes).then(function() { renderWatchlist(); });
+    }
+    renderWatchlist();
   }
   if (tabName === 'sectors') maybeLoadSectors();
   if (tabName === 'global') maybeLoadGlobal();
@@ -1684,27 +1685,7 @@ function renderDayTrade(data) {
 // RENDER: AI RANK (TWSE + TPEx combined)
 // ============================================================
 function renderAIRank() {
-  const instMap = {};
-  gInstStocks.forEach(r => {
-    const c = r[0].trim();
-    if (/^\d{4}$/.test(c)) {
-      instMap[c] = { f: parseNum(r[4]), t: parseNum(r[10]), d: parseNum(r[11]), total: parseNum(r[18]) };
-    }
-  });
-  // TPEx: 10=外資合計淨, 13=投信淨, 22=自營合計淨, 23=三大法人合計
-  gTpexInstStocks.forEach(r => {
-    const c = (r[0]||'').trim();
-    if (/^\d{4}$/.test(c)) {
-      try {
-        instMap[c] = {
-          f: parseNum(r[10]),
-          t: parseNum(r[13]),
-          d: parseNum(r[22]),
-          total: parseNum(r[23])
-        };
-      } catch(e) {}
-    }
-  });
+  const instMap = gInstMap;
 
   const allStockList = [];
 
@@ -3776,8 +3757,11 @@ async function doAutoRefresh(silent) {
     const dot = document.getElementById('status-dot');
     if (dot) dot.classList.add('refreshing');
 
-    // Clear fetch cache for fresh data
-    Object.keys(_cache).forEach(function(k) { delete _cache[k]; });
+    // Clear stale fetch cache entries (keep entries < 2 min old)
+    var now_ts = Date.now();
+    Object.keys(_cache).forEach(function(k) {
+      if (now_ts - _cache[k].ts > CACHE_MS) delete _cache[k];
+    });
 
     // Refresh core data — OpenAPI as fallback when traditional endpoints are blocked
     const results = await Promise.allSettled([
@@ -4631,34 +4615,35 @@ async function maybeLoadBriefing() {
     document.getElementById('briefing-container').innerHTML =
       '<div class="loading-box"><div class="spinner"></div><div>晨訊產生中，首次約需 15 秒...</div></div>';
 
-    if (_brPollTimer) clearInterval(_brPollTimer);
+    if (_brPollTimer) { clearInterval(_brPollTimer); _brPollTimer = null; }
+    var _brPollCount = 0;
     _brPollTimer = setInterval(async function() {
-      try {
-        var r2 = await fetch('/api/morning-report');
-        if (!r2.ok) return;
-        var b2 = await r2.json();
-        if (b2.status === 'ready' && b2.data) {
-          clearInterval(_brPollTimer);
-          _brPollTimer = null;
-          renderBriefing(b2.data);
-          gBriefingSuccess = true;
-        }
-      } catch(e) {}
-    }, 3000);
-
-    // Auto-stop polling after 60 seconds
-    setTimeout(function() {
-      if (_brPollTimer) {
-        clearInterval(_brPollTimer);
-        _brPollTimer = null;
+      if (gBriefingSuccess) { clearInterval(_brPollTimer); _brPollTimer = null; return; }
+      _brPollCount++;
+      if (_brPollCount > 20) {
+        clearInterval(_brPollTimer); _brPollTimer = null;
         if (!gBriefingSuccess) {
+          gBriefingLoaded = false;
           document.getElementById('briefing-container').innerHTML =
             '<div class="empty-state" style="padding:24px;text-align:center;">'
             + '<p>晨訊產生逾時，請稍後再試</p>'
             + '<button class="btn btn-primary" style="margin-top:12px;" onclick="gBriefingLoaded=false;maybeLoadBriefing()">重新載入</button></div>';
         }
+        return;
       }
-    }, 60000);
+      try {
+        var r2 = await fetch('/api/morning-report');
+        if (!r2.ok) return;
+        var b2 = await r2.json();
+        if (b2.status === 'ready' && b2.data) {
+          clearInterval(_brPollTimer); _brPollTimer = null;
+          renderBriefing(b2.data);
+          gBriefingSuccess = true;
+        }
+      } catch(e) {
+        console.warn('[Briefing] Poll error:', e.message);
+      }
+    }, 3000);
 
   } catch (e) {
     gBriefingLoaded = false;

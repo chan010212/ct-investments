@@ -59,12 +59,6 @@
         linear-gradient(180deg, rgba(0,240,255,0.02) 1px, transparent 1px),
         linear-gradient(90deg, rgba(0,240,255,0.02) 1px, transparent 1px);
       background-size: 60px 60px;
-      animation: gridMove 20s linear infinite;
-    }
-
-    @keyframes gridMove {
-      0% { background-position: 0 0; }
-      100% { background-position: 60px 60px; }
     }
 
     .bg-glow {
@@ -117,9 +111,7 @@
     /* ===== SIDEBAR ===== */
     .sidebar {
       width: 230px;
-      background: rgba(8, 16, 38, 0.92);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      background: #081026;
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
@@ -206,7 +198,7 @@
       font-size: 14px;
       color: var(--text2);
       border-left: 3px solid transparent;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: color 0.3s, border-color 0.3s, background-color 0.3s;
       position: relative;
     }
 
@@ -289,22 +281,18 @@
 
     /* ===== CARDS ===== */
     .card {
-      background: var(--card);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      background: var(--card-solid);
       border: 1px solid var(--border);
       border-radius: 16px;
       padding: 22px;
       margin-bottom: 20px;
       position: relative;
-      transition: border-color 0.3s, box-shadow 0.3s;
+      transition: border-color 0.3s;
       overflow: hidden;
-      animation: cardFadeIn 0.2s ease-out;
     }
 
     .card:hover {
       border-color: var(--border-bright);
-      box-shadow: 0 0 30px rgba(0, 240, 255, 0.05), inset 0 0 30px rgba(0, 240, 255, 0.02);
     }
 
     .card::before {
@@ -344,7 +332,7 @@
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 16px;
-      transition: all 0.3s;
+      transition: color 0.3s, border-color 0.3s, background-color 0.3s;
       position: relative;
       overflow: hidden;
     }
@@ -404,7 +392,6 @@
       position: sticky;
       top: 0;
       background: rgba(8, 16, 38, 0.95);
-      backdrop-filter: blur(8px);
       cursor: pointer;
       user-select: none;
       z-index: 1;
@@ -433,7 +420,7 @@
       border-radius: 10px;
       font-size: 14px;
       outline: none;
-      transition: all 0.3s;
+      transition: color 0.3s, border-color 0.3s, background-color 0.3s;
     }
 
     .input:focus {
@@ -448,7 +435,7 @@
       cursor: pointer;
       font-size: 14px;
       font-weight: 600;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: color 0.3s, border-color 0.3s, background-color 0.3s;
       position: relative;
       overflow: hidden;
       letter-spacing: 0.5px;
@@ -536,7 +523,7 @@
       font-size: 12px;
       font-weight: 500;
       border: 1px solid;
-      transition: all 0.2s;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s;
     }
 
     .signal.bullish {
@@ -583,12 +570,6 @@
       border: 1px solid;
       border-color: inherit;
       opacity: 0.3;
-      animation: scoreRingPulse 2s ease-in-out infinite;
-    }
-
-    @keyframes scoreRingPulse {
-      0%, 100% { transform: scale(1); opacity: 0.3; }
-      50% { transform: scale(1.05); opacity: 0.1; }
     }
 
     .progress-bar {
@@ -637,7 +618,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.2s;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s;
       line-height: 1;
     }
     .chart-zoom-btn:hover { border-color: var(--cyan); color: var(--cyan); }
@@ -654,7 +635,7 @@
       border-radius: 12px;
       margin-bottom: 10px;
       cursor: pointer;
-      transition: all 0.3s;
+      transition: color 0.3s, border-color 0.3s, background-color 0.3s;
     }
 
     .wl-item:hover {
@@ -694,7 +675,7 @@
       font-size: 13px;
       font-weight: 500;
       border-bottom: 2px solid transparent;
-      transition: all 0.3s;
+      transition: color 0.3s, border-color 0.3s, background-color 0.3s;
       white-space: nowrap;
       letter-spacing: 0.3px;
     }
@@ -745,7 +726,6 @@
       bottom: 24px;
       right: 24px;
       background: rgba(12, 22, 50, 0.95);
-      backdrop-filter: blur(12px);
       border: 1px solid var(--border-bright);
       padding: 14px 26px;
       border-radius: 12px;
@@ -794,7 +774,7 @@
       border-radius: 4px;
       font-size: 11px;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s;
     }
     .refresh-btn:hover { color: var(--cyan); border-color: var(--cyan); }
     .refresh-btn:active { transform: scale(0.95); }
@@ -818,7 +798,6 @@
       left: 0;
       right: 0;
       background: rgba(10, 17, 40, 0.97);
-      backdrop-filter: blur(16px);
       border: 1px solid var(--border-bright);
       border-radius: 0 0 10px 10px;
       max-height: 280px;
@@ -851,7 +830,7 @@
     }
 
     /* --- Clickable stock codes/names --- */
-    .clickable { cursor: pointer; color: var(--cyan); transition: all 0.2s; text-decoration: none; }
+    .clickable { cursor: pointer; color: var(--cyan); transition: color 0.2s, border-color 0.2s, background-color 0.2s; text-decoration: none; }
     .clickable:hover { text-shadow: 0 0 8px var(--cyan); }
 
     /* --- Advance/Decline bar --- */
@@ -906,7 +885,7 @@
       border: 1px solid rgba(0,240,255,0.12);
       color: var(--text2);
       cursor: pointer;
-      transition: all 0.2s;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s;
       white-space: nowrap;
     }
     .recent-chip:hover {
@@ -935,7 +914,7 @@
       background: var(--card);
       color: var(--text2);
       cursor: pointer;
-      transition: all 0.2s;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s;
       white-space: nowrap;
     }
     .analysis-nav-btn:hover, .analysis-nav-btn.active {
@@ -1071,11 +1050,6 @@
     }
     .rank-card-body > div { display: flex; flex-direction: column; }
 
-    /* ===== CARD FADE-IN ANIMATION ===== */
-    @keyframes cardFadeIn {
-      from { opacity: 0; transform: translateY(12px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
     .nav-item, .btn, .stock-card, .rank-card, .dt-card { -webkit-tap-highlight-color: transparent; }
 
     /* --- TABLET --- */
@@ -1468,7 +1442,7 @@
       border-radius: 14px;
       padding: 16px 18px;
       cursor: pointer;
-      transition: all 0.3s;
+      transition: color 0.3s, border-color 0.3s, background-color 0.3s;
       position: relative;
       overflow: hidden;
     }
@@ -1724,7 +1698,6 @@
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(4px);
       z-index: 9000;
       display: none;
       align-items: flex-start;
@@ -1798,7 +1771,6 @@
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,0.7);
-      backdrop-filter: blur(6px);
       z-index: 9500;
       display: none;
       align-items: center;
@@ -1878,7 +1850,7 @@
       font-size: 15px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.3s;
+      transition: color 0.3s, border-color 0.3s, background-color 0.3s;
       letter-spacing: 0.5px;
     }
 
@@ -1923,7 +1895,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: all 0.2s;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s;
     }
 
     .auth-modal .auth-close:hover { background: rgba(255,56,96,0.15); color: var(--red); }
@@ -1979,7 +1951,7 @@
       border: 1px solid var(--border);
       border-radius: 6px;
       background: none;
-      transition: all 0.2s;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s;
     }
 
     .user-logout:hover { color: var(--red); border-color: rgba(255,56,96,0.3); }
@@ -1993,7 +1965,7 @@
       color: var(--cyan);
       font-size: 13px;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s;
       text-align: center;
     }
 
