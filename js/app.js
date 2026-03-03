@@ -3491,18 +3491,13 @@ async function doAutoRefresh(silent) {
     const dot = document.getElementById('status-dot');
     if (dot) dot.classList.add('refreshing');
 
-    // Re-detect trading date (gDate might be stale from yesterday)
-    var freshDate = dateStr(0);
-    var testR = await Promise.race([
-      apiFetch(`${TWSE}/fund/BFI82U?response=json&date=${freshDate}`).catch(function() { return null; }),
-      sleep(3000).then(function() { return null; }),
-    ]);
-    if (testR && testR.stat === 'OK') gDate = freshDate;
-
     // Clear fetch cache for fresh data
     Object.keys(_cache).forEach(function(k) { delete _cache[k]; });
 
-    // Refresh core data + institutional + OpenAPI fallback
+    // Refresh core data + OpenAPI fallback
+    // Note: use gDate from init (validated trading date) — don't change it mid-session
+    // Stock price APIs (allStocks) return live data for gDate during trading hours
+    // Institutional T86 data only updates after market close, keep previous data if empty
     const results = await Promise.allSettled([
       API_TWSE.allStocks(gDate),
       API_TPEX.allStocks(gDate),
@@ -3516,14 +3511,14 @@ async function doAutoRefresh(silent) {
     const tpexInst   = results[3].status === 'fulfilled' ? results[3].value : null;
     const openTpex   = results[4].status === 'fulfilled' ? results[4].value : null;
 
-    if (allStocks && allStocks.stat === 'OK' && allStocks.data) gAllStocks = allStocks.data;
-    if (tpexAll && tpexAll.tables && tpexAll.tables[0] && tpexAll.tables[0].data) gTpexAllStocks = tpexAll.tables[0].data;
-    else if (tpexAll && tpexAll.aaData) gTpexAllStocks = tpexAll.aaData;
+    if (allStocks && allStocks.stat === 'OK' && allStocks.data && allStocks.data.length > 0) gAllStocks = allStocks.data;
+    if (tpexAll && tpexAll.tables && tpexAll.tables[0] && tpexAll.tables[0].data && tpexAll.tables[0].data.length > 0) gTpexAllStocks = tpexAll.tables[0].data;
+    else if (tpexAll && tpexAll.aaData && tpexAll.aaData.length > 0) gTpexAllStocks = tpexAll.aaData;
 
-    // Update institutional data
-    if (instStocks && instStocks.stat === 'OK' && instStocks.data) gInstStocks = instStocks.data;
-    if (tpexInst && tpexInst.tables && tpexInst.tables[0] && tpexInst.tables[0].data) gTpexInstStocks = tpexInst.tables[0].data;
-    else if (tpexInst && tpexInst.aaData) gTpexInstStocks = tpexInst.aaData;
+    // Update institutional data — only if we got actual rows (T86 is empty during trading hours)
+    if (instStocks && instStocks.stat === 'OK' && instStocks.data && instStocks.data.length > 0) gInstStocks = instStocks.data;
+    if (tpexInst && tpexInst.tables && tpexInst.tables[0] && tpexInst.tables[0].data && tpexInst.tables[0].data.length > 0) gTpexInstStocks = tpexInst.tables[0].data;
+    else if (tpexInst && tpexInst.aaData && tpexInst.aaData.length > 0) gTpexInstStocks = tpexInst.aaData;
 
     buildStockDB();
     rebuildMaps();
