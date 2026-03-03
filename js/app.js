@@ -85,6 +85,21 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 })();
 
 // ============================================================
+// Prevent page scroll when interacting with charts (all platforms)
+// Wheel → chart handles zoom; Drag → chart handles pan
+// ============================================================
+document.addEventListener('wheel', function(e) {
+  var el = e.target;
+  while (el) {
+    if (el.classList && el.classList.contains('chart-box')) {
+      e.preventDefault();
+      return;
+    }
+    el = el.parentElement;
+  }
+}, { passive: false });
+
+// ============================================================
 // CACHE & FETCH (with concurrency control)
 // ============================================================
 const _cache = {};
@@ -1081,6 +1096,7 @@ function initCharts() {
   sDif = chtMacd.addLineSeries({ color: '#00d4ff', lineWidth: isMobile ? 1.5 : 2, title: 'DIF' });
   sSig = chtMacd.addLineSeries({ color: '#ffd036', lineWidth: isMobile ? 1.5 : 2, title: 'Signal' });
   sHist = chtMacd.addHistogramSeries({ title: 'MACD' });
+
 }
 
 // ============================================================
