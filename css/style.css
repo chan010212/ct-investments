@@ -735,7 +735,24 @@
 
     .status-dot.error { background: var(--red); box-shadow: 0 0 8px var(--red); }
     .status-dot.loading { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: pulse 1.2s infinite; }
+    .status-dot.refreshing { background: var(--cyan); box-shadow: 0 0 12px var(--cyan); animation: pulse 0.5s ease; }
     @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 8px var(--cyan); } 50% { opacity: 0.3; box-shadow: 0 0 2px var(--cyan); } }
+
+    .refresh-btn {
+      margin-left: auto;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text2);
+      padding: 2px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .refresh-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+    .refresh-btn:active { transform: scale(0.95); }
+    .refresh-btn.spinning { animation: spin 0.8s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
     /* ===== SEARCH BAR ===== */
     .search-group {

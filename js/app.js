@@ -3440,57 +3440,94 @@ searchInput.addEventListener('keydown', e => {
 // AUTO-REFRESH during trading hours
 // ============================================================
 let gAutoRefreshTimer = null;
+let gLastRefreshTime = null;
+let gRefreshing = false;
+
+async function doAutoRefresh(silent) {
+  if (gRefreshing) return;
+  gRefreshing = true;
+  const now = new Date();
+
+  try {
+    // Show refresh indicator
+    const dot = document.getElementById('status-dot');
+    if (dot) dot.classList.add('refreshing');
+
+    // Refresh core data + institutional + OpenAPI fallback
+    const results = await Promise.allSettled([
+      API_TWSE.allStocks(gDate),
+      API_TPEX.allStocks(gDate),
+      API_TWSE.instStocks(gDate),
+      API_TPEX.instStocks(gDate),
+      apiFetch(OPENAPI_TPEX_ALL),
+    ]);
+    const allStocks = results[0].status === 'fulfilled' ? results[0].value : null;
+    const tpexAll   = results[1].status === 'fulfilled' ? results[1].value : null;
+    const instStocks = results[2].status === 'fulfilled' ? results[2].value : null;
+    const tpexInst   = results[3].status === 'fulfilled' ? results[3].value : null;
+    const openTpex   = results[4].status === 'fulfilled' ? results[4].value : null;
+
+    if (allStocks && allStocks.stat === 'OK' && allStocks.data) gAllStocks = allStocks.data;
+    if (tpexAll && tpexAll.tables && tpexAll.tables[0] && tpexAll.tables[0].data) gTpexAllStocks = tpexAll.tables[0].data;
+    else if (tpexAll && tpexAll.aaData) gTpexAllStocks = tpexAll.aaData;
+
+    // Update institutional data
+    if (instStocks && instStocks.stat === 'OK' && instStocks.data) gInstStocks = instStocks.data;
+    if (tpexInst && tpexInst.tables && tpexInst.tables[0] && tpexInst.tables[0].data) gTpexInstStocks = tpexInst.tables[0].data;
+    else if (tpexInst && tpexInst.aaData) gTpexInstStocks = tpexInst.aaData;
+
+    buildStockDB();
+    rebuildMaps();
+
+    // Fill TPEX gaps from OpenAPI (critical during trading hours)
+    if (Array.isArray(openTpex)) {
+      openTpex.forEach(item => {
+        const code = (item.SecuritiesCompanyCode || '').trim();
+        const name = (item.CompanyName || '').trim();
+        if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
+          gStockDB[code] = { name, market: 'tpex' };
+        }
+      });
+    }
+
+    // Re-render active panel (all tabs, not just overview)
+    const activePanel = document.querySelector('.panel.active');
+    if (activePanel) {
+      const id = activePanel.id;
+      if (id === 'panel-overview') renderOverview();
+      else if (id === 'panel-watchlist') renderWatchlist();
+      else if (id === 'panel-institutional') renderInstRank(document.querySelector('.inst-tab-btn.active')?.dataset?.inst || 'foreign');
+    }
+
+    gLastRefreshTime = now;
+    setStatus('', `已連線 — 上次更新 ${now.toLocaleTimeString('zh-TW')}`);
+
+    if (dot) setTimeout(() => dot.classList.remove('refreshing'), 500);
+  } catch(e) {
+    if (!silent) setStatus('error', '更新失敗，稍後重試');
+    const dot = document.getElementById('status-dot');
+    if (dot) dot.classList.remove('refreshing');
+  } finally {
+    gRefreshing = false;
+  }
+}
 
 function startAutoRefresh() {
   if (gAutoRefreshTimer) return;
-  gAutoRefreshTimer = setInterval(async () => {
+  gAutoRefreshTimer = setInterval(() => {
     const now = new Date();
     const h = now.getHours(), m = now.getMinutes(), dow = now.getDay();
     const isTrading = dow >= 1 && dow <= 5 && ((h === 9 && m >= 0) || (h >= 10 && h < 13) || (h === 13 && m <= 30));
     if (!isTrading) return;
+    doAutoRefresh(true);
+  }, 30000); // every 30 seconds
+}
 
-    try {
-      // Refresh core data + OpenAPI fallback
-      const results = await Promise.allSettled([
-        API_TWSE.allStocks(gDate),
-        API_TPEX.allStocks(gDate),
-        apiFetch(OPENAPI_TPEX_ALL),
-      ]);
-      const allStocks = results[0].status === 'fulfilled' ? results[0].value : null;
-      const tpexAll = results[1].status === 'fulfilled' ? results[1].value : null;
-      const openTpex = results[2].status === 'fulfilled' ? results[2].value : null;
-
-      if (allStocks && allStocks.stat === 'OK' && allStocks.data) gAllStocks = allStocks.data;
-      if (tpexAll && tpexAll.tables && tpexAll.tables[0] && tpexAll.tables[0].data) gTpexAllStocks = tpexAll.tables[0].data;
-      else if (tpexAll && tpexAll.aaData) gTpexAllStocks = tpexAll.aaData;
-
-      buildStockDB();
-      rebuildMaps();
-
-      // Fill TPEX gaps from OpenAPI (critical during trading hours)
-      if (Array.isArray(openTpex)) {
-        openTpex.forEach(item => {
-          const code = (item.SecuritiesCompanyCode || '').trim();
-          const name = (item.CompanyName || '').trim();
-          if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
-            gStockDB[code] = { name, market: 'tpex' };
-          }
-        });
-      }
-
-      // Re-render active panel
-      const activePanel = document.querySelector('.panel.active');
-      if (activePanel) {
-        const id = activePanel.id;
-        if (id === 'panel-overview') renderOverview();
-        else if (id === 'panel-watchlist') renderWatchlist();
-      }
-
-      setStatus('', `已連線 (${gDate.slice(0,4)}/${gDate.slice(4,6)}/${gDate.slice(6,8)}) — 上次更新 ${now.toLocaleTimeString('zh-TW')}`);
-    } catch(e) {
-      // silent fail on auto-refresh
-    }
-  }, 60000); // every 60 seconds
+async function manualRefresh() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) { btn.classList.add('spinning'); btn.disabled = true; }
+  await doAutoRefresh(false);
+  if (btn) { btn.classList.remove('spinning'); btn.disabled = false; }
 }
 
 // ============================================================
@@ -4227,7 +4264,12 @@ function updateClock() {
   const now = new Date();
   const h = now.getHours(), m = now.getMinutes(), dow = now.getDay();
   const isTrading = dow >= 1 && dow <= 5 && ((h === 9) || (h >= 10 && h < 13) || (h === 13 && m <= 30));
-  el.textContent = now.toLocaleTimeString('zh-TW') + (isTrading ? ' 盤中' : '');
+  let clockText = now.toLocaleTimeString('zh-TW') + (isTrading ? ' 盤中' : '');
+  if (isTrading && gLastRefreshTime) {
+    const ago = Math.round((now - gLastRefreshTime) / 1000);
+    clockText += ` (${ago}s前更新)`;
+  }
+  el.textContent = clockText;
 }
 
 init().then(async () => {

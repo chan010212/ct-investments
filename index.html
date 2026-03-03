@@ -85,6 +85,7 @@
     <div class="status-bar">
       <div class="status-dot loading" id="status-dot"></div>
       <span id="status-text">連線中...</span>
+      <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()" title="手動刷新">&#x21bb;</button>
     </div>
   </aside>
 
@@ -109,7 +110,10 @@
       <div class="card">
         <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
           <span><span class="icon">&#x1F4CA;</span> 市場總覽</span>
-          <span id="live-clock" style="font-size:13px;color:var(--text2);font-weight:400;font-variant-numeric:tabular-nums;"></span>
+          <span style="display:flex;align-items:center;gap:8px;">
+            <span id="live-clock" style="font-size:13px;color:var(--text2);font-weight:400;font-variant-numeric:tabular-nums;"></span>
+            <button class="refresh-btn" onclick="manualRefresh()" title="手動刷新" style="font-size:14px;padding:2px 8px;">&#x21bb;</button>
+          </span>
         </div>
         <div id="market-date" class="text-sm text-muted mb-16"></div>
         <div class="stat-grid" id="market-stats">
