@@ -786,43 +786,27 @@ async function fetchWatchlistMissing(codes) {
   if (codes.length === 0 || gWlFetching) return;
   gWlFetching = true;
   try {
-    var symbols = codes.map(function(code) {
-      var info = gStockDB[code];
-      if (info && (info.market === 'tpex' || info.market === 'emerging')) return code + '.TWO';
-      return code + '.TW';
+    // Try both suffixes in parallel for each stock
+    var allSymbols = [];
+    codes.forEach(function(code) {
+      allSymbols.push(code + '.TW');
+      allSymbols.push(code + '.TWO');
     });
-    var quotes = await fetchYahooQuotes(symbols);
-    // If some failed, retry with opposite suffix
-    var found = {};
+    var quotes = await fetchYahooQuotes(allSymbols);
     quotes.forEach(function(q) {
       var c = q.symbol.replace('.TWO', '').replace('.TW', '');
-      found[c] = true;
-      gWlYahooCache[c] = {
+      // Keep the one with highest price (avoid stale/zero entries)
+      var existing = gWlYahooCache[c];
+      var newEntry = {
         price: q.regularMarketPrice || 0,
         chg: q.regularMarketChange || 0,
         pct: q.regularMarketChangePercent || 0,
         vol: q.regularMarketVolume || 0,
       };
+      if (!existing || newEntry.price > existing.price) {
+        gWlYahooCache[c] = newEntry;
+      }
     });
-    // Retry missing with opposite suffix
-    var retry = codes.filter(function(c) { return !found[c]; });
-    if (retry.length > 0) {
-      var retrySymbols = retry.map(function(code) {
-        var info = gStockDB[code];
-        if (info && (info.market === 'tpex' || info.market === 'emerging')) return code + '.TW';
-        return code + '.TWO';
-      });
-      var retryQuotes = await fetchYahooQuotes(retrySymbols);
-      retryQuotes.forEach(function(q) {
-        var c = q.symbol.replace('.TWO', '').replace('.TW', '');
-        gWlYahooCache[c] = {
-          price: q.regularMarketPrice || 0,
-          chg: q.regularMarketChange || 0,
-          pct: q.regularMarketChangePercent || 0,
-          vol: q.regularMarketVolume || 0,
-        };
-      });
-    }
     // Re-render if user is still on watchlist
     var activePanel = document.querySelector('.panel.active');
     if (activePanel && activePanel.id === 'panel-watchlist') {
@@ -3507,6 +3491,17 @@ async function doAutoRefresh(silent) {
     const dot = document.getElementById('status-dot');
     if (dot) dot.classList.add('refreshing');
 
+    // Re-detect trading date (gDate might be stale from yesterday)
+    var freshDate = dateStr(0);
+    var testR = await Promise.race([
+      apiFetch(`${TWSE}/fund/BFI82U?response=json&date=${freshDate}`).catch(function() { return null; }),
+      sleep(3000).then(function() { return null; }),
+    ]);
+    if (testR && testR.stat === 'OK') gDate = freshDate;
+
+    // Clear fetch cache for fresh data
+    Object.keys(_cache).forEach(function(k) { delete _cache[k]; });
+
     // Refresh core data + institutional + OpenAPI fallback
     const results = await Promise.allSettled([
       API_TWSE.allStocks(gDate),
@@ -3543,6 +3538,10 @@ async function doAutoRefresh(silent) {
         }
       });
     }
+
+    // Clear Yahoo cache so watchlist fetches fresh prices
+    gWlYahooCache = {};
+    gWlFetching = false;
 
     // Re-render active panel (all tabs, not just overview)
     const activePanel = document.querySelector('.panel.active');

@@ -27,11 +27,14 @@
 
     html, body {
       height: 100%;
+      width: 100%;
       overflow: hidden;
       background: var(--bg);
       overscroll-behavior: none;
       -webkit-overflow-scrolling: auto;
-      touch-action: pan-x pan-y;
+      touch-action: none;
+      position: fixed;
+      top: 0; left: 0;
     }
 
     body {
@@ -1064,7 +1067,7 @@
     .card { animation: cardFadeIn 0.2s ease-out; }
 
     /* ===== PERFORMANCE ===== */
-    .panel { will-change: scroll-position; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+    .panel { will-change: scroll-position; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; touch-action: pan-y; }
     .nav-item, .btn, .stock-card, .rank-card, .dt-card { -webkit-tap-highlight-color: transparent; }
 
     /* --- TABLET --- */
