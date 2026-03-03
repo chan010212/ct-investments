@@ -809,7 +809,21 @@ async function fetchMisBatch(codes) {
       d.msgArray.forEach(function(info) {
         var code = info.c;
         if (!code) return;
-        var price = parseFloat(info.z) || parseFloat(info.pz) || 0;
+        // z = last trade price, pz = previous trade, y = yesterday close
+        // For low-volume stocks z might be "-", fallback chain:
+        var price = parseFloat(info.z);
+        if (!price || isNaN(price)) price = parseFloat(info.pz);
+        if (!price || isNaN(price)) {
+          // Use best bid/ask midpoint as estimate
+          var bestAsk = parseFloat((info.a || '').split('_')[0]);
+          var bestBid = parseFloat((info.b || '').split('_')[0]);
+          if (bestAsk > 0 && bestBid > 0) price = (bestAsk + bestBid) / 2;
+          else if (bestAsk > 0) price = bestAsk;
+          else if (bestBid > 0) price = bestBid;
+        }
+        if (!price || isNaN(price)) price = parseFloat(info.o); // open price
+        if (!price || isNaN(price)) price = parseFloat(info.y); // yesterday close
+        if (!price || isNaN(price)) price = 0;
         var prevClose = parseFloat(info.y) || 0;
         var chg = price > 0 && prevClose > 0 ? price - prevClose : 0;
         var pct = prevClose > 0 ? (chg / prevClose * 100) : 0;
@@ -3272,7 +3286,17 @@ async function fetchRealtimeQuote(code) {
     const info = d.msgArray?.[0];
     if (!info) return;
 
-    const lastPrice = parseFloat(info.z) || parseFloat(info.pz) || 0;
+    var lastPrice = parseFloat(info.z);
+    if (!lastPrice || isNaN(lastPrice)) lastPrice = parseFloat(info.pz);
+    if (!lastPrice || isNaN(lastPrice)) {
+      var ba = parseFloat((info.a||'').split('_')[0]), bb = parseFloat((info.b||'').split('_')[0]);
+      if (ba > 0 && bb > 0) lastPrice = (ba + bb) / 2;
+      else if (ba > 0) lastPrice = ba;
+      else if (bb > 0) lastPrice = bb;
+    }
+    if (!lastPrice || isNaN(lastPrice)) lastPrice = parseFloat(info.o);
+    if (!lastPrice || isNaN(lastPrice)) lastPrice = parseFloat(info.y);
+    if (!lastPrice || isNaN(lastPrice)) lastPrice = 0;
     const prevClose = parseFloat(info.y) || 0;
     const open = parseFloat(info.o) || 0;
     const high = parseFloat(info.h) || 0;
@@ -3399,10 +3423,10 @@ async function maybeLoadDayTrade(forceRefresh) {
   document.getElementById('dt-rank').innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
 
   try {
-    // Build unique date list
+    // Build unique date list — day trade stats are published NEXT DAY,
+    // so we need to go back further (skip weekends/holidays)
     var dates = [];
-    if (gDate) dates.push(gDate);
-    for (var i = 0; i <= 5; i++) {
+    for (var i = 1; i <= 10; i++) {
       var d = dateStr(i);
       if (dates.indexOf(d) === -1) dates.push(d);
     }
