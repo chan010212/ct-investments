@@ -781,6 +781,57 @@ const OPENAPI_TWSE_ALL = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DA
 const OPENAPI_TPEX_ALL = 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes';
 const OPENAPI_EMERGING = 'https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics';
 
+// ============================================================
+// TWSE MIS BATCH REALTIME QUOTES (5-second fresh data)
+// ============================================================
+let gMisCache = {}; // code → { price, chg, pct, vol, high, low, open, time }
+
+async function fetchMisBatch(codes) {
+  if (!codes || codes.length === 0) return {};
+  // Build ex_ch string: tse_2330.tw|otc_6547.tw|...
+  // Split into chunks of 20 to avoid URL too long / rate limit
+  var chunks = [];
+  for (var i = 0; i < codes.length; i += 20) {
+    chunks.push(codes.slice(i, i + 20));
+  }
+  for (var ci = 0; ci < chunks.length; ci++) {
+    var chunk = chunks[ci];
+    var exCh = chunk.map(function(code) {
+      var m = getMarket(code);
+      return (m === 'tpex' ? 'otc_' : 'tse_') + code + '.tw';
+    }).join('|');
+    try {
+      var url = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=' + encodeURIComponent(exCh) + '&json=1&delay=0&_=' + Date.now();
+      var r = await fetch('/api/proxy?url=' + encodeURIComponent(url));
+      if (!r.ok) continue;
+      var d = await r.json();
+      if (!d.msgArray) continue;
+      d.msgArray.forEach(function(info) {
+        var code = info.c;
+        if (!code) return;
+        var price = parseFloat(info.z) || parseFloat(info.pz) || 0;
+        var prevClose = parseFloat(info.y) || 0;
+        var chg = price > 0 && prevClose > 0 ? price - prevClose : 0;
+        var pct = prevClose > 0 ? (chg / prevClose * 100) : 0;
+        gMisCache[code] = {
+          price: price,
+          chg: chg,
+          pct: pct,
+          vol: parseInt(info.v) || 0,
+          high: parseFloat(info.h) || 0,
+          low: parseFloat(info.l) || 0,
+          open: parseFloat(info.o) || 0,
+          time: info.t || '',
+          name: info.n || '',
+        };
+      });
+    } catch(e) {}
+    // Rate limit: wait 2s between chunks to avoid IP ban (3 req / 5s)
+    if (ci < chunks.length - 1) await sleep(2000);
+  }
+  return gMisCache;
+}
+
 // Fetch missing watchlist stocks from Yahoo Finance
 async function fetchWatchlistMissing(codes) {
   if (codes.length === 0 || gWlFetching) return;
@@ -884,7 +935,12 @@ function switchTab(tabName, pushHistory) {
   }
 
   if (tabName === 'analysis' && !gChartsReady) initCharts();
-  if (tabName === 'watchlist') renderWatchlist();
+  if (tabName === 'watchlist') {
+    renderWatchlist();
+    // Fetch MIS real-time quotes in background, then re-render
+    var wlCodes = wlGet();
+    if (wlCodes.length > 0) fetchMisBatch(wlCodes).then(function() { renderWatchlist(); });
+  }
   if (tabName === 'sectors') maybeLoadSectors();
   if (tabName === 'global') maybeLoadGlobal();
   if (tabName === 'daytrade') maybeLoadDayTrade();
@@ -1692,8 +1748,12 @@ function renderWatchlist() {
   var sMap = gStockMap;
   var iMap = gInstMap;
 
-  // Sort helper
+  // Sort helper — prioritize MIS real-time data
   function getSortVal(code) {
+    var mis = gMisCache[code];
+    if (mis && mis.price > 0) {
+      return { pct: mis.pct || 0, vol: mis.vol || 0, name: mis.name || (gStockDB[code] ? gStockDB[code].name : code) };
+    }
     var entry = sMap[code];
     if (!entry) {
       var yc = gWlYahooCache[code];
@@ -1720,6 +1780,46 @@ function renderWatchlist() {
     var entry = sMap[code];
     var inst = iMap[code];
     var dbInfo = gStockDB[code];
+    var mis = gMisCache[code];
+
+    // If MIS has real-time data, use it (overrides batch API)
+    if (mis && mis.price > 0) {
+      var mName = mis.name || (dbInfo ? dbInfo.name : '');
+      var mIsUp = mis.chg > 0;
+      var mLots = mis.vol >= 1000 ? fmtNum(Math.round(mis.vol / 1000), 0) + ' 張' : fmtNum(mis.vol, 0) + ' 股';
+      var mBarColor = mIsUp ? 'linear-gradient(90deg, var(--red), rgba(255,56,96,0.3))' : mis.chg < 0 ? 'linear-gradient(90deg, var(--green), rgba(0,232,123,0.3))' : 'linear-gradient(90deg, var(--cyan), rgba(0,240,255,0.2))';
+      var mMkt = dbInfo && dbInfo.market === 'twse' ? '<span class="tag-market tag-twse">上市</span>' : dbInfo && dbInfo.market === 'tpex' ? '<span class="tag-market tag-tpex">上櫃</span>' : '<span class="tag-market" style="border-color:var(--yellow);color:var(--yellow);">興櫃</span>';
+
+      var mInstHtml = '';
+      if (inst) {
+        var fCls = inst.f > 0 ? 'up' : inst.f < 0 ? 'down' : '';
+        var tCls = inst.t > 0 ? 'up' : inst.t < 0 ? 'down' : '';
+        var dCls = inst.d > 0 ? 'up' : inst.d < 0 ? 'down' : '';
+        mInstHtml = '<div class="sc-inst">'
+          + '<div class="sc-inst-item"><span class="sc-inst-label">外資</span><span class="' + fCls + '">' + (inst.f > 0 ? '+' : '') + fmtShares(inst.f) + '</span></div>'
+          + '<div class="sc-inst-item"><span class="sc-inst-label">投信</span><span class="' + tCls + '">' + (inst.t > 0 ? '+' : '') + fmtShares(inst.t) + '</span></div>'
+          + '<div class="sc-inst-item"><span class="sc-inst-label">自營</span><span class="' + dCls + '">' + (inst.d > 0 ? '+' : '') + fmtShares(inst.d) + '</span></div>'
+          + '</div>';
+      }
+
+      html += '<div class="stock-card" onclick="goAnalyze(\'' + code + '\')">'
+        + '<div class="sc-bar" style="background:' + mBarColor + ';"></div>'
+        + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
+        + '<div class="sc-top"><div>'
+        + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + mName + '</span> ' + mMkt + '</div>'
+        + '</div><div>'
+        + '<div class="sc-price ' + (mIsUp ? 'up' : mis.chg < 0 ? 'down' : '') + '">' + fmtNum(mis.price, 2) + '</div>'
+        + '<div class="sc-change ' + (mIsUp ? 'up' : mis.chg < 0 ? 'down' : '') + '">' + (mis.chg > 0 ? '&#x25B2;+' : mis.chg < 0 ? '&#x25BC;' : '') + fmtNum(mis.chg, 2) + ' (' + (mis.pct > 0 ? '+' : '') + mis.pct.toFixed(2) + '%) <span style="font-size:10px;color:var(--text2);">' + mis.time + '</span></div>'
+        + '</div></div>'
+        + '<div class="sc-stats">'
+        + '<div class="sc-stat"><div class="sc-stat-label">成交量</div><div class="sc-stat-val">' + mLots + '</div></div>'
+        + '<div class="sc-stat"><div class="sc-stat-label">最高</div><div class="sc-stat-val up">' + fmtNum(mis.high, 2) + '</div></div>'
+        + '<div class="sc-stat"><div class="sc-stat-label">最低</div><div class="sc-stat-val down">' + fmtNum(mis.low, 2) + '</div></div>'
+        + '</div>'
+        + mInstHtml
+        + '</div>';
+      return;
+    }
 
     if (!entry) {
       // Try Yahoo Finance cache
@@ -3556,9 +3656,11 @@ async function doAutoRefresh(silent) {
       });
     }
 
-    // Clear Yahoo cache so watchlist fetches fresh prices
-    gWlYahooCache = {};
-    gWlFetching = false;
+    // Fetch MIS real-time quotes for watchlist stocks (5-second fresh!)
+    var wlCodes = wlGet();
+    if (wlCodes.length > 0) {
+      await fetchMisBatch(wlCodes);
+    }
 
     // Re-render active panel (all tabs, not just overview)
     const activePanel = document.querySelector('.panel.active');
