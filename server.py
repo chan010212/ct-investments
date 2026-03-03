@@ -19,6 +19,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 import ssl
+import http.cookiejar
 from pathlib import Path
 from datetime import datetime
 
@@ -623,24 +624,36 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(cached['data'])
                 return
 
-            req = urllib.request.Request(url, headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': 'application/json',
-                'Referer': f'https://{parsed.hostname}/',
-            })
+            hostname = parsed.hostname or ''
 
             # TWSE/MOPS have broken SSL cert (missing Subject Key Identifier)
             # Use relaxed SSL context for these domains
             ctx = None
-            hostname = parsed.hostname or ''
             if 'twse.com.tw' in hostname or 'mops.twse.com.tw' in hostname:
                 ctx = ssl.create_default_context()
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
 
-            with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
-                data = resp.read()
-                content_type = resp.headers.get('Content-Type', 'application/json')
+            # Build opener with cookie support (handles WAF cookie-based challenges)
+            cj = http.cookiejar.CookieJar()
+            handlers = [urllib.request.HTTPCookieProcessor(cj)]
+            if ctx:
+                handlers.append(urllib.request.HTTPSHandler(context=ctx))
+            opener = urllib.request.build_opener(*handlers)
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Referer': f'https://{hostname}/',
+                'Connection': 'keep-alive',
+            }
+
+            req = urllib.request.Request(url, headers=headers)
+            resp = opener.open(req, timeout=15)
+            data = resp.read()
+            content_type = resp.headers.get('Content-Type', 'application/json')
+            resp.close()
 
             # Cache the response server-side
             proxy_cache_set(url, data, content_type)
@@ -655,7 +668,13 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(data)
 
         except urllib.error.HTTPError as e:
-            self.send_error(e.code, str(e.reason))
+            body = e.read()
+            # If upstream returns a redirect error, try to return the body content
+            # (some WAFs return data in error responses)
+            if e.code in (301, 302, 303, 307, 308):
+                self.send_error(502, f'Upstream redirect not followed: {e.code}')
+            else:
+                self.send_error(e.code, str(e.reason))
         except urllib.error.URLError as e:
             self.send_error(502, f'Upstream error: {e.reason}')
         except Exception as e:

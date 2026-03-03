@@ -211,7 +211,32 @@ const API_TPEX = {
 // FIND LATEST TRADING DATE
 // ============================================================
 async function findTradingDate() {
-  // Try today first (fast path for weekdays), then fall back to previous days
+  // Strategy 1: Use OpenAPI FMTQIK (always works, has latest date)
+  try {
+    const fmtqik = await apiFetch(OPENAPI_FMTQIK);
+    if (Array.isArray(fmtqik) && fmtqik.length > 0) {
+      // Date is in ROC format like "1150302", convert to Western "20260302"
+      const rocDate = fmtqik[fmtqik.length - 1].Date || fmtqik[0].Date;
+      if (rocDate && rocDate.length === 7) {
+        const y = parseInt(rocDate.slice(0, 3)) + 1911;
+        return `${y}${rocDate.slice(3)}`;
+      }
+    }
+  } catch(e) { console.warn('[CT] FMTQIK date detection failed:', e.message); }
+
+  // Strategy 2: Use OpenAPI STOCK_DAY_ALL (has Date field)
+  try {
+    const stocks = await apiFetch(OPENAPI_TWSE_ALL);
+    if (Array.isArray(stocks) && stocks.length > 0) {
+      const rocDate = stocks[0].Date;
+      if (rocDate && rocDate.length === 7) {
+        const y = parseInt(rocDate.slice(0, 3)) + 1911;
+        return `${y}${rocDate.slice(3)}`;
+      }
+    }
+  } catch(e) { console.warn('[CT] OpenAPI date detection failed:', e.message); }
+
+  // Strategy 3: Traditional BFI82U (fallback, may be blocked on some hosts)
   for (let i = 0; i < 7; i++) {
     try {
       const d = dateStr(i);
@@ -801,10 +826,15 @@ function rebuildMaps() {
   });
 }
 
-// OpenAPI stock lists (reliable, no date dependency)
-const OPENAPI_TWSE_ALL = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
-const OPENAPI_TPEX_ALL = 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes';
-const OPENAPI_EMERGING = 'https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics';
+// OpenAPI endpoints (reliable, not blocked by TWSE WAF, no date dependency)
+const OPENAPI_TWSE_ALL   = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL';
+const OPENAPI_TPEX_ALL   = 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes';
+const OPENAPI_EMERGING   = 'https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics';
+const OPENAPI_TPEX_CLOSE = 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes';
+const OPENAPI_BWIBBU     = 'https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL';
+const OPENAPI_MI_MARGN   = 'https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN';
+const OPENAPI_FMTQIK     = 'https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK';
+const OPENAPI_MI_INDEX   = 'https://openapi.twse.com.tw/v1/exchangeReport/MI_INDEX';
 
 // ============================================================
 // TWSE MIS BATCH REALTIME QUOTES (5-second fresh data)
@@ -2091,15 +2121,23 @@ async function analyzeStock(code) {
       isYahoo = r.isYahoo;
       market = 'tpex'; // treat as tpex for subsequent API calls
     } else if (market === 'tpex') {
-      // Known TPEx stock
+      // Known TPEx stock — try TPEx first, fallback to Yahoo
       const r = await fetchTpexHistory(code);
       rawRows = r.rawRows;
       stockName = r.stockName;
+      if (rawRows.length === 0) {
+        const ry = await fetchYahooHistory(code);
+        rawRows = ry.rawRows; stockName = ry.stockName; isYahoo = ry.isYahoo;
+      }
     } else if (market === 'twse') {
-      // Known TWSE stock
+      // Known TWSE stock — try TWSE first, fallback to Yahoo
       const r = await fetchTwseHistory(code);
       rawRows = r.rawRows;
       stockName = r.stockName;
+      if (rawRows.length === 0) {
+        const ry = await fetchYahooHistory(code);
+        rawRows = ry.rawRows; stockName = ry.stockName; isYahoo = ry.isYahoo;
+      }
     } else {
       // Unknown — try TWSE first, then TPEx, then Yahoo
       const r1 = await fetchTwseHistory(code);
@@ -2893,15 +2931,18 @@ async function init() {
     setStatus('loading', '載入市場資料（上市+上櫃）...');
 
     // Fetch essential data + OpenAPI stock lists in parallel
+    // OpenAPI endpoints are primary (not blocked by TWSE WAF)
+    // Traditional endpoints are secondary fallback
     const results = await Promise.allSettled([
-      API_TWSE.instSummary(gDate),        // [0]
-      API_TWSE.instStocks(gDate),         // [1]
-      API_TWSE.allStocks(gDate),          // [2]
-      API_TPEX.allStocks(gDate),          // [3]
-      API_TPEX.instStocks(gDate),         // [4]
+      API_TWSE.instSummary(gDate),        // [0] traditional (may fail)
+      API_TWSE.instStocks(gDate),         // [1] traditional (may fail)
+      API_TWSE.allStocks(gDate),          // [2] traditional (may fail)
+      API_TPEX.allStocks(gDate),          // [3] traditional (may fail)
+      API_TPEX.instStocks(gDate),         // [4] traditional (may fail)
       apiFetch(OPENAPI_TWSE_ALL),         // [5] OpenAPI 上市 (reliable)
       apiFetch(OPENAPI_TPEX_ALL),         // [6] OpenAPI 上櫃 (reliable)
-      apiFetch(OPENAPI_EMERGING),         // [7] OpenAPI 興櫃
+      apiFetch(OPENAPI_EMERGING),         // [7] OpenAPI 興櫃 (reliable)
+      apiFetch(OPENAPI_TPEX_CLOSE),       // [8] OpenAPI 上櫃收盤 (reliable)
     ]);
 
     const instSummary  = results[0].status === 'fulfilled' ? results[0].value : null;
@@ -2912,8 +2953,24 @@ async function init() {
     const openTwse     = results[5].status === 'fulfilled' ? results[5].value : null;
     const openTpex     = results[6].status === 'fulfilled' ? results[6].value : null;
     const openEmerging = results[7].status === 'fulfilled' ? results[7].value : null;
+    const openTpexClose = results[8].status === 'fulfilled' ? results[8].value : null;
 
-    if (allStocks && allStocks.stat === 'OK' && allStocks.data) gAllStocks = allStocks.data;
+    // --- TWSE all stocks: prefer traditional, fallback to OpenAPI ---
+    if (allStocks && allStocks.stat === 'OK' && allStocks.data) {
+      gAllStocks = allStocks.data;
+    } else if (Array.isArray(openTwse) && openTwse.length > 0) {
+      // Convert OpenAPI format to traditional TWSE array format
+      // Traditional: [code, name, volume, txn, value, open, high, low, close, change, ...]
+      console.log('[CT] Traditional TWSE failed, using OpenAPI STOCK_DAY_ALL (' + openTwse.length + ' rows)');
+      gAllStocks = openTwse.map(item => [
+        item.Code || '', item.Name || '',
+        item.TradeVolume || '0', item.Transaction || '0', item.TradeValue || '0',
+        item.OpeningPrice || '--', item.HighestPrice || '--', item.LowestPrice || '--',
+        item.ClosingPrice || '--', item.Change || '0',
+        '', '', '', '', '', '', ''
+      ]);
+    }
+
     if (instStocks && instStocks.stat === 'OK' && instStocks.data && instStocks.data.length > 0) gInstStocks = instStocks.data;
 
     // TPEx data parsing (may be empty during trading hours!)
@@ -2921,6 +2978,17 @@ async function init() {
       gTpexAllStocks = tpexAll.tables[0].data;
     } else if (tpexAll && tpexAll.aaData) {
       gTpexAllStocks = tpexAll.aaData;
+    } else if (Array.isArray(openTpexClose) && openTpexClose.length > 0) {
+      // Fallback: convert OpenAPI TPEX close data to traditional format
+      // Traditional TPEX: [code, name, close, change, open, high, low, volume, value, txn, ...]
+      console.log('[CT] Traditional TPEX failed, using OpenAPI tpex_close (' + openTpexClose.length + ' rows)');
+      gTpexAllStocks = openTpexClose.map(item => [
+        item.SecuritiesCompanyCode || '', item.CompanyName || '',
+        item.ClosingPrice || '--', item.Change || '0',
+        item.OpeningPrice || '--', item.HighestPrice || '--', item.LowestPrice || '--',
+        item.TradingShares || '0', item.TradeValue || '0', item.Transaction || '0',
+        '', '', '', '', '', '', ''
+      ]);
     }
 
     if (tpexInst && tpexInst.tables && tpexInst.tables[0] && tpexInst.tables[0].data && tpexInst.tables[0].data.length > 0) {
@@ -3671,26 +3739,51 @@ async function doAutoRefresh(silent) {
     // Clear fetch cache for fresh data
     Object.keys(_cache).forEach(function(k) { delete _cache[k]; });
 
-    // Refresh core data + OpenAPI fallback
-    // Note: use gDate from init (validated trading date) — don't change it mid-session
-    // Stock price APIs (allStocks) return live data for gDate during trading hours
-    // Institutional T86 data only updates after market close, keep previous data if empty
+    // Refresh core data — OpenAPI as fallback when traditional endpoints are blocked
     const results = await Promise.allSettled([
       API_TWSE.allStocks(gDate),
       API_TPEX.allStocks(gDate),
       API_TWSE.instStocks(gDate),
       API_TPEX.instStocks(gDate),
+      apiFetch(OPENAPI_TWSE_ALL),
       apiFetch(OPENAPI_TPEX_ALL),
+      apiFetch(OPENAPI_TPEX_CLOSE),
     ]);
-    const allStocks = results[0].status === 'fulfilled' ? results[0].value : null;
-    const tpexAll   = results[1].status === 'fulfilled' ? results[1].value : null;
+    const allStocks  = results[0].status === 'fulfilled' ? results[0].value : null;
+    const tpexAll    = results[1].status === 'fulfilled' ? results[1].value : null;
     const instStocks = results[2].status === 'fulfilled' ? results[2].value : null;
     const tpexInst   = results[3].status === 'fulfilled' ? results[3].value : null;
-    const openTpex   = results[4].status === 'fulfilled' ? results[4].value : null;
+    const openTwse   = results[4].status === 'fulfilled' ? results[4].value : null;
+    const openTpex   = results[5].status === 'fulfilled' ? results[5].value : null;
+    const openTpexC  = results[6].status === 'fulfilled' ? results[6].value : null;
 
-    if (allStocks && allStocks.stat === 'OK' && allStocks.data && allStocks.data.length > 0) gAllStocks = allStocks.data;
-    if (tpexAll && tpexAll.tables && tpexAll.tables[0] && tpexAll.tables[0].data && tpexAll.tables[0].data.length > 0) gTpexAllStocks = tpexAll.tables[0].data;
-    else if (tpexAll && tpexAll.aaData && tpexAll.aaData.length > 0) gTpexAllStocks = tpexAll.aaData;
+    // TWSE all stocks: traditional first, OpenAPI fallback
+    if (allStocks && allStocks.stat === 'OK' && allStocks.data && allStocks.data.length > 0) {
+      gAllStocks = allStocks.data;
+    } else if (Array.isArray(openTwse) && openTwse.length > 0) {
+      gAllStocks = openTwse.map(item => [
+        item.Code || '', item.Name || '',
+        item.TradeVolume || '0', item.Transaction || '0', item.TradeValue || '0',
+        item.OpeningPrice || '--', item.HighestPrice || '--', item.LowestPrice || '--',
+        item.ClosingPrice || '--', item.Change || '0',
+        '', '', '', '', '', '', ''
+      ]);
+    }
+
+    // TPEX all stocks: traditional first, OpenAPI fallback
+    if (tpexAll && tpexAll.tables && tpexAll.tables[0] && tpexAll.tables[0].data && tpexAll.tables[0].data.length > 0) {
+      gTpexAllStocks = tpexAll.tables[0].data;
+    } else if (tpexAll && tpexAll.aaData && tpexAll.aaData.length > 0) {
+      gTpexAllStocks = tpexAll.aaData;
+    } else if (Array.isArray(openTpexC) && openTpexC.length > 0) {
+      gTpexAllStocks = openTpexC.map(item => [
+        item.SecuritiesCompanyCode || '', item.CompanyName || '',
+        item.ClosingPrice || '--', item.Change || '0',
+        item.OpeningPrice || '--', item.HighestPrice || '--', item.LowestPrice || '--',
+        item.TradingShares || '0', item.TradeValue || '0', item.Transaction || '0',
+        '', '', '', '', '', '', ''
+      ]);
+    }
 
     // Update institutional data — only if we got actual rows (T86 is empty during trading hours)
     if (instStocks && instStocks.stat === 'OK' && instStocks.data && instStocks.data.length > 0) gInstStocks = instStocks.data;
