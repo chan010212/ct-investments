@@ -29,6 +29,9 @@
       height: 100%;
       overflow: hidden;
       background: var(--bg);
+      overscroll-behavior: none;
+      -webkit-overflow-scrolling: auto;
+      touch-action: pan-x pan-y;
     }
 
     body {
@@ -99,8 +102,10 @@
     .app {
       display: flex;
       height: 100vh;
-      position: relative;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
       z-index: 1;
+      overflow: hidden;
     }
 
     /* ===== SIDEBAR ===== */
@@ -252,12 +257,14 @@
       display: flex;
       flex-direction: column;
       background: transparent;
+      min-width: 0;
     }
 
     .panel {
       display: none;
       flex: 1;
       overflow-y: auto;
+      overscroll-behavior-y: contain;
       padding: 24px;
     }
 
@@ -590,11 +597,35 @@
       border: 1px solid var(--border);
       border-radius: 10px;
       overflow: hidden;
+      touch-action: none;
     }
 
     .chart-main { height: 420px; }
     .chart-intraday { height: 220px; }
     .chart-sm { height: 160px; }
+
+    .chart-zoom-controls {
+      display: flex;
+      gap: 4px;
+    }
+    .chart-zoom-btn {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg2);
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      line-height: 1;
+    }
+    .chart-zoom-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+    .chart-zoom-btn:active { transform: scale(0.9); background: rgba(0,240,255,0.1); }
 
     /* ===== WATCHLIST ITEM ===== */
     .wl-item {
@@ -1033,7 +1064,7 @@
     .card { animation: cardFadeIn 0.2s ease-out; }
 
     /* ===== PERFORMANCE ===== */
-    .panel { will-change: scroll-position; -webkit-overflow-scrolling: touch; }
+    .panel { will-change: scroll-position; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
     .nav-item, .btn, .stock-card, .rank-card, .dt-card { -webkit-tap-highlight-color: transparent; }
 
     /* --- TABLET --- */
@@ -1054,10 +1085,12 @@
         order: 2;
         overflow-x: auto;
         overflow-y: hidden;
+        overscroll-behavior-x: contain;
         flex-shrink: 0;
         padding-bottom: env(safe-area-inset-bottom, 0);
         background: rgba(6, 11, 24, 0.97);
         position: relative;
+        touch-action: pan-x;
       }
 
       /* Scroll fade hint on right edge */
@@ -1578,6 +1611,7 @@
       overflow: hidden;
       flex-shrink: 0;
       position: relative;
+      touch-action: none;
     }
 
     .ticker-bar::after {

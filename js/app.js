@@ -65,6 +65,26 @@ function toTpexDate(yyyymmdd) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ============================================================
+// iOS PWA: prevent whole-page drag/bounce
+// ============================================================
+(function() {
+  if (!navigator.standalone && !window.matchMedia('(display-mode: standalone)').matches) return;
+  document.addEventListener('touchmove', function(e) {
+    // Allow scrolling inside panels and scrollable containers
+    var el = e.target;
+    while (el && el !== document.body) {
+      var style = window.getComputedStyle(el);
+      var oy = style.overflowY;
+      var ox = style.overflowX;
+      if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) return;
+      if ((ox === 'auto' || ox === 'scroll') && el.scrollWidth > el.clientWidth) return;
+      el = el.parentElement;
+    }
+    e.preventDefault();
+  }, { passive: false });
+})();
+
+// ============================================================
 // CACHE & FETCH (with concurrency control)
 // ============================================================
 const _cache = {};
@@ -2667,6 +2687,24 @@ function handleResize() {
 }
 window.addEventListener('resize', handleResize);
 window.addEventListener('orientationchange', () => setTimeout(handleResize, 150));
+
+// K-line chart zoom controls
+function zoomChart(action) {
+  if (!chtMain) return;
+  var ts = chtMain.timeScale();
+  if (action === 'reset') {
+    ts.fitContent();
+    return;
+  }
+  var range = ts.getVisibleLogicalRange();
+  if (!range) return;
+  var bars = range.to - range.from;
+  var center = (range.from + range.to) / 2;
+  var factor = action === 'in' ? 0.6 : 1.6;
+  var newBars = Math.max(10, Math.round(bars * factor));
+  var half = newBars / 2;
+  ts.setVisibleLogicalRange({ from: center - half, to: center + half });
+}
 
 // ============================================================
 // APP INIT

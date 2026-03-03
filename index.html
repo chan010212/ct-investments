@@ -253,8 +253,15 @@
             <div id="realtime-info" class="text-sm text-muted" style="margin-top:8px;"></div>
           </div>
         </div>
-        <div class="card">
-          <div class="card-title">&#x1F4C8; K 線圖 / 均線 / 布林通道</div>
+        <div class="card" style="position:relative;">
+          <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>&#x1F4C8; K 線圖 / 均線 / 布林通道</span>
+            <div class="chart-zoom-controls">
+              <button class="chart-zoom-btn" onclick="zoomChart('in')" title="放大">+</button>
+              <button class="chart-zoom-btn" onclick="zoomChart('reset')" title="重置">&#x25CE;</button>
+              <button class="chart-zoom-btn" onclick="zoomChart('out')" title="縮小">&minus;</button>
+            </div>
+          </div>
           <div id="main-chart" class="chart-box chart-main"></div>
         </div>
         <div class="grid-2">
