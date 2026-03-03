@@ -100,6 +100,18 @@ document.addEventListener('wheel', function(e) {
 }, { passive: false });
 
 // ============================================================
+// Prevent horizontal scroll drift on desktop
+// (text selection drag can bypass overflow:hidden in all browsers)
+// ============================================================
+window.addEventListener('scroll', function() {
+  if (window.scrollX !== 0) window.scrollTo(0, window.scrollY);
+});
+document.addEventListener('scroll', function() {
+  if (document.documentElement.scrollLeft !== 0) document.documentElement.scrollLeft = 0;
+  if (document.body.scrollLeft !== 0) document.body.scrollLeft = 0;
+}, true);
+
+// ============================================================
 // CACHE & FETCH (with concurrency control)
 // ============================================================
 const _cache = {};
@@ -1464,6 +1476,12 @@ function renderInstSummary(data) {
 // RENDER: INSTITUTIONAL PER-STOCK RANK (TWSE + TPEx)
 // ============================================================
 function renderInstRank(type) {
+  if (gInstStocks.length === 0 && gTpexInstStocks.length === 0) {
+    var msg = '<div class="text-muted" style="padding:20px;text-align:center;">盤中尚無法人個股買賣超資料，收盤後自動更新</div>';
+    document.getElementById('inst-buy-rank').innerHTML = msg;
+    document.getElementById('inst-sell-rank').innerHTML = msg;
+    return;
+  }
   // TWSE T86 fields: 0=code 1=name 2..4=外資(買/賣/差) 5..7=外資自營 8..10=投信 11=自營差 12..14=自營自 15..17=避險 18=三大合計
   let col;
   switch (type) {
@@ -2852,7 +2870,7 @@ async function init() {
     const openEmerging = results[7].status === 'fulfilled' ? results[7].value : null;
 
     if (allStocks && allStocks.stat === 'OK' && allStocks.data) gAllStocks = allStocks.data;
-    if (instStocks && instStocks.stat === 'OK' && instStocks.data) gInstStocks = instStocks.data;
+    if (instStocks && instStocks.stat === 'OK' && instStocks.data && instStocks.data.length > 0) gInstStocks = instStocks.data;
 
     // TPEx data parsing (may be empty during trading hours!)
     if (tpexAll && tpexAll.tables && tpexAll.tables[0] && tpexAll.tables[0].data) {
@@ -2861,18 +2879,21 @@ async function init() {
       gTpexAllStocks = tpexAll.aaData;
     }
 
-    if (tpexInst && tpexInst.tables && tpexInst.tables[0] && tpexInst.tables[0].data) {
+    if (tpexInst && tpexInst.tables && tpexInst.tables[0] && tpexInst.tables[0].data && tpexInst.tables[0].data.length > 0) {
       gTpexInstStocks = tpexInst.tables[0].data;
-    } else if (tpexInst && tpexInst.aaData) {
+    } else if (tpexInst && tpexInst.aaData && tpexInst.aaData.length > 0) {
       gTpexInstStocks = tpexInst.aaData;
     }
 
     // If institutional per-stock data is empty (T86 not ready during trading hours),
-    // try previous trading days
+    // try previous trading days with delay to avoid TWSE rate-limiting
     if (gInstStocks.length === 0) {
-      for (let i = 1; i <= 5; i++) {
+      console.log('[CT] T86 empty for today, trying previous dates...');
+      await sleep(2000); // wait for TWSE rate limit to reset
+      for (let i = 1; i <= 7; i++) {
         try {
           const prevDate = dateStr(i);
+          console.log('[CT] Trying T86 for ' + prevDate + '...');
           const [prevInst, prevTpexInst] = await Promise.allSettled([
             API_TWSE.instStocks(prevDate),
             API_TPEX.instStocks(prevDate),
@@ -2883,9 +2904,11 @@ async function init() {
             gInstStocks = pi.data;
             if (pti && pti.tables && pti.tables[0] && pti.tables[0].data && pti.tables[0].data.length > 0) gTpexInstStocks = pti.tables[0].data;
             else if (pti && pti.aaData && pti.aaData.length > 0) gTpexInstStocks = pti.aaData;
+            console.log('[CT] T86 loaded from ' + prevDate + ' (' + gInstStocks.length + ' rows)');
             break;
           }
-        } catch(e) {}
+        } catch(e) { console.warn('[CT] T86 retry error:', e); }
+        await sleep(1500); // respect TWSE rate limit between retries
       }
     }
 
