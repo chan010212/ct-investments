@@ -3512,6 +3512,7 @@ let gOpinionLoaded = false;
 let gOpinionSuccess = false;
 let gBriefingLoaded = false;
 let gBriefingSuccess = false;
+let gBriefingDate = null;
 let _brPollTimer = null;
 
 function maybeLoadSectors() {
@@ -3841,6 +3842,7 @@ async function doAutoRefresh(silent) {
       if (id === 'panel-overview') renderOverview();
       else if (id === 'panel-watchlist') renderWatchlist();
       else if (id === 'panel-institutional') renderInstRank(document.querySelector('.inst-tab-btn.active')?.dataset?.inst || 'foreign');
+      else if (id === 'panel-briefing') maybeLoadBriefing();
     }
 
     gLastRefreshTime = now;
@@ -4595,7 +4597,10 @@ async function maybeLoadOpinion() {
 // MORNING BRIEFING (晨訊)
 // ============================================================
 async function maybeLoadBriefing() {
-  if (gBriefingLoaded && gBriefingSuccess) return;
+  var today = new Date().toLocaleDateString('sv');  // YYYY-MM-DD
+  if (gBriefingLoaded && gBriefingSuccess && gBriefingDate === today) return;
+  // New day → force reload
+  if (gBriefingDate && gBriefingDate !== today) { gBriefingSuccess = false; }
   gBriefingLoaded = true;
   gBriefingSuccess = false;
   document.getElementById('briefing-container').innerHTML = '<div class="loading-box"><div class="spinner"></div><div>載入晨訊...</div></div>';
@@ -4789,7 +4794,8 @@ function brNews(news) {
 function renderBriefing(data) {
   var s = data.sentiment;
 
-  // Date
+  // Date — save for daily refresh check
+  gBriefingDate = new Date().toLocaleDateString('sv');
   var dStr = data.date ? data.date.slice(0,4) + '/' + data.date.slice(4,6) + '/' + data.date.slice(6,8) : '';
   document.getElementById('briefing-date').textContent = dStr;
 
@@ -4963,5 +4969,11 @@ document.addEventListener('visibilitychange', () => {
     if (!_clockTimer) { updateClock(); _clockTimer = setInterval(updateClock, 1000); }
     startAutoRefresh();
     doAutoRefresh(true); // Refresh data after returning
+    // Check if briefing needs daily refresh (e.g. user left app open overnight)
+    if (gBriefingSuccess && gBriefingDate !== new Date().toLocaleDateString('sv')) {
+      gBriefingLoaded = false;
+      gBriefingSuccess = false;
+      if (document.querySelector('#panel-briefing.active')) maybeLoadBriefing();
+    }
   }
 });
