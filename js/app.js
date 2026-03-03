@@ -148,7 +148,7 @@ async function _drainQ() {
   }
 }
 
-async function _doFetch(url) {
+async function _doFetch(url, _retry) {
   const c = cacheGet(url);
   if (c) return c;
   await sleep(REQUEST_DELAY * Math.random());
@@ -159,11 +159,25 @@ async function _doFetch(url) {
     fetchUrl = '/api/proxy?url=' + encodeURIComponent(url);
   }
 
-  const r = await fetch(fetchUrl);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const d = await r.json();
-  cacheSet(url, d);
-  return d;
+  // Timeout: abort after 12 seconds to prevent hanging
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const r = await fetch(fetchUrl, { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    cacheSet(url, d);
+    return d;
+  } catch(e) {
+    clearTimeout(timer);
+    // Retry once on failure (rate limit, timeout, network)
+    if (!_retry) {
+      await sleep(1500);
+      return _doFetch(url, true);
+    }
+    throw e;
+  }
 }
 
 // ============================================================
@@ -3455,33 +3469,20 @@ async function maybeLoadDayTrade(forceRefresh) {
   document.getElementById('dt-rank').innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
 
   try {
-    // Build unique date list — day trade stats are published NEXT DAY,
-    // so we need to go back further (skip weekends/holidays)
-    var dates = [];
-    for (var i = 1; i <= 10; i++) {
-      var d = dateStr(i);
-      if (dates.indexOf(d) === -1) dates.push(d);
-    }
-
-    // Fetch ALL dates in parallel (much faster than sequential)
-    var results = await Promise.allSettled(
-      dates.map(function(d) {
-        return API_TWSE.dayTrade(d).then(function(data) { return { date: d, data: data }; });
-      })
-    );
-
-    // Find first successful result with actual data
+    // Day trade stats are published NEXT business day.
+    // Try dates sequentially (most recent first) to avoid TWSE rate limiting.
     var found = false;
-    for (var j = 0; j < dates.length; j++) {
-      var r = results[j];
-      if (r.status === 'fulfilled' && r.value && r.value.data) {
-        if (renderDayTrade(r.value.data)) {
-          gDayTradeCache = r.value.data;
+    for (var i = 1; i <= 10; i++) {
+      try {
+        var d = dateStr(i);
+        var data = await API_TWSE.dayTrade(d);
+        if (data && renderDayTrade(data)) {
+          gDayTradeCache = data;
           gDayTradeSuccess = true;
           found = true;
           break;
         }
-      }
+      } catch(e) {}
     }
 
     if (!found) {

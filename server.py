@@ -37,6 +37,36 @@ ALLOWED_HOSTS = [
     'api.cnyes.com',
 ]
 
+# ============================================================
+# SERVER-SIDE PROXY CACHE (avoid hammering upstream APIs)
+# ============================================================
+import threading
+_proxy_cache = {}       # url → { data, content_type, ts }
+_proxy_cache_lock = threading.Lock()
+PROXY_CACHE_TTL = 120   # 2 minutes for most APIs
+MIS_CACHE_TTL = 8       # 8 seconds for real-time MIS quotes
+
+def proxy_cache_get(url):
+    with _proxy_cache_lock:
+        entry = _proxy_cache.get(url)
+        if not entry:
+            return None
+        ttl = MIS_CACHE_TTL if 'mis.twse.com.tw' in url else PROXY_CACHE_TTL
+        if time.time() - entry['ts'] > ttl:
+            del _proxy_cache[url]
+            return None
+        return entry
+
+def proxy_cache_set(url, data, content_type):
+    with _proxy_cache_lock:
+        _proxy_cache[url] = {'data': data, 'content_type': content_type, 'ts': time.time()}
+        # Evict old entries if cache grows too large
+        if len(_proxy_cache) > 200:
+            cutoff = time.time() - PROXY_CACHE_TTL
+            stale = [k for k, v in _proxy_cache.items() if v['ts'] < cutoff]
+            for k in stale:
+                del _proxy_cache[k]
+
 
 # ============================================================
 # DATABASE
@@ -580,6 +610,19 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_error(403, f'Host not allowed: {parsed.hostname}')
                 return
 
+            # Check server-side cache first (avoids hitting TWSE rate limits)
+            cached = proxy_cache_get(url)
+            if cached:
+                self.send_response(200)
+                self.send_header('Content-Type', cached['content_type'])
+                self.send_header('Content-Length', str(len(cached['data'])))
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Cache-Control', 'public, max-age=60')
+                self.send_header('X-Cache', 'HIT')
+                self.end_headers()
+                self.wfile.write(cached['data'])
+                return
+
             req = urllib.request.Request(url, headers={
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'application/json',
@@ -599,11 +642,15 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                 data = resp.read()
                 content_type = resp.headers.get('Content-Type', 'application/json')
 
+            # Cache the response server-side
+            proxy_cache_set(url, data, content_type)
+
             self.send_response(200)
             self.send_header('Content-Type', content_type)
             self.send_header('Content-Length', str(len(data)))
             self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Cache-Control', 'public, max-age=300')
+            self.send_header('Cache-Control', 'public, max-age=60')
+            self.send_header('X-Cache', 'MISS')
             self.end_headers()
             self.wfile.write(data)
 
