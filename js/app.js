@@ -2753,6 +2753,28 @@ async function init() {
       gTpexInstStocks = tpexInst.aaData;
     }
 
+    // If institutional per-stock data is empty (T86 not ready during trading hours),
+    // try previous trading days
+    if (gInstStocks.length === 0) {
+      for (let i = 1; i <= 5; i++) {
+        try {
+          const prevDate = dateStr(i);
+          const [prevInst, prevTpexInst] = await Promise.allSettled([
+            API_TWSE.instStocks(prevDate),
+            API_TPEX.instStocks(prevDate),
+          ]);
+          const pi = prevInst.status === 'fulfilled' ? prevInst.value : null;
+          const pti = prevTpexInst.status === 'fulfilled' ? prevTpexInst.value : null;
+          if (pi && pi.stat === 'OK' && pi.data && pi.data.length > 0) {
+            gInstStocks = pi.data;
+            if (pti && pti.tables && pti.tables[0] && pti.tables[0].data && pti.tables[0].data.length > 0) gTpexInstStocks = pti.tables[0].data;
+            else if (pti && pti.aaData && pti.aaData.length > 0) gTpexInstStocks = pti.aaData;
+            break;
+          }
+        } catch(e) {}
+      }
+    }
+
     // Build search database from ALL sources (date-based + OpenAPI)
     buildStockDB();
 
