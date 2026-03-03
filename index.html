@@ -56,6 +56,9 @@
       <div class="nav-item" data-tab="global">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a16 16 0 0 1 0 20M12 2a16 16 0 0 0 0 20"/></svg><span>國際</span>
       </div>
+      <div class="nav-item" data-tab="briefing">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>晨訊</span>
+      </div>
       <div class="nav-item" data-tab="ai">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M6 10v1a6 6 0 0 0 12 0v-1M8 18h8M10 22h4M12 18v4"/></svg><span>AI</span>
       </div>
@@ -380,6 +383,20 @@
         <div class="card-title">&#x1F1FA;&#x1F1F8; 美股焦點個股</div>
         <div class="tab-bar" id="us-sector-tabs"></div>
         <div id="us-stocks"><div class="loading-box"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- ==================== 謙堂晨訊 ==================== -->
+    <div id="panel-briefing" class="panel">
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>&#x1F4F0; 謙堂晨訊</span>
+          <span id="briefing-date" class="text-sm text-muted"></span>
+        </div>
+        <div class="text-sm text-muted mb-12">每日市場摘要，資料源：TWSE、Yahoo Finance、鉅亨網。僅供參考，不構成投資建議。</div>
+        <div id="briefing-container">
+          <div class="loading-box"><div class="spinner"></div><div>載入晨訊...</div></div>
+        </div>
       </div>
     </div>
 

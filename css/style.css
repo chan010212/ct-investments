@@ -2094,6 +2094,72 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* ===== BRIEFING (晨訊) ===== */
+    .br-pane { display: none; }
+    .br-pane.active { display: block; }
+
+    .br-sentiment {
+      text-align: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .br-stars { font-size: 28px; letter-spacing: 6px; }
+    .br-label { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .br-tags { margin-top: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+    .br-tag-up { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: rgba(255,56,96,0.08); color: var(--red); border: 1px solid var(--red); }
+    .br-tag-down { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: rgba(0,232,123,0.08); color: var(--green); border: 1px solid var(--green); }
+    .br-tag-neutral { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--bg2); color: var(--text2); border: 1px solid var(--border); }
+
+    .br-viewpoint {
+      background: var(--card);
+      border-left: 3px solid #d4a940;
+      border-radius: 0 12px 12px 0;
+      padding: 20px 22px;
+      margin-bottom: 16px;
+    }
+    .br-vp-title { color: #d4a940; font-size: 14px; font-weight: 600; margin-bottom: 12px; letter-spacing: 1px; }
+    .br-viewpoint p { font-size: 14px; line-height: 1.85; margin-bottom: 7px; }
+    .br-vp-warn { color: #d4a940; font-size: 13px; }
+    .br-vp-action { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px; font-weight: 600; }
+
+    .br-section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 14px;
+      overflow: hidden;
+      padding: 12px 16px;
+    }
+    .br-section-title {
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text2);
+      letter-spacing: 1px;
+    }
+
+    .br-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .br-table th { text-align: left; padding: 5px 8px; color: var(--text2); font-size: 11px; font-weight: 500; border-bottom: 1px solid var(--border); }
+    .br-table td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.02); font-variant-numeric: tabular-nums; }
+    .br-table .text-right { text-align: right; }
+    .br-table th.text-right { text-align: right; }
+    .br-table tr.up td { color: var(--red); }
+    .br-table tr.down td { color: var(--green); }
+    .br-table tr.up td:first-child, .br-table tr.down td:first-child { color: var(--text); }
+
+    .br-inst-bar { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+    .br-inst-label { width: 56px; font-size: 12px; color: var(--text2); flex-shrink: 0; }
+    .br-inst-track { flex: 1; height: 6px; background: var(--bg2); border-radius: 3px; overflow: hidden; }
+    .br-inst-fill { height: 100%; border-radius: 3px; }
+    .br-inst-fill.up { background: var(--red); }
+    .br-inst-fill.down { background: var(--green); }
+    .br-inst-val { width: 80px; text-align: right; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+
     /* ===== SCANLINE EFFECT (subtle) ===== */
     .scanline {
       position: fixed;

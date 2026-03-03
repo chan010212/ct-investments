@@ -1014,6 +1014,7 @@ function switchTab(tabName, pushHistory) {
   if (tabName === 'global') maybeLoadGlobal();
   if (tabName === 'daytrade') maybeLoadDayTrade();
   if (tabName === 'opinion') maybeLoadOpinion();
+  if (tabName === 'briefing') maybeLoadBriefing();
   if (tabName === 'admin') loadAdminPanel();
   trackAction('view_tab', tabName);
   updateBackBtn();
@@ -3528,6 +3529,9 @@ let gGlobalLoaded = false;
 let gGlobalSuccess = false;
 let gOpinionLoaded = false;
 let gOpinionSuccess = false;
+let gBriefingLoaded = false;
+let gBriefingSuccess = false;
+let _brPollTimer = null;
 
 function maybeLoadSectors() {
   if (gSectorsLoaded) return;
@@ -4601,6 +4605,309 @@ async function maybeLoadOpinion() {
   } catch (e) {
     gOpinionLoaded = false;
   }
+}
+
+// ============================================================
+// MORNING BRIEFING (晨訊)
+// ============================================================
+async function maybeLoadBriefing() {
+  if (gBriefingLoaded && gBriefingSuccess) return;
+  gBriefingLoaded = true;
+  gBriefingSuccess = false;
+  document.getElementById('briefing-container').innerHTML = '<div class="loading-box"><div class="spinner"></div><div>載入晨訊...</div></div>';
+
+  try {
+    var r = await fetch('/api/morning-report');
+    if (!r.ok) { gBriefingLoaded = false; return; }
+    var body = await r.json();
+
+    if (body.status === 'ready' && body.data) {
+      renderBriefing(body.data);
+      gBriefingSuccess = true;
+      return;
+    }
+
+    // Status is "generating" — show progress and poll
+    document.getElementById('briefing-container').innerHTML =
+      '<div class="loading-box"><div class="spinner"></div><div>晨訊產生中，首次約需 15 秒...</div></div>';
+
+    if (_brPollTimer) clearInterval(_brPollTimer);
+    _brPollTimer = setInterval(async function() {
+      try {
+        var r2 = await fetch('/api/morning-report');
+        if (!r2.ok) return;
+        var b2 = await r2.json();
+        if (b2.status === 'ready' && b2.data) {
+          clearInterval(_brPollTimer);
+          _brPollTimer = null;
+          renderBriefing(b2.data);
+          gBriefingSuccess = true;
+        }
+      } catch(e) {}
+    }, 3000);
+
+    // Auto-stop polling after 60 seconds
+    setTimeout(function() {
+      if (_brPollTimer) {
+        clearInterval(_brPollTimer);
+        _brPollTimer = null;
+        if (!gBriefingSuccess) {
+          document.getElementById('briefing-container').innerHTML =
+            '<div class="empty-state" style="padding:24px;text-align:center;">'
+            + '<p>晨訊產生逾時，請稍後再試</p>'
+            + '<button class="btn btn-primary" style="margin-top:12px;" onclick="gBriefingLoaded=false;maybeLoadBriefing()">重新載入</button></div>';
+        }
+      }
+    }, 60000);
+
+  } catch (e) {
+    gBriefingLoaded = false;
+    document.getElementById('briefing-container').innerHTML =
+      '<div class="empty-state" style="padding:24px;text-align:center;">'
+      + '<p>晨訊載入失敗</p>'
+      + '<button class="btn btn-primary" style="margin-top:12px;" onclick="gBriefingLoaded=false;maybeLoadBriefing()">重新載入</button></div>';
+  }
+}
+
+function brEscHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function brMktTable(title, markets, keys) {
+  var rows = '';
+  keys.forEach(function(k) {
+    var d = markets[k];
+    if (!d) return;
+    var cl = d.chg > 0 ? 'up' : d.chg < 0 ? 'down' : '';
+    var fp = d.price < 10000 ? fmtNum(d.price, 2) : fmtNum(d.price, 0);
+    var chgStr = (d.chg > 0 ? '+' : '') + fmtNum(d.chg, 2);
+    var pctStr = (d.pct > 0 ? '+' : '') + fmtNum(d.pct, 2) + '%';
+    rows += '<tr class="' + cl + '"><td>' + d.name + '</td><td class="text-right">' + fp + '</td><td class="text-right">' + chgStr + '</td><td class="text-right">' + pctStr + '</td></tr>';
+  });
+  return '<div class="br-section"><div class="br-section-title">' + title + '</div>'
+    + '<table class="br-table"><thead><tr><th>項目</th><th class="text-right">收盤</th><th class="text-right">漲跌</th><th class="text-right">幅度</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+function brInstBars(inst, instDate) {
+  if (!inst || Object.keys(inst).length === 0)
+    return '<div class="br-section"><div class="br-section-title">三大法人摘要</div><div class="text-muted" style="padding:8px 0;">尚無資料</div></div>';
+
+  var fi = inst['外資及陸資(不含外資自營商)'] || 0;
+  var it = inst['投信'] || 0;
+  var ds = inst['自營商(自行買賣)'] || 0;
+  var dh = inst['自營商(避險)'] || 0;
+  var tot = inst['合計'] || fi + it + ds + dh;
+
+  function bar(name, val) {
+    var cl = val > 0 ? 'up' : 'down';
+    var w = Math.min(Math.abs(val / 1e8) / 400 * 100, 100);
+    return '<div class="br-inst-bar"><span class="br-inst-label">' + name + '</span>'
+      + '<div class="br-inst-track"><div class="br-inst-fill ' + cl + '" style="width:' + w + '%"></div></div>'
+      + '<span class="br-inst-val ' + cl + '">' + fmtBig(val) + '</span></div>';
+  }
+
+  var dateLabel = instDate ? ' (' + instDate + ')' : '';
+  var h = '<div class="br-section"><div class="br-section-title">三大法人摘要' + dateLabel + '</div>';
+  h += bar('外　資', fi) + bar('投　信', it) + bar('自營商', ds);
+  var totCl = tot > 0 ? 'up' : 'down';
+  h += '<div style="text-align:right;padding-top:8px;margin-top:4px;border-top:1px solid var(--border);font-size:13px;">'
+    + '合計 <span class="' + totCl + '" style="font-weight:600;">' + fmtBig(tot) + '</span>'
+    + '<span class="text-muted" style="font-size:11px;margin-left:6px;">（避險 ' + fmtBig(dh) + '）</span></div>';
+  h += '</div>';
+  return h;
+}
+
+function brInstStocks(stocks) {
+  if (!stocks || stocks.length === 0) return '';
+
+  function fmtS(n) {
+    var abs = Math.abs(n);
+    if (abs >= 1e8) return (n / 1e8).toFixed(1) + '億';
+    if (abs >= 1e4) return (n / 1e4).toFixed(0) + '萬';
+    return fmtNum(n);
+  }
+
+  function stkTbl(title, rows, badge, badgeStyle) {
+    if (!rows.length) return '';
+    var h = '<div style="margin-bottom:14px;"><div style="font-size:13px;font-weight:600;margin-bottom:6px;">' + title;
+    if (badge) h += ' <span class="tag" style="font-size:10px;padding:1px 8px;border-radius:10px;' + (badgeStyle || '') + '">' + badge + '</span>';
+    h += '</div><table class="br-table"><thead><tr><th>代號</th><th>名稱</th><th class="text-right">外資</th><th class="text-right">投信</th><th class="text-right">合計</th></tr></thead><tbody>';
+    rows.forEach(function(s) {
+      var fc = s.fi > 0 ? 'up' : 'down';
+      var tc = s.it > 0 ? 'up' : 'down';
+      var ac = s.tot > 0 ? 'up' : 'down';
+      h += '<tr><td style="color:var(--blue);font-weight:600;cursor:pointer;" onclick="goAnalyze(\'' + s.c + '\')">' + s.c + '</td>'
+        + '<td style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + s.n + '</td>'
+        + '<td class="text-right ' + fc + '">' + fmtS(s.fi) + '</td>'
+        + '<td class="text-right ' + tc + '">' + fmtS(s.it) + '</td>'
+        + '<td class="text-right ' + ac + '" style="font-weight:700;">' + fmtS(s.tot) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    return h;
+  }
+
+  var allBuy = stocks.filter(function(s) { return s.fi > 0 && s.it > 0 && s.dl > 0; }).sort(function(a,b) { return b.tot - a.tot; }).slice(0, 10);
+  var allSell = stocks.filter(function(s) { return s.fi < 0 && s.it < 0 && s.dl < 0; }).sort(function(a,b) { return a.tot - b.tot; }).slice(0, 10);
+  var fiBuy = stocks.filter(function(s) { return s.fi > 0; }).sort(function(a,b) { return b.fi - a.fi; }).slice(0, 10);
+  var itBuy = stocks.filter(function(s) { return s.it > 0; }).sort(function(a,b) { return b.it - a.it; }).slice(0, 10);
+
+  var h = '<div class="br-section"><div class="br-section-title">法人籌碼焦點</div>';
+  h += stkTbl('三法人同步買超', allBuy, '利多', 'background:rgba(255,56,96,0.1);color:var(--red);border:1px solid var(--red);');
+  h += stkTbl('三法人同步賣超', allSell, '利空', 'background:rgba(0,232,123,0.1);color:var(--green);border:1px solid var(--green);');
+  h += '<div class="grid-2">';
+  h += stkTbl('外資買超 TOP', fiBuy);
+  h += stkTbl('投信買超 TOP', itBuy);
+  h += '</div></div>';
+  return h;
+}
+
+function brEarnings(earnings) {
+  if (!earnings || earnings.length === 0)
+    return '<div class="br-section"><div class="br-section-title">最新財報 · 營收 · 獲利動態</div><div class="text-muted" style="padding:8px 0;">暫無財報新聞</div></div>';
+  var rows = earnings.map(function(n) {
+    var link = n.url
+      ? '<a href="' + n.url + '" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">' + brEscHtml(n.title) + '</a>'
+      : brEscHtml(n.title);
+    var summ = n.summary ? '<div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.6;">' + brEscHtml(n.summary) + '</div>' : '';
+    return '<div style="padding:10px 0;border-bottom:1px solid var(--border);">'
+      + '<div style="font-size:14px;line-height:1.5;"><span style="color:var(--text2);font-size:11px;margin-right:8px;">' + n.time + '</span>' + link + '</div>' + summ + '</div>';
+  }).join('');
+  return '<div class="br-section"><div class="br-section-title">最新財報 · 營收 · 獲利動態</div>' + rows + '</div>';
+}
+
+function brNews(news) {
+  if (!news || news.length === 0)
+    return '<div class="br-section"><div class="br-section-title">財經要聞</div><div class="text-muted" style="padding:8px 0;">暫無新聞</div></div>';
+  var byCat = {};
+  news.forEach(function(n) { if (!byCat[n.cat]) byCat[n.cat] = []; byCat[n.cat].push(n); });
+
+  var h = '<div class="br-section"><div class="br-section-title">財經要聞</div>';
+  ['頭條', '台股', '國際', '匯率', '總經'].forEach(function(cat) {
+    var items = byCat[cat];
+    if (!items) return;
+    var lim = cat === '頭條' ? 8 : cat === '台股' ? 6 : 4;
+    var rows = items.slice(0, lim).map(function(n) {
+      var link = n.url
+        ? '<a href="' + n.url + '" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">' + brEscHtml(n.title) + '</a>'
+        : brEscHtml(n.title);
+      return '<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.02);">'
+        + '<span style="color:var(--text2);font-size:11px;flex-shrink:0;width:40px;">' + n.time + '</span>'
+        + '<span style="font-size:13px;line-height:1.5;">' + link + '</span></div>';
+    }).join('');
+    h += '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:#d4a940;letter-spacing:2px;padding-bottom:5px;margin-bottom:5px;border-bottom:1px solid var(--border);">' + cat + '</div>' + rows + '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+function renderBriefing(data) {
+  var s = data.sentiment;
+
+  // Date
+  var dStr = data.date ? data.date.slice(0,4) + '/' + data.date.slice(4,6) + '/' + data.date.slice(6,8) : '';
+  document.getElementById('briefing-date').textContent = dStr;
+
+  // Stars
+  var stars = '';
+  for (var i = 0; i < 5; i++) {
+    stars += i < s.star ? '<span style="color:#d4a940;">&#9733;</span>' : '<span style="color:var(--text2);">&#9733;</span>';
+  }
+
+  // Tags
+  var tagsHtml = s.tags.map(function(t) {
+    var cls = t[1] === 'u' ? 'br-tag-up' : t[1] === 'd' ? 'br-tag-down' : 'br-tag-neutral';
+    return '<span class="' + cls + '">' + t[0] + '</span>';
+  }).join('');
+
+  var sClr = s.star >= 4 ? 'var(--red)' : s.star <= 2 ? 'var(--green)' : 'var(--text2)';
+
+  var html = '';
+
+  // Sentiment card
+  html += '<div class="br-sentiment">'
+    + '<div class="br-stars">' + stars + '</div>'
+    + '<div class="br-label" style="color:' + sClr + ';">' + s.label + '</div>'
+    + '<div class="br-tags">' + tagsHtml + '</div></div>';
+
+  // Sub-tabs
+  html += '<div class="tab-bar" id="br-tabs">'
+    + '<button class="tab-btn active" data-br="overview">總覽</button>'
+    + '<button class="tab-btn" data-br="intl">國際</button>'
+    + '<button class="tab-btn" data-br="inst">法人</button>'
+    + '<button class="tab-btn" data-br="earn">財報</button>'
+    + '<button class="tab-btn" data-br="news">新聞</button></div>';
+
+  // === Sub-pane: Overview ===
+  html += '<div class="br-pane active" id="br-overview">';
+
+  // Viewpoint
+  html += '<div class="br-viewpoint"><div class="br-vp-title">MARKET INSIGHT</div>';
+  (data.viewpoint || []).forEach(function(p) {
+    if (p.indexOf('⚠') === 0) html += '<p class="br-vp-warn">' + p + '</p>';
+    else if (p.indexOf('【') === 0) html += '<p class="br-vp-action">' + p + '</p>';
+    else html += '<p>' + p + '</p>';
+  });
+  html += '</div>';
+
+  // TWSE
+  if (data.twse) {
+    var tw = data.twse;
+    var cl = tw.chg > 0 ? 'up' : tw.chg < 0 ? 'down' : '';
+    var chgSign = tw.chg > 0 ? '+' : '';
+    html += '<div class="br-section"><div class="br-section-title">台股前日收盤</div>'
+      + '<div style="text-align:center;padding:8px 0;">'
+      + '<span class="' + cl + '" style="font-size:28px;font-weight:700;">' + fmtNum(tw.idx, 2) + '</span>'
+      + '<span class="' + cl + '" style="font-size:16px;margin-left:8px;">' + chgSign + fmtNum(tw.chg, 2) + '</span></div>'
+      + '<div class="text-sm text-muted" style="text-align:center;">成交額 <b>' + fmtBig(tw.val) + '</b> ／ 量 <b>' + fmtBig(tw.vol) + '</b>股 ／ 筆數 <b>' + fmtNum(tw.txn) + '</b></div></div>';
+  }
+
+  html += brMktTable('美股四大指數', data.markets, ['sp500', 'dow', 'nasdaq', 'sox']);
+  html += brMktTable('台灣 ADR', data.markets, ['tsm', 'umc']);
+  html += brInstBars(data.inst_market, data.inst_date);
+  html += '</div>'; // end br-overview
+
+  // === Sub-pane: International ===
+  html += '<div class="br-pane" id="br-intl">';
+  html += brMktTable('美股四大指數', data.markets, ['sp500', 'dow', 'nasdaq', 'sox']);
+  html += brMktTable('亞洲', data.markets, ['nk', 'sh', 'hsi']);
+  html += brMktTable('歐洲', data.markets, ['dax', 'ftse']);
+  html += brMktTable('原物料 · 匯率 · 指標', data.markets, ['oil', 'gold', 'twd', 'dxy', 'tnx', 'vix']);
+  html += brMktTable('台灣 ADR', data.markets, ['tsm', 'umc']);
+  html += '</div>';
+
+  // === Sub-pane: Institutional ===
+  html += '<div class="br-pane" id="br-inst">';
+  html += brInstBars(data.inst_market, data.inst_date);
+  html += brInstStocks(data.inst_stocks);
+  html += '</div>';
+
+  // === Sub-pane: Earnings ===
+  html += '<div class="br-pane" id="br-earn">';
+  html += brEarnings(data.earnings);
+  html += '</div>';
+
+  // === Sub-pane: News ===
+  html += '<div class="br-pane" id="br-news">';
+  html += brNews(data.news);
+  html += '</div>';
+
+  // Disclaimer
+  html += '<div class="text-sm text-muted" style="margin-top:16px;padding:10px 14px;background:var(--bg2);border-radius:8px;line-height:1.6;font-size:10px;">'
+    + '本晨訊由 CT 謙堂資本系統自動產生，資料源：TWSE、TPEX、Yahoo Finance、鉅亨網。所有內容僅供研究參考，不構成投資建議。</div>';
+
+  document.getElementById('briefing-container').innerHTML = html;
+
+  // Attach sub-tab click handlers
+  document.querySelectorAll('#br-tabs .tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('#br-tabs .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      document.querySelectorAll('.br-pane').forEach(function(p) { p.classList.remove('active'); });
+      var pane = document.getElementById('br-' + btn.dataset.br);
+      if (pane) pane.classList.add('active');
+    });
+  });
 }
 
 async function adminDeletePick(id) {
