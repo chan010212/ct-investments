@@ -1635,7 +1635,15 @@
       align-items: center;
       text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
       position: relative;
-      z-index: 1;
+      z-index: 2;
+      background: rgba(6, 11, 24, 0.9);
+    }
+
+    .ticker-wrap {
+      flex: 1;
+      overflow: hidden;
+      min-width: 0;
+      position: relative;
     }
 
     .ticker-track {
