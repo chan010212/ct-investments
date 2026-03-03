@@ -39,6 +39,49 @@ ALLOWED_HOSTS = [
 ]
 
 # ============================================================
+# SUBSCRIPTION PLAN HIERARCHY
+# ============================================================
+PLAN_HIERARCHY = {'free': 0, 'pro': 1, 'proplus': 2, 'admin': 99}
+
+PLAN_FEATURES = {
+    'free': {
+        'name': 'Free',
+        'price': 0,
+        'features': [
+            '市場總覽 / 法人 / 個股分析',
+            '當沖 / 題材 / 國際 / 晨訊 / AI',
+            '篩選器 / 關注清單',
+            '產業熱力圖',
+            '股票比較（最多 2 檔）',
+            '關注股除權息行事曆',
+        ]
+    },
+    'pro': {
+        'name': 'Pro',
+        'price': 4.99,
+        'features': [
+            '所有 Free 功能',
+            '到價提醒（10 組）',
+            '籌碼連續買賣超統計',
+            '投資組合績效追蹤',
+            '股票比較（最多 5 檔）',
+            '關注股除權息行事曆',
+        ]
+    },
+    'proplus': {
+        'name': 'Pro+',
+        'price': 9.99,
+        'features': [
+            '所有 Pro 功能',
+            '到價提醒（20 組）',
+            '大盤歷史回測',
+            '全市場除權息行事曆',
+            '未來新功能優先體驗',
+        ]
+    }
+}
+
+# ============================================================
 # SERVER-SIDE PROXY CACHE (avoid hammering upstream APIs)
 # ============================================================
 import threading
@@ -366,12 +409,382 @@ def _mr_generate():
         }
         _mr_cache_set(data)
         print(f'[MR] Report generated and cached for {today}')
+        # Collect institutional daily data after morning report
+        try:
+            _collect_inst_daily(inst_date, inst_stocks)
+        except Exception as e2:
+            print(f'[MR] inst_daily collection error: {e2}')
+        # Load/update TAIEX history
+        try:
+            _load_taiex_history()
+        except Exception as e3:
+            print(f'[MR] TAIEX history error: {e3}')
     except Exception as e:
         print(f'[MR] Generation error: {e}')
         import traceback; traceback.print_exc()
     finally:
         with _mr_lock:
             _mr_generating.discard(today)
+
+
+# ============================================================
+# TAIEX HISTORY & BACKTEST
+# ============================================================
+_taiex_lock = threading.Lock()
+_taiex_loaded = False
+
+def _load_taiex_history():
+    """Fetch TAIEX ^TWII 10-year history from Yahoo Finance"""
+    global _taiex_loaded
+    with _taiex_lock:
+        if _taiex_loaded:
+            return
+    try:
+        url = 'https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII?range=10y&interval=1d'
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        req = urllib.request.Request(url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',
+        })
+        with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        result = data['chart']['result'][0]
+        timestamps = result['timestamp']
+        quotes = result['indicators']['quote'][0]
+        db = sqlite3.connect(str(DB_PATH))
+        count = 0
+        for i, ts in enumerate(timestamps):
+            dt = datetime.fromtimestamp(ts).strftime('%Y-%m-%d')
+            o = quotes['open'][i]
+            h = quotes['high'][i]
+            l = quotes['low'][i]
+            c = quotes['close'][i]
+            v = quotes['volume'][i] if quotes.get('volume') else 0
+            if c is None:
+                continue
+            db.execute(
+                'INSERT OR REPLACE INTO taiex_history (trade_date, open_price, high_price, low_price, close_price, volume) VALUES (?, ?, ?, ?, ?, ?)',
+                (dt, o, h, l, c, v)
+            )
+            count += 1
+        db.commit()
+        db.close()
+        print(f'[TAIEX] Loaded {count} days of history')
+        with _taiex_lock:
+            _taiex_loaded = True
+    except Exception as e:
+        print(f'[TAIEX] Load error: {e}')
+
+def _run_backtest(db, strategy, params):
+    """Run backtest on TAIEX history"""
+    start_date = params.get('start_date', '2020-01-01')
+    end_date = params.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    amount = float(params.get('amount', 100000))
+
+    rows = db.execute(
+        'SELECT trade_date, close_price FROM taiex_history WHERE trade_date >= ? AND trade_date <= ? ORDER BY trade_date',
+        (start_date, end_date)
+    ).fetchall()
+
+    if len(rows) < 2:
+        return {'error': '歷史資料不足，請稍後再試'}
+
+    dates = [r[0] for r in rows]
+    closes = [r[1] for r in rows]
+
+    if strategy == 'lump_sum':
+        # Single lump sum investment
+        buy_price = closes[0]
+        end_price = closes[-1]
+        total_return = (end_price - buy_price) / buy_price * 100
+        years = max((len(dates) / 252), 0.1)
+        cagr = ((end_price / buy_price) ** (1 / years) - 1) * 100
+        final_value = amount * (end_price / buy_price)
+        # Max drawdown
+        peak = closes[0]
+        max_dd = 0
+        for c in closes:
+            if c > peak:
+                peak = c
+            dd = (peak - c) / peak * 100
+            if dd > max_dd:
+                max_dd = dd
+        equity_curve = [{'date': dates[i], 'value': round(amount * closes[i] / buy_price)} for i in range(0, len(dates), max(1, len(dates) // 200))]
+        return {
+            'strategy': '單筆投入',
+            'start_date': dates[0], 'end_date': dates[-1],
+            'invested': amount, 'final_value': round(final_value),
+            'total_return': round(total_return, 2),
+            'cagr': round(cagr, 2),
+            'max_drawdown': round(max_dd, 2),
+            'trading_days': len(dates),
+            'equity_curve': equity_curve,
+        }
+
+    elif strategy == 'dca':
+        # Dollar Cost Averaging — monthly
+        monthly_amount = amount
+        total_invested = 0
+        shares = 0
+        last_month = ''
+        equity_curve = []
+        for i, (d, c) in enumerate(zip(dates, closes)):
+            month = d[:7]
+            if month != last_month and c > 0:
+                shares += monthly_amount / c
+                total_invested += monthly_amount
+                last_month = month
+            if i % max(1, len(dates) // 200) == 0:
+                equity_curve.append({'date': d, 'value': round(shares * c)})
+        final_value = shares * closes[-1]
+        total_return = (final_value - total_invested) / total_invested * 100 if total_invested > 0 else 0
+        return {
+            'strategy': '定期定額 (每月)',
+            'start_date': dates[0], 'end_date': dates[-1],
+            'invested': round(total_invested),
+            'final_value': round(final_value),
+            'total_return': round(total_return, 2),
+            'trading_days': len(dates),
+            'equity_curve': equity_curve,
+        }
+
+    elif strategy == 'ma_cross':
+        # Moving average crossover
+        short_p = int(params.get('short_ma', 5))
+        long_p = int(params.get('long_ma', 20))
+        if len(closes) < long_p + 1:
+            return {'error': '資料不足以計算均線'}
+
+        cash = amount
+        position = 0  # shares held
+        trades = 0
+        wins = 0
+        entry_price = 0
+        equity_curve = []
+        peak = amount
+        max_dd = 0
+
+        for i in range(long_p, len(closes)):
+            short_ma = sum(closes[i - short_p + 1:i + 1]) / short_p
+            long_ma = sum(closes[i - long_p + 1:i + 1]) / long_p
+            prev_short = sum(closes[i - short_p:i]) / short_p
+            prev_long = sum(closes[i - long_p:i]) / long_p
+
+            # Golden cross: buy
+            if short_ma > long_ma and prev_short <= prev_long and position == 0 and cash > 0:
+                position = cash / closes[i]
+                entry_price = closes[i]
+                cash = 0
+                trades += 1
+            # Death cross: sell
+            elif short_ma < long_ma and prev_short >= prev_long and position > 0:
+                cash = position * closes[i]
+                if closes[i] > entry_price:
+                    wins += 1
+                position = 0
+
+            total = cash + position * closes[i]
+            if total > peak:
+                peak = total
+            dd = (peak - total) / peak * 100
+            if dd > max_dd:
+                max_dd = dd
+
+            if i % max(1, len(dates) // 200) == 0:
+                equity_curve.append({'date': dates[i], 'value': round(total)})
+
+        final_value = cash + position * closes[-1]
+        total_return = (final_value - amount) / amount * 100
+        win_rate = (wins / trades * 100) if trades > 0 else 0
+
+        return {
+            'strategy': f'均線交叉 (MA{short_p}/MA{long_p})',
+            'start_date': dates[0], 'end_date': dates[-1],
+            'invested': amount,
+            'final_value': round(final_value),
+            'total_return': round(total_return, 2),
+            'max_drawdown': round(max_dd, 2),
+            'trades': trades,
+            'win_rate': round(win_rate, 1),
+            'trading_days': len(dates),
+            'equity_curve': equity_curve,
+        }
+
+    return {'error': '不支援的策略'}
+
+
+# ============================================================
+# DIVIDEND DATA (除權息行事曆)
+# ============================================================
+_dividend_cache = {'data': None, 'ts': 0}
+_dividend_lock = threading.Lock()
+
+def _fetch_dividend_raw():
+    """Fetch dividend schedule from TWSE/TPEX"""
+    results = []
+    now = datetime.now()
+    # Fetch TWSE dividend schedule (t187ap21_L)
+    for offset in range(3):
+        month = now.month + offset
+        year = now.year
+        if month > 12:
+            month -= 12
+            year += 1
+        try:
+            url = f'https://www.twse.com.tw/rwd/zh/exRight/TWT49U?response=json&startDate={year}{month:02d}01&endDate={year}{month:02d}28'
+            d = _mr_fetch_json(url, True)
+            if d.get('stat') == 'OK' and d.get('data'):
+                for row in d['data']:
+                    try:
+                        date_parts = row[0].strip().split('/')
+                        iso_date = str(int(date_parts[0]) + 1911) + '-' + date_parts[1].zfill(2) + '-' + date_parts[2].zfill(2)
+                        code = row[1].strip()
+                        name = row[2].strip() if len(row) > 2 else ''
+                        ex_type = ''
+                        cash_div = 0
+                        stock_div = 0
+                        if len(row) > 5:
+                            try:
+                                cash_div = float(str(row[5]).replace(',', '').strip() or '0')
+                            except:
+                                pass
+                        if len(row) > 6:
+                            try:
+                                stock_div = float(str(row[6]).replace(',', '').strip() or '0')
+                            except:
+                                pass
+                        if cash_div > 0 and stock_div > 0:
+                            ex_type = '除權息'
+                        elif cash_div > 0:
+                            ex_type = '除息'
+                        elif stock_div > 0:
+                            ex_type = '除權'
+                        results.append({
+                            'date': iso_date,
+                            'code': code,
+                            'name': name,
+                            'type': ex_type,
+                            'cash': cash_div,
+                            'stock': stock_div,
+                        })
+                    except:
+                        continue
+            time.sleep(0.5)
+        except Exception as e:
+            print(f'[DIV] TWSE fetch error: {e}')
+    return results
+
+def _get_dividend_data(wl_codes=None, month=None):
+    """Get dividend data, optionally filtered by watchlist or month"""
+    with _dividend_lock:
+        if _dividend_cache['data'] and time.time() - _dividend_cache['ts'] < 3600:
+            data = _dividend_cache['data']
+        else:
+            data = _fetch_dividend_raw()
+            _dividend_cache['data'] = data
+            _dividend_cache['ts'] = time.time()
+
+    if wl_codes is not None:
+        wl_set = set(wl_codes)
+        data = [d for d in data if d['code'] in wl_set]
+
+    if month:
+        data = [d for d in data if d['date'].startswith(month)]
+
+    return data
+
+
+# ============================================================
+# INSTITUTIONAL DAILY DATA COLLECTION & STREAK COMPUTATION
+# ============================================================
+def _collect_inst_daily(date_str, inst_stocks):
+    """Save T86 institutional data to inst_daily table"""
+    if not date_str or not inst_stocks:
+        return
+    db = sqlite3.connect(str(DB_PATH))
+    try:
+        existing = db.execute('SELECT COUNT(*) FROM inst_daily WHERE trade_date = ?', (date_str,)).fetchone()[0]
+        if existing > 0:
+            print(f'[INST] Data for {date_str} already exists ({existing} rows), skipping')
+            db.close()
+            return
+        count = 0
+        for s in inst_stocks:
+            code = s.get('c', '').strip()
+            if not code or not code[0].isdigit():
+                continue
+            db.execute(
+                'INSERT OR IGNORE INTO inst_daily (trade_date, stock_code, stock_name, foreign_net, trust_net, dealer_net, total_net) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (date_str, code, s.get('n', ''), s.get('fi', 0), s.get('it', 0), s.get('dl', 0), s.get('tot', 0))
+            )
+            count += 1
+        db.commit()
+        print(f'[INST] Saved {count} rows for {date_str}')
+    except Exception as e:
+        print(f'[INST] Error saving: {e}')
+    finally:
+        db.close()
+
+def _compute_streaks(db, stock_code, inst_type='foreign'):
+    """Compute consecutive buy/sell days for a stock"""
+    col_map = {'foreign': 'foreign_net', 'trust': 'trust_net', 'dealer': 'dealer_net', 'total': 'total_net'}
+    col = col_map.get(inst_type, 'foreign_net')
+    rows = db.execute(
+        f'SELECT trade_date, {col} FROM inst_daily WHERE stock_code = ? ORDER BY trade_date DESC LIMIT 60',
+        (stock_code,)
+    ).fetchall()
+    if not rows:
+        return {'streak': 0, 'direction': 'neutral', 'total_net': 0, 'days_data': 0}
+    streak = 0
+    direction = 'neutral'
+    total_net = 0
+    first_val = rows[0][1] if rows else 0
+    if first_val > 0:
+        direction = 'buy'
+    elif first_val < 0:
+        direction = 'sell'
+    else:
+        return {'streak': 0, 'direction': 'neutral', 'total_net': 0, 'days_data': len(rows)}
+    for r in rows:
+        val = r[1]
+        if direction == 'buy' and val > 0:
+            streak += 1
+            total_net += val
+        elif direction == 'sell' and val < 0:
+            streak += 1
+            total_net += val
+        else:
+            break
+    return {'streak': streak, 'direction': direction, 'total_net': total_net, 'days_data': len(rows)}
+
+def _streak_top(db, inst_type, direction, limit=20):
+    """Get top stocks by consecutive buy/sell streak"""
+    col_map = {'foreign': 'foreign_net', 'trust': 'trust_net', 'dealer': 'dealer_net', 'total': 'total_net'}
+    col = col_map.get(inst_type, 'foreign_net')
+    # Get latest date
+    latest = db.execute('SELECT MAX(trade_date) FROM inst_daily').fetchone()[0]
+    if not latest:
+        return []
+    # Get all stocks that were buy/sell on latest date
+    op = '>' if direction == 'buy' else '<'
+    candidates = db.execute(
+        f'SELECT DISTINCT stock_code, stock_name, {col} FROM inst_daily WHERE trade_date = ? AND {col} {op} 0 ORDER BY ABS({col}) DESC LIMIT 100',
+        (latest,)
+    ).fetchall()
+    results = []
+    for c in candidates:
+        code = c[0]
+        name = c[1] or ''
+        info = _compute_streaks(db, code, inst_type)
+        if info['streak'] >= 2:
+            results.append({
+                'code': code, 'name': name,
+                'streak': info['streak'], 'direction': info['direction'],
+                'total_net': info['total_net'], 'latest_net': c[2]
+            })
+    results.sort(key=lambda x: x['streak'], reverse=True)
+    return results[:limit]
 
 
 # ============================================================
@@ -432,6 +845,75 @@ def init_db():
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
     )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS inst_daily (
+        trade_date TEXT NOT NULL,
+        stock_code TEXT NOT NULL,
+        stock_name TEXT,
+        foreign_net INTEGER DEFAULT 0,
+        trust_net INTEGER DEFAULT 0,
+        dealer_net INTEGER DEFAULT 0,
+        total_net INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (trade_date, stock_code)
+    )''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_inst_daily_code ON inst_daily(stock_code, trade_date)')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS taiex_history (
+        trade_date TEXT PRIMARY KEY,
+        open_price REAL,
+        high_price REAL,
+        low_price REAL,
+        close_price REAL,
+        volume INTEGER,
+        created_at TEXT DEFAULT (datetime('now'))
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS portfolios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        stock_code TEXT NOT NULL,
+        stock_name TEXT,
+        entry_price REAL NOT NULL,
+        entry_date TEXT NOT NULL,
+        shares INTEGER DEFAULT 1000,
+        notes TEXT,
+        status TEXT DEFAULT 'open',
+        exit_price REAL,
+        exit_date TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS price_alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        stock_code TEXT NOT NULL,
+        stock_name TEXT,
+        condition TEXT NOT NULL,
+        target_price REAL NOT NULL,
+        triggered INTEGER DEFAULT 0,
+        triggered_at TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )''')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS plan_changes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        old_plan TEXT, new_plan TEXT,
+        granted_by INTEGER, reason TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )''')
+
+    # Add plan columns to users table (safe migration)
+    for col_sql in [
+        "ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'",
+        "ALTER TABLE users ADD COLUMN plan_expires_at TEXT",
+        "ALTER TABLE users ADD COLUMN plan_granted_by INTEGER",
+    ]:
+        try:
+            c.execute(col_sql)
+        except Exception:
+            pass  # Column already exists
 
     conn.commit()
 
@@ -547,6 +1029,16 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_watchlist()
         elif self.path == '/api/picks':
             self.handle_get_picks()
+        elif self.path == '/api/plan/features':
+            self.send_json(PLAN_FEATURES)
+        elif self.path.startswith('/api/inst-streak'):
+            self.handle_inst_streak()
+        elif self.path == '/api/alerts':
+            self.handle_get_alerts()
+        elif self.path == '/api/portfolio':
+            self.handle_get_portfolio()
+        elif self.path.startswith('/api/dividends'):
+            self.handle_dividends()
         elif self.path.startswith('/api/admin/') and self.path.split('?')[0] in ('/api/admin/users', '/api/admin/actions', '/api/admin/stats'):
             self.handle_admin_get()
         elif self.path == '/' or self.path == '':
@@ -566,21 +1058,41 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_track()
         elif self.path == '/api/admin/picks':
             self.handle_admin_picks()
+        elif self.path == '/api/admin/plan':
+            self.handle_admin_plan()
+        elif self.path == '/api/alerts':
+            self.handle_post_alert()
+        elif self.path == '/api/portfolio':
+            self.handle_post_portfolio()
+        elif self.path == '/api/backtest':
+            self.handle_backtest()
+        elif self.path.startswith('/api/alerts/') and self.path.endswith('/trigger'):
+            self.handle_trigger_alert()
         else:
             self.send_error(404)
 
     def do_DELETE(self):
         if self.path.startswith('/api/watchlist/'):
             self.handle_delete_watchlist()
+        elif self.path.startswith('/api/alerts/'):
+            self.handle_delete_alert()
+        elif self.path.startswith('/api/portfolio/'):
+            self.handle_delete_portfolio()
         elif self.path.startswith('/api/admin/picks/'):
             self.handle_admin_delete_pick()
+        else:
+            self.send_error(404)
+
+    def do_PUT(self):
+        if self.path.startswith('/api/portfolio/'):
+            self.handle_put_portfolio()
         else:
             self.send_error(404)
 
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         self.end_headers()
 
@@ -627,6 +1139,23 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             return None
         return user
 
+    def require_plan(self, min_plan):
+        user = self.get_user()
+        if not user:
+            self.send_json({'error': '請先登入'}, 401)
+            return None
+        role = user.get('role', 'free')
+        plan = user.get('plan', 'free')
+        # admin bypasses all plan checks
+        if role == 'admin':
+            return user
+        user_level = PLAN_HIERARCHY.get(plan, 0)
+        required_level = PLAN_HIERARCHY.get(min_plan, 0)
+        if user_level < required_level:
+            self.send_json({'error': '此功能需要升級方案', 'upgrade': True, 'required_plan': min_plan}, 403)
+            return None
+        return user
+
     # --- Auth ---
     def handle_register(self):
         body = self.read_body()
@@ -662,11 +1191,13 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             db.commit()
             user_id = db.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()['id']
 
+            plan = 'free'
             token = jwt_encode({
                 'uid': user_id,
                 'email': email,
                 'name': name,
                 'role': role,
+                'plan': plan if role != 'admin' else 'proplus',
                 'exp': time.time() + 30 * 24 * 3600  # 30 days
             })
 
@@ -674,7 +1205,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
 
             self.send_json({
                 'token': token,
-                'user': {'id': user_id, 'email': email, 'name': name, 'role': role}
+                'user': {'id': user_id, 'email': email, 'name': name, 'role': role, 'plan': plan if role != 'admin' else 'proplus'}
             })
         finally:
             db.close()
@@ -701,11 +1232,16 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             )
             db.commit()
 
+            user_plan = user['plan'] if 'plan' in user.keys() else 'free'
+            if user['role'] == 'admin':
+                user_plan = 'proplus'
+
             token = jwt_encode({
                 'uid': user['id'],
                 'email': user['email'],
                 'name': user['display_name'],
                 'role': user['role'],
+                'plan': user_plan,
                 'exp': time.time() + 30 * 24 * 3600
             })
 
@@ -717,7 +1253,8 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                     'id': user['id'],
                     'email': user['email'],
                     'name': user['display_name'],
-                    'role': user['role']
+                    'role': user['role'],
+                    'plan': user_plan
                 }
             })
         finally:
@@ -731,7 +1268,8 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             'id': user['uid'],
             'email': user['email'],
             'name': user['name'],
-            'role': user['role']
+            'role': user['role'],
+            'plan': user.get('plan', 'free')
         }})
 
     # --- Watchlist ---
@@ -842,7 +1380,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
         try:
             if path == '/api/admin/users':
                 rows = db.execute(
-                    'SELECT id, email, display_name, role, created_at, last_login, login_count FROM users ORDER BY created_at DESC'
+                    'SELECT id, email, display_name, role, plan, created_at, last_login, login_count FROM users ORDER BY created_at DESC'
                 ).fetchall()
                 self.send_json({'users': [dict(r) for r in rows]})
 
@@ -905,6 +1443,286 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             db.execute("UPDATE stock_picks SET status = 'closed' WHERE id = ?", (pick_id,))
             db.commit()
             self.send_json({'ok': True})
+        finally:
+            db.close()
+
+    # --- Backtest ---
+    def handle_backtest(self):
+        user = self.require_plan('proplus')
+        if not user:
+            return
+        body = self.read_body()
+        strategy = body.get('strategy', 'lump_sum')
+        # Ensure TAIEX history is loaded
+        if not _taiex_loaded:
+            threading.Thread(target=_load_taiex_history, daemon=True).start()
+        db = get_db()
+        try:
+            count = db.execute('SELECT COUNT(*) FROM taiex_history').fetchone()[0]
+            if count < 100:
+                self.send_json({'status': 'loading', 'message': '正在載入歷史資料，請稍後再試'})
+                return
+            result = _run_backtest(db, strategy, body)
+            self.send_json(result)
+        finally:
+            db.close()
+
+    # --- Dividends ---
+    def handle_dividends(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        params = urllib.parse.parse_qs(parsed.query)
+
+        if path == '/api/dividends/watchlist':
+            # FREE: only watchlist stocks
+            user = self.require_user()
+            if not user:
+                return
+            db = get_db()
+            try:
+                rows = db.execute('SELECT stock_code FROM watchlists WHERE user_id = ?', (user['uid'],)).fetchall()
+                wl_codes = [r['stock_code'] for r in rows]
+                data = _get_dividend_data(wl_codes)
+                self.send_json({'dividends': data})
+            finally:
+                db.close()
+        elif path == '/api/dividends':
+            # PRO+: all market
+            user = self.require_plan('proplus')
+            if not user:
+                return
+            month = params.get('month', [''])[0]
+            data = _get_dividend_data(None, month)
+            self.send_json({'dividends': data})
+        else:
+            self.send_error(404)
+
+    # --- Portfolio ---
+    def handle_get_portfolio(self):
+        user = self.require_plan('pro')
+        if not user:
+            return
+        db = get_db()
+        try:
+            rows = db.execute(
+                'SELECT * FROM portfolios WHERE user_id = ? ORDER BY status ASC, created_at DESC',
+                (user['uid'],)
+            ).fetchall()
+            self.send_json({'portfolio': [dict(r) for r in rows]})
+        finally:
+            db.close()
+
+    def handle_post_portfolio(self):
+        user = self.require_plan('pro')
+        if not user:
+            return
+        body = self.read_body()
+        code = (body.get('stock_code') or '').strip()
+        name = body.get('stock_name', '')
+        entry_price = body.get('entry_price')
+        entry_date = body.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
+        shares = body.get('shares', 1000)
+        notes = body.get('notes', '')
+        if not code or not entry_price:
+            self.send_json({'error': '請提供股票代號和買入價格'}, 400)
+            return
+        db = get_db()
+        try:
+            db.execute(
+                'INSERT INTO portfolios (user_id, stock_code, stock_name, entry_price, entry_date, shares, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (user['uid'], code, name, float(entry_price), entry_date, int(shares), notes)
+            )
+            db.commit()
+            log_action(db, user['uid'], 'portfolio_add', f'{code} @ {entry_price} x {shares}')
+            self.send_json({'ok': True})
+        finally:
+            db.close()
+
+    def handle_put_portfolio(self):
+        user = self.require_plan('pro')
+        if not user:
+            return
+        port_id = self.path.split('/')[-1]
+        body = self.read_body()
+        db = get_db()
+        try:
+            row = db.execute('SELECT * FROM portfolios WHERE id = ? AND user_id = ?', (port_id, user['uid'])).fetchone()
+            if not row:
+                self.send_json({'error': '找不到持倉'}, 404)
+                return
+            # Update fields
+            if 'exit_price' in body:
+                db.execute(
+                    "UPDATE portfolios SET status = 'closed', exit_price = ?, exit_date = ? WHERE id = ?",
+                    (float(body['exit_price']), body.get('exit_date', datetime.now().strftime('%Y-%m-%d')), port_id)
+                )
+            if 'shares' in body:
+                db.execute('UPDATE portfolios SET shares = ? WHERE id = ?', (int(body['shares']), port_id))
+            if 'notes' in body:
+                db.execute('UPDATE portfolios SET notes = ? WHERE id = ?', (body['notes'], port_id))
+            db.commit()
+            self.send_json({'ok': True})
+        finally:
+            db.close()
+
+    def handle_delete_portfolio(self):
+        user = self.require_plan('pro')
+        if not user:
+            return
+        port_id = self.path.split('/')[-1]
+        db = get_db()
+        try:
+            db.execute('DELETE FROM portfolios WHERE id = ? AND user_id = ?', (port_id, user['uid']))
+            db.commit()
+            self.send_json({'ok': True})
+        finally:
+            db.close()
+
+    # --- Price Alerts ---
+    def handle_get_alerts(self):
+        user = self.require_plan('pro')
+        if not user:
+            return
+        db = get_db()
+        try:
+            rows = db.execute(
+                'SELECT * FROM price_alerts WHERE user_id = ? ORDER BY created_at DESC',
+                (user['uid'],)
+            ).fetchall()
+            alerts = [dict(r) for r in rows]
+            self.send_json({'alerts': alerts})
+        finally:
+            db.close()
+
+    def handle_post_alert(self):
+        user = self.require_plan('pro')
+        if not user:
+            return
+        body = self.read_body()
+        code = (body.get('stock_code') or '').strip()
+        name = body.get('stock_name', '')
+        condition = body.get('condition', '')
+        target_price = body.get('target_price')
+        if not code or condition not in ('above', 'below') or not target_price:
+            self.send_json({'error': '參數不完整'}, 400)
+            return
+        db = get_db()
+        try:
+            # Check limit: pro=10, proplus=20
+            plan = user.get('plan', 'free')
+            max_alerts = 20 if plan == 'proplus' else 10
+            count = db.execute(
+                'SELECT COUNT(*) FROM price_alerts WHERE user_id = ? AND triggered = 0',
+                (user['uid'],)
+            ).fetchone()[0]
+            if count >= max_alerts:
+                self.send_json({'error': f'已達上限（{max_alerts} 組），請刪除舊提醒'}, 400)
+                return
+            db.execute(
+                'INSERT INTO price_alerts (user_id, stock_code, stock_name, condition, target_price) VALUES (?, ?, ?, ?, ?)',
+                (user['uid'], code, name, condition, float(target_price))
+            )
+            db.commit()
+            log_action(db, user['uid'], 'create_alert', f'{code} {condition} {target_price}')
+            self.send_json({'ok': True})
+        finally:
+            db.close()
+
+    def handle_delete_alert(self):
+        user = self.require_plan('pro')
+        if not user:
+            return
+        alert_id = self.path.split('/')[-1]
+        db = get_db()
+        try:
+            db.execute('DELETE FROM price_alerts WHERE id = ? AND user_id = ?', (alert_id, user['uid']))
+            db.commit()
+            self.send_json({'ok': True})
+        finally:
+            db.close()
+
+    def handle_trigger_alert(self):
+        user = self.require_plan('pro')
+        if not user:
+            return
+        # Path: /api/alerts/{id}/trigger
+        parts = self.path.split('/')
+        alert_id = parts[-2]
+        db = get_db()
+        try:
+            db.execute(
+                "UPDATE price_alerts SET triggered = 1, triggered_at = datetime('now') WHERE id = ? AND user_id = ?",
+                (alert_id, user['uid'])
+            )
+            db.commit()
+            self.send_json({'ok': True})
+        finally:
+            db.close()
+
+    # --- Institutional Streak ---
+    def handle_inst_streak(self):
+        user = self.require_plan('pro')
+        if not user:
+            return
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        params = urllib.parse.parse_qs(parsed.query)
+        db = get_db()
+        try:
+            if path == '/api/inst-streak/top':
+                inst_type = params.get('type', ['foreign'])[0]
+                direction = params.get('dir', ['buy'])[0]
+                limit = int(params.get('limit', ['20'])[0])
+                results = _streak_top(db, inst_type, direction, limit)
+                # Get data range info
+                dates = db.execute('SELECT MIN(trade_date), MAX(trade_date), COUNT(DISTINCT trade_date) FROM inst_daily').fetchone()
+                self.send_json({
+                    'top': results,
+                    'data_from': dates[0] or '',
+                    'data_to': dates[1] or '',
+                    'trading_days': dates[2] or 0
+                })
+            else:
+                # Single stock: /api/inst-streak?code=2330
+                code = params.get('code', [''])[0]
+                if not code:
+                    self.send_json({'error': '請提供股票代號'}, 400)
+                    return
+                streaks = {}
+                for t in ['foreign', 'trust', 'dealer', 'total']:
+                    streaks[t] = _compute_streaks(db, code, t)
+                self.send_json({'code': code, 'streaks': streaks})
+        finally:
+            db.close()
+
+    # --- Admin Plan Management ---
+    def handle_admin_plan(self):
+        admin = self.require_admin()
+        if not admin:
+            return
+        body = self.read_body()
+        user_id = body.get('user_id')
+        new_plan = body.get('plan', 'free')
+        reason = body.get('reason', '')
+        if new_plan not in PLAN_HIERARCHY:
+            self.send_json({'error': '無效的方案'}, 400)
+            return
+        db = get_db()
+        try:
+            user = db.execute('SELECT id, plan, display_name FROM users WHERE id = ?', (user_id,)).fetchone()
+            if not user:
+                self.send_json({'error': '找不到使用者'}, 404)
+                return
+            old_plan = user['plan'] or 'free'
+            db.execute('UPDATE users SET plan = ? WHERE id = ?', (new_plan, user_id))
+            db.execute(
+                'INSERT INTO plan_changes (user_id, old_plan, new_plan, granted_by, reason) VALUES (?, ?, ?, ?, ?)',
+                (user_id, old_plan, new_plan, admin['uid'], reason)
+            )
+            db.commit()
+            log_action(db, admin['uid'], 'admin_change_plan',
+                       json.dumps({'user_id': user_id, 'name': user['display_name'], 'old': old_plan, 'new': new_plan, 'reason': reason}, ensure_ascii=False))
+            self.send_json({'ok': True, 'old_plan': old_plan, 'new_plan': new_plan})
         finally:
             db.close()
 

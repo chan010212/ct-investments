@@ -1010,7 +1010,12 @@ function switchTab(tabName, pushHistory) {
       fetchMisBatch(wlCodes).then(function() { renderWatchlist(); });
     }
     renderWatchlist();
+    loadAlerts();
+    loadPortfolio();
+    loadDividendCalendar('watchlist');
   }
+  if (tabName === 'compare') initCompareTab();
+  if (tabName === 'institutional') loadInstStreakRanking();
   if (tabName === 'sectors') maybeLoadSectors();
   if (tabName === 'global') maybeLoadGlobal();
   if (tabName === 'daytrade') maybeLoadDayTrade();
@@ -1415,6 +1420,8 @@ async function renderSectorRanking() {
     }
 
     sectors.sort((a, b) => b.pct - a.pct);
+    _lastSectorData = sectors;
+    renderSectorHeatmap(sectors);
     const maxAbs = Math.max(...sectors.map(s => Math.abs(s.pct)), 1);
 
     let html = '<div class="sector-bars">';
@@ -1436,6 +1443,166 @@ async function renderSectorRanking() {
     el.innerHTML = '<div class="text-muted">產業指數載入失敗</div>';
   }
 }
+
+// ============================================================
+// SECTOR HEATMAP (squarify treemap)
+// ============================================================
+function squarify(items, rect) {
+  // Squarified treemap algorithm
+  // items: [{value, ...}] sorted descending by value
+  // rect: {x, y, w, h}
+  if (!items.length) return [];
+  var totalValue = items.reduce(function(s, it) { return s + it.value; }, 0);
+  if (totalValue <= 0) return [];
+  var results = [];
+
+  function layoutRow(row, rowValue, rect) {
+    var isWide = rect.w >= rect.h;
+    var side = isWide ? rect.h : rect.w;
+    var rowLen = rowValue / totalValue * (rect.w * rect.h) / side;
+    var x = rect.x, y = rect.y;
+    row.forEach(function(it) {
+      var frac = it.value / rowValue;
+      var cellW, cellH;
+      if (isWide) {
+        cellW = rowLen;
+        cellH = frac * side;
+        results.push({ x: x, y: y, w: cellW, h: cellH, item: it });
+        y += cellH;
+      } else {
+        cellH = rowLen;
+        cellW = frac * side;
+        results.push({ x: x, y: y, w: cellW, h: cellH, item: it });
+        x += cellW;
+      }
+    });
+    // Return remaining rect
+    if (isWide) return { x: rect.x + rowLen, y: rect.y, w: rect.w - rowLen, h: rect.h };
+    return { x: rect.x, y: rect.y + rowLen, w: rect.w, h: rect.h - rowLen };
+  }
+
+  function worstRatio(row, rowValue, side) {
+    if (!row.length) return Infinity;
+    var area = rowValue / totalValue * (rect.w * rect.h);
+    var rowLen = area / side;
+    var worst = 0;
+    row.forEach(function(it) {
+      var frac = it.value / rowValue;
+      var s = frac * side;
+      var r = Math.max(rowLen / s, s / rowLen);
+      if (r > worst) worst = r;
+    });
+    return worst;
+  }
+
+  var remaining = items.slice();
+  var r = { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+
+  while (remaining.length > 0) {
+    var side = Math.min(r.w, r.h);
+    if (side <= 0) break;
+    var row = [remaining[0]];
+    var rowValue = remaining[0].value;
+    var bestRatio = worstRatio(row, rowValue, side);
+    var i = 1;
+    while (i < remaining.length) {
+      var next = remaining[i];
+      var newRow = row.concat([next]);
+      var newValue = rowValue + next.value;
+      var newRatio = worstRatio(newRow, newValue, side);
+      if (newRatio <= bestRatio) {
+        row = newRow;
+        rowValue = newValue;
+        bestRatio = newRatio;
+        i++;
+      } else {
+        break;
+      }
+    }
+    r = layoutRow(row, rowValue, r);
+    remaining = remaining.slice(row.length);
+  }
+  return results;
+}
+
+function heatColor(pct) {
+  // Red (up) to Green (down) gradient, center = dark gray
+  var clamped = Math.max(-5, Math.min(5, pct));
+  var t = (clamped + 5) / 10; // 0=green, 0.5=neutral, 1=red
+  var r, g, b;
+  if (t >= 0.5) {
+    // neutral → red
+    var s = (t - 0.5) * 2;
+    r = Math.round(40 + 185 * s);
+    g = Math.round(40 - 20 * s);
+    b = Math.round(50 - 20 * s);
+  } else {
+    // green → neutral
+    var s = t * 2;
+    r = Math.round(10 + 30 * s);
+    g = Math.round(140 - 100 * s);
+    b = Math.round(60 - 10 * s);
+  }
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+function renderSectorHeatmap(sectorsData) {
+  var el = document.getElementById('sector-heatmap');
+  if (!el) return;
+  if (!sectorsData || sectorsData.length === 0) {
+    el.innerHTML = '<div class="text-muted" style="padding:40px;text-align:center;">盤中資料尚未公布</div>';
+    return;
+  }
+
+  var items = sectorsData.map(function(s) {
+    return { name: s.name, pct: s.pct, value: Math.max(s.close, 1) };
+  }).sort(function(a, b) { return b.value - a.value; });
+
+  var W = el.clientWidth;
+  var H = el.clientHeight || 320;
+  el.innerHTML = '';
+
+  var cells = squarify(items, { x: 0, y: 0, w: W, h: H });
+  cells.forEach(function(c) {
+    var div = document.createElement('div');
+    div.className = 'hm-cell';
+    div.style.left = c.x + 'px';
+    div.style.top = c.y + 'px';
+    div.style.width = c.w + 'px';
+    div.style.height = c.h + 'px';
+    div.style.background = heatColor(c.item.pct);
+
+    var showLabel = c.w > 40 && c.h > 28;
+    var showPct = c.w > 30 && c.h > 40;
+
+    if (showLabel) {
+      var nameSpan = document.createElement('span');
+      nameSpan.className = 'hm-cell-name';
+      nameSpan.textContent = c.item.name;
+      if (c.w < 60) nameSpan.style.fontSize = '9px';
+      div.appendChild(nameSpan);
+    }
+    if (showPct) {
+      var pctSpan = document.createElement('span');
+      pctSpan.className = 'hm-cell-pct';
+      pctSpan.textContent = (c.item.pct > 0 ? '+' : '') + c.item.pct.toFixed(2) + '%';
+      div.appendChild(pctSpan);
+    }
+
+    div.title = c.item.name + '  ' + (c.item.pct > 0 ? '+' : '') + c.item.pct.toFixed(2) + '%';
+    el.appendChild(div);
+  });
+}
+
+// Redraw heatmap on resize
+var _hmResizeTimer;
+window.addEventListener('resize', function() {
+  clearTimeout(_hmResizeTimer);
+  _hmResizeTimer = setTimeout(function() {
+    if (_lastSectorData) renderSectorHeatmap(_lastSectorData);
+  }, 300);
+});
+var _lastSectorData = null;
 
 // ============================================================
 // RENDER: TAIEX INTRADAY CHART (overview page)
@@ -2314,7 +2481,9 @@ async function analyzeStock(code) {
           <div class="stat-box"><div class="label">外資買賣超</div><div class="value ${instInfo.f > 0 ? 'up' : 'down'}">${instInfo.f > 0 ? '+' : ''}${fmtShares(instInfo.f)}</div></div>
           <div class="stat-box"><div class="label">投信買賣超</div><div class="value ${instInfo.t > 0 ? 'up' : 'down'}">${instInfo.t > 0 ? '+' : ''}${fmtShares(instInfo.t)}</div></div>
           <div class="stat-box"><div class="label">自營商買賣超</div><div class="value ${instInfo.d > 0 ? 'up' : 'down'}">${instInfo.d > 0 ? '+' : ''}${fmtShares(instInfo.d)}</div></div>
-        </div>`;
+        </div>
+        <div id="stock-inst-streak" style="margin-top:12px;"></div>`;
+      loadStockInstStreak(code);
     } else {
       document.getElementById('stock-inst-info').innerHTML = '<div class="text-muted">無三大法人資料</div>';
     }
@@ -3845,6 +4014,9 @@ async function doAutoRefresh(silent) {
       else if (id === 'panel-briefing') maybeLoadBriefing();
     }
 
+    // Check price alerts
+    checkPriceAlerts();
+
     gLastRefreshTime = now;
     setStatus('', `已連線 — 上次更新 ${now.toLocaleTimeString('zh-TW')}`);
 
@@ -3887,7 +4059,92 @@ async function manualRefresh() {
 // AUTH & MEMBER SYSTEM
 // ============================================================
 let gCurrentUser = null;
+let gCurrentPlan = 'free';
 let gAuthMode = 'login'; // 'login' or 'register'
+
+// ============================================================
+// SUBSCRIPTION PLAN SYSTEM
+// ============================================================
+const FEATURE_PLAN_MAP = {
+  'heatmap':         'free',
+  'compare_2':       'free',
+  'dividends_wl':    'free',
+  'price_alerts':    'pro',
+  'inst_streak':     'pro',
+  'portfolio':       'pro',
+  'compare_5':       'pro',
+  'dividends_all':   'proplus',
+  'backtest':        'proplus',
+};
+
+const PLAN_LEVEL = { 'free': 0, 'pro': 1, 'proplus': 2, 'admin': 99 };
+
+function userCanAccess(feature) {
+  var requiredPlan = FEATURE_PLAN_MAP[feature] || 'free';
+  var userLevel = PLAN_LEVEL[gCurrentPlan] || 0;
+  if (gCurrentUser && gCurrentUser.role === 'admin') return true;
+  return userLevel >= (PLAN_LEVEL[requiredPlan] || 0);
+}
+
+function showUpgradeModal(requiredPlan) {
+  var overlay = document.getElementById('pricing-overlay');
+  if (!overlay) return;
+  overlay.classList.add('show');
+  // Highlight the required plan card
+  document.querySelectorAll('.plan-card').forEach(function(c) { c.style.opacity = ''; });
+  updatePricingButtons();
+}
+
+function closePricingModal() {
+  var overlay = document.getElementById('pricing-overlay');
+  if (overlay) overlay.classList.remove('show');
+}
+
+function updatePricingButtons() {
+  document.querySelectorAll('.plan-card-btn').forEach(function(btn) {
+    var plan = btn.dataset.plan;
+    if (!plan) return;
+    var userLevel = PLAN_LEVEL[gCurrentPlan] || 0;
+    var cardLevel = PLAN_LEVEL[plan] || 0;
+    btn.classList.remove('current');
+    if (plan === gCurrentPlan || (gCurrentUser && gCurrentUser.role === 'admin' && plan === 'proplus')) {
+      btn.classList.add('current');
+      btn.textContent = '目前方案';
+    } else if (cardLevel < userLevel) {
+      btn.textContent = plan === 'free' ? 'Free' : '已包含';
+    } else {
+      var labels = { 'pro': '升級 Pro', 'proplus': '升級 Pro+' };
+      btn.textContent = labels[plan] || '選擇';
+    }
+  });
+}
+
+function requestUpgrade(plan) {
+  if (gCurrentUser && gCurrentUser.role === 'admin') return;
+  trackAction('upgrade_request', plan);
+  toast('已送出升級請求，請聯繫管理員 chan010212@gmail.com');
+}
+
+// Pricing overlay close on background click
+document.addEventListener('click', function(e) {
+  if (e.target && e.target.id === 'pricing-overlay') closePricingModal();
+});
+
+function renderLockedOverlay(containerId, requiredPlan) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  if (userCanAccess(Object.keys(FEATURE_PLAN_MAP).find(function(k) { return FEATURE_PLAN_MAP[k] === requiredPlan; }) || requiredPlan)) return;
+  el.classList.add('feature-locked');
+  // Remove any existing lock btn
+  var existing = el.querySelector('.feature-locked-btn');
+  if (existing) existing.remove();
+  var btn = document.createElement('button');
+  btn.className = 'feature-locked-btn';
+  var planName = requiredPlan === 'proplus' ? 'Pro+' : requiredPlan === 'pro' ? 'Pro' : requiredPlan;
+  btn.textContent = '升級至 ' + planName + ' 解鎖';
+  btn.onclick = function(e) { e.stopPropagation(); showUpgradeModal(requiredPlan); };
+  el.appendChild(btn);
+}
 
 function getToken() { return localStorage.getItem('ct_token'); }
 function setToken(token) { localStorage.setItem('ct_token', token); }
@@ -3973,6 +4230,8 @@ async function submitAuth() {
 
     setToken(data.token);
     gCurrentUser = data.user;
+    gCurrentPlan = data.user.plan || 'free';
+    if (data.user.role === 'admin') gCurrentPlan = 'proplus';
     closeAuthModal();
     renderUserSection();
     await syncWatchlistToServer();
@@ -3994,6 +4253,7 @@ async function submitAuth() {
 function logout() {
   clearToken();
   gCurrentUser = null;
+  gCurrentPlan = 'free';
   renderUserSection();
   toast('已登出');
 }
@@ -4003,12 +4263,21 @@ function renderUserSection() {
   const mobileBtn = document.getElementById('mobile-user-btn');
   if (gCurrentUser) {
     const initial = (gCurrentUser.name || gCurrentUser.email || '?')[0].toUpperCase();
-    const roleLabel = gCurrentUser.role === 'admin' ? 'Admin' : gCurrentUser.role === 'premium' ? 'Premium' : 'Free';
+    var planBadge = '';
+    if (gCurrentUser.role === 'admin') {
+      planBadge = '<span class="plan-badge plan-badge-admin">Admin</span>';
+    } else if (gCurrentPlan === 'proplus') {
+      planBadge = '<span class="plan-badge plan-badge-proplus">Pro+</span>';
+    } else if (gCurrentPlan === 'pro') {
+      planBadge = '<span class="plan-badge plan-badge-pro">Pro</span>';
+    } else {
+      planBadge = '<span class="plan-badge plan-badge-free">Free</span>';
+    }
     box.innerHTML = `<div class="user-bar">
       <div class="user-avatar">${initial}</div>
       <div class="user-info">
-        <div class="user-name">${gCurrentUser.name || gCurrentUser.email}</div>
-        <div class="user-role">${roleLabel}</div>
+        <div class="user-name">${gCurrentUser.name || gCurrentUser.email} ${planBadge}</div>
+        <div class="user-role" style="cursor:pointer;" onclick="showUpgradeModal()">${gCurrentPlan === 'free' ? '升級方案' : gCurrentPlan === 'pro' ? 'Pro 會員' : gCurrentPlan === 'proplus' ? 'Pro+ 會員' : ''}</div>
       </div>
       <button class="user-logout" onclick="logout()">登出</button>
     </div>`;
@@ -4041,6 +4310,8 @@ async function checkAuth() {
     if (r.ok) {
       const data = await r.json();
       gCurrentUser = data.user;
+      gCurrentPlan = data.user.plan || 'free';
+      if (data.user.role === 'admin') gCurrentPlan = 'proplus';
       renderUserSection();
       await loadWatchlistFromServer();
     } else {
@@ -4206,15 +4477,22 @@ async function loadAdminUsers() {
 
     const rows = data.users.map(u => {
       const roleTag = u.role === 'admin'
-        ? '<span class="tag" style="background:rgba(180,77,255,0.15);color:var(--purple);border:1px solid rgba(180,77,255,0.3);">Admin</span>'
-        : u.role === 'premium'
-        ? '<span class="tag" style="background:rgba(255,208,54,0.15);color:var(--yellow);border:1px solid rgba(255,208,54,0.3);">Premium</span>'
-        : '<span class="tag" style="background:rgba(0,240,255,0.08);color:var(--text2);border:1px solid var(--border);">Free</span>';
+        ? '<span class="plan-badge plan-badge-admin">Admin</span>'
+        : '<span class="tag" style="background:rgba(0,240,255,0.08);color:var(--text2);border:1px solid var(--border);">' + (u.role || 'free') + '</span>';
+      var userPlan = u.plan || 'free';
+      if (u.role === 'admin') userPlan = 'admin';
+      var planSelect = u.role === 'admin' ? '<span class="plan-badge plan-badge-admin">Admin</span>' :
+        '<select class="admin-plan-select" onchange="adminChangePlan(' + u.id + ', this.value)">' +
+        '<option value="free"' + (userPlan === 'free' ? ' selected' : '') + '>Free</option>' +
+        '<option value="pro"' + (userPlan === 'pro' ? ' selected' : '') + '>Pro</option>' +
+        '<option value="proplus"' + (userPlan === 'proplus' ? ' selected' : '') + '>Pro+</option>' +
+        '</select>';
       return [
         u.id,
         u.display_name,
         u.email,
         roleTag,
+        planSelect,
         u.created_at ? u.created_at.slice(0, 16) : '--',
         u.last_login ? u.last_login.slice(0, 16) : '從未',
         u.login_count || 0
@@ -4222,9 +4500,29 @@ async function loadAdminUsers() {
     });
 
     document.getElementById('admin-users-list').innerHTML =
-      mkTable(['ID', '名稱', 'Email', '角色', '註冊時間', '最後登入', '登入次數'], rows);
+      mkTable(['ID', '名稱', 'Email', '角色', '方案', '註冊時間', '最後登入', '登入次數'], rows);
   } catch (e) {
     document.getElementById('admin-users-list').innerHTML = '<div class="text-muted">載入失敗</div>';
+  }
+}
+
+async function adminChangePlan(userId, newPlan) {
+  try {
+    var r = await authFetch('/api/admin/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, plan: newPlan, reason: 'Admin manual change' })
+    });
+    var data = await r.json();
+    if (r.ok) {
+      toast('方案已更新：' + (data.old_plan || 'free') + ' → ' + data.new_plan);
+    } else {
+      toast(data.error || '更新失敗');
+      loadAdminUsers();
+    }
+  } catch (e) {
+    toast('操作失敗');
+    loadAdminUsers();
   }
 }
 
@@ -4912,6 +5210,731 @@ async function adminDeletePick(id) {
     }
   } catch (e) {
     toast('操作失敗');
+  }
+}
+
+// ============================================================
+// TAIEX BACKTEST (PRO+ feature)
+// ============================================================
+let chtBacktest = null;
+
+// Show/hide MA params based on strategy selection
+document.addEventListener('change', function(e) {
+  if (e.target && e.target.id === 'bt-strategy') {
+    var maParams = document.getElementById('bt-ma-params');
+    if (maParams) maParams.style.display = e.target.value === 'ma_cross' ? '' : 'none';
+  }
+});
+
+async function runBacktest() {
+  if (!userCanAccess('backtest')) {
+    showUpgradeModal('proplus');
+    return;
+  }
+  if (!gCurrentUser) { openAuthModal(); return; }
+
+  var strategy = document.getElementById('bt-strategy').value;
+  var startDate = document.getElementById('bt-start').value;
+  var amount = parseFloat(document.getElementById('bt-amount').value) || 100000;
+  var resultEl = document.getElementById('bt-result');
+  var chartEl = document.getElementById('bt-chart');
+
+  resultEl.style.display = '';
+  resultEl.innerHTML = '<div class="loading-box"><div class="spinner"></div><div>回測計算中...</div></div>';
+  chartEl.style.display = 'none';
+
+  var body = { strategy: strategy, start_date: startDate, amount: amount };
+  if (strategy === 'ma_cross') {
+    body.short_ma = parseInt(document.getElementById('bt-short-ma').value) || 5;
+    body.long_ma = parseInt(document.getElementById('bt-long-ma').value) || 20;
+  }
+
+  try {
+    var r = await authFetch('/api/backtest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+
+    if (data.status === 'loading') {
+      resultEl.innerHTML = '<div class="text-muted" style="padding:16px;text-align:center;">' + data.message + '</div>';
+      return;
+    }
+    if (data.error) {
+      resultEl.innerHTML = '<div class="text-muted" style="padding:16px;text-align:center;">' + data.error + '</div>';
+      return;
+    }
+
+    // Render result stats
+    var retCls = data.total_return >= 0 ? 'up' : 'down';
+    var h = '<div class="stat-grid" style="margin-bottom:14px;">';
+    h += '<div class="stat-box"><div class="label">策略</div><div class="value" style="font-size:14px;">' + (data.strategy || '') + '</div></div>';
+    h += '<div class="stat-box"><div class="label">總投入</div><div class="value">' + fmtBig(data.invested) + '</div></div>';
+    h += '<div class="stat-box"><div class="label">最終價值</div><div class="value ' + retCls + '">' + fmtBig(data.final_value) + '</div></div>';
+    h += '<div class="stat-box"><div class="label">總報酬率</div><div class="value ' + retCls + '">' + (data.total_return >= 0 ? '+' : '') + data.total_return + '%</div></div>';
+    if (data.cagr != null) h += '<div class="stat-box"><div class="label">年化報酬(CAGR)</div><div class="value ' + retCls + '">' + (data.cagr >= 0 ? '+' : '') + data.cagr + '%</div></div>';
+    if (data.max_drawdown != null) h += '<div class="stat-box"><div class="label">最大回撤</div><div class="value down">-' + data.max_drawdown + '%</div></div>';
+    if (data.trades != null) h += '<div class="stat-box"><div class="label">交易次數</div><div class="value">' + data.trades + '</div></div>';
+    if (data.win_rate != null) h += '<div class="stat-box"><div class="label">勝率</div><div class="value">' + data.win_rate + '%</div></div>';
+    h += '<div class="stat-box"><div class="label">回測期間</div><div class="value" style="font-size:12px;">' + data.start_date + ' ~ ' + data.end_date + '<br>' + data.trading_days + ' 交易日</div></div>';
+    h += '</div>';
+    resultEl.innerHTML = h;
+    resultEl.style.display = '';
+
+    // Render equity curve
+    if (data.equity_curve && data.equity_curve.length > 0) {
+      chartEl.innerHTML = '';
+      chartEl.style.display = '';
+      if (chtBacktest) { chtBacktest.remove(); chtBacktest = null; }
+      chtBacktest = LightweightCharts.createChart(chartEl, {
+        width: chartEl.clientWidth,
+        height: 250,
+        layout: { background: { color: '#0c1632' }, textColor: '#6b7a99' },
+        grid: { vertLines: { color: 'rgba(0,240,255,0.04)' }, horzLines: { color: 'rgba(0,240,255,0.04)' } },
+        rightPriceScale: { borderVisible: false },
+        timeScale: { borderVisible: false },
+      });
+      var areaSeries = chtBacktest.addAreaSeries({
+        topColor: 'rgba(0, 240, 255, 0.3)',
+        bottomColor: 'rgba(0, 240, 255, 0.01)',
+        lineColor: '#00f0ff',
+        lineWidth: 2,
+      });
+      areaSeries.setData(data.equity_curve.map(function(p) {
+        return { time: p.date, value: p.value };
+      }));
+      chtBacktest.timeScale().fitContent();
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<div class="text-muted">回測失敗：' + e.message + '</div>';
+  }
+}
+
+// ============================================================
+// DIVIDEND CALENDAR (FREE watchlist / PRO+ all)
+// ============================================================
+let gDividendMode = 'watchlist';
+
+async function loadDividendCalendar(mode) {
+  mode = mode || 'watchlist';
+  var sec = document.getElementById('dividend-section');
+  var el = document.getElementById('dividend-calendar');
+  if (!sec || !el) return;
+
+  if (mode === 'all' && !userCanAccess('dividends_all')) {
+    showUpgradeModal('proplus');
+    return;
+  }
+  if (!gCurrentUser) { openAuthModal(); return; }
+
+  gDividendMode = mode;
+  sec.style.display = '';
+  el.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+
+  try {
+    var url = mode === 'all'
+      ? '/api/dividends?month=' + new Date().toISOString().slice(0, 7)
+      : '/api/dividends/watchlist';
+    var r = await authFetch(url);
+    if (!r.ok) {
+      var data = await r.json();
+      if (data.upgrade) { showUpgradeModal('proplus'); el.innerHTML = ''; return; }
+      el.innerHTML = '<div class="text-muted">載入失敗</div>';
+      return;
+    }
+    var data = await r.json();
+    renderDividendCalendar(data.dividends || []);
+  } catch (e) {
+    el.innerHTML = '<div class="text-muted">載入失敗</div>';
+  }
+}
+
+function renderDividendCalendar(dividends) {
+  var el = document.getElementById('dividend-calendar');
+  if (!el) return;
+  if (dividends.length === 0) {
+    el.innerHTML = '<div class="text-muted" style="padding:16px;text-align:center;">近期無除權息資料' +
+      (gDividendMode === 'watchlist' ? '（僅顯示關注股）' : '') + '</div>';
+    return;
+  }
+
+  // Group by date
+  var byDate = {};
+  dividends.forEach(function(d) {
+    if (!byDate[d.date]) byDate[d.date] = [];
+    byDate[d.date].push(d);
+  });
+
+  // Build month calendar
+  var now = new Date();
+  var year = now.getFullYear();
+  var month = now.getMonth();
+  var firstDay = new Date(year, month, 1);
+  var lastDay = new Date(year, month + 1, 0);
+  var startDow = firstDay.getDay(); // 0=Sun
+  var daysInMonth = lastDay.getDate();
+
+  var h = '<div style="font-size:14px;font-weight:600;margin-bottom:8px;">' + year + '/' + (month + 1) + ' 除權息行事曆</div>';
+  h += '<div class="div-cal-grid">';
+  ['日', '一', '二', '三', '四', '五', '六'].forEach(function(d) {
+    h += '<div class="div-cal-header">' + d + '</div>';
+  });
+
+  // Empty cells before first day
+  for (var i = 0; i < startDow; i++) {
+    h += '<div class="div-cal-cell div-cal-empty"></div>';
+  }
+
+  for (var d = 1; d <= daysInMonth; d++) {
+    var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    var items = byDate[dateStr] || [];
+    h += '<div class="div-cal-cell"><div class="div-cal-day">' + d + '</div>';
+    items.forEach(function(item) {
+      var cls = item.cash > 0 && item.stock > 0 ? 'div-cal-both' : item.cash > 0 ? 'div-cal-cash' : 'div-cal-stock';
+      var label = item.code + ' ';
+      if (item.cash > 0) label += '$' + item.cash;
+      h += '<div class="div-cal-item ' + cls + '" onclick="goAnalyze(\'' + item.code + '\')" title="' + item.name + ' ' + item.type + (item.cash ? ' 現金' + item.cash : '') + (item.stock ? ' 股票' + item.stock : '') + '">' + label + '</div>';
+    });
+    h += '</div>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+// ============================================================
+// STOCK COMPARISON (FREE 2 / PRO 5)
+// ============================================================
+let chtCompare = null;
+
+function initCompareTab() {
+  var proInputs = document.querySelectorAll('.cmp-pro-input');
+  proInputs.forEach(function(inp) {
+    if (!userCanAccess('compare_5')) {
+      inp.disabled = true;
+      inp.placeholder = 'Pro 限定';
+      inp.style.opacity = '0.4';
+    } else {
+      inp.disabled = false;
+      inp.placeholder = '代號' + inp.id.split('-')[1];
+      inp.style.opacity = '';
+    }
+  });
+}
+
+async function runCompare() {
+  var codes = [];
+  for (var i = 1; i <= 5; i++) {
+    var val = (document.getElementById('cmp-' + i).value || '').trim();
+    if (val) codes.push(val.split(' ')[0]);
+  }
+  if (codes.length < 2) { toast('請至少輸入 2 檔股票'); return; }
+  var maxCodes = userCanAccess('compare_5') ? 5 : 2;
+  if (codes.length > maxCodes) {
+    showUpgradeModal('pro');
+    return;
+  }
+
+  document.getElementById('compare-loading').style.display = '';
+  document.getElementById('compare-chart-card').style.display = 'none';
+  document.getElementById('compare-table-card').style.display = 'none';
+
+  try {
+    // Fetch data for all stocks in parallel
+    var promises = codes.map(function(code) {
+      return fetchYahooHistory(code).then(function(data) { return { code: code, data: data }; }).catch(function() { return { code: code, data: null }; });
+    });
+    var results = await Promise.all(promises);
+
+    // Also fetch MIS for current prices
+    await fetchMisBatch(codes);
+
+    // Build comparison table
+    var tableRows = [];
+    var validResults = results.filter(function(r) { return r.data && r.data.closes && r.data.closes.length > 0; });
+
+    if (validResults.length < 2) {
+      toast('無法取得足夠的股票資料');
+      document.getElementById('compare-loading').style.display = 'none';
+      return;
+    }
+
+    var headers = ['指標'];
+    validResults.forEach(function(r) {
+      var info = gStockDB[r.code];
+      headers.push(r.code + ' ' + (info ? info.name : ''));
+    });
+
+    // Metrics
+    var metricRows = [];
+    var metricNames = ['現價', '漲跌%', 'MA5', 'MA20', 'MA60', 'RSI(14)', 'K值', 'D值'];
+    metricNames.forEach(function(name) {
+      var row = [name];
+      validResults.forEach(function(r) {
+        var C = r.data.closes;
+        var H = r.data.highs;
+        var L = r.data.lows;
+        var n = C.length - 1;
+        var mis = gMisCache[r.code];
+        if (name === '現價') {
+          var price = mis ? mis.price : C[n];
+          row.push(fmtNum(price, 2));
+        } else if (name === '漲跌%') {
+          var pct = mis ? mis.pct : (C[n] && C[n-1] ? ((C[n]-C[n-1])/C[n-1]*100) : 0);
+          var cls = pct >= 0 ? 'up' : 'down';
+          row.push('<span class="' + cls + '">' + (pct >= 0 ? '+' : '') + (typeof pct === 'number' ? pct.toFixed(2) : pct) + '%</span>');
+        } else if (name === 'MA5') {
+          var ma = TA.sma(C, 5);
+          row.push(ma[n] ? fmtNum(ma[n], 2) : '--');
+        } else if (name === 'MA20') {
+          var ma = TA.sma(C, 20);
+          row.push(ma[n] ? fmtNum(ma[n], 2) : '--');
+        } else if (name === 'MA60') {
+          var ma = TA.sma(C, 60);
+          row.push(ma[n] ? fmtNum(ma[n], 2) : '--');
+        } else if (name === 'RSI(14)') {
+          var rsi = TA.rsi(C);
+          row.push(rsi[n] != null ? rsi[n].toFixed(1) : '--');
+        } else if (name === 'K值') {
+          var kd = TA.kd(H, L, C);
+          row.push(kd.K[n] != null ? kd.K[n].toFixed(1) : '--');
+        } else if (name === 'D值') {
+          var kd = TA.kd(H, L, C);
+          row.push(kd.D[n] != null ? kd.D[n].toFixed(1) : '--');
+        }
+      });
+      metricRows.push(row);
+    });
+
+    document.getElementById('compare-table').innerHTML = mkTable(headers, metricRows);
+    document.getElementById('compare-table-card').style.display = '';
+
+    // Build normalized chart
+    var chartEl = document.getElementById('compare-chart');
+    if (chartEl) {
+      chartEl.innerHTML = '';
+      if (chtCompare) { chtCompare.remove(); chtCompare = null; }
+      chtCompare = LightweightCharts.createChart(chartEl, {
+        width: chartEl.clientWidth,
+        height: 300,
+        layout: { background: { color: '#0c1632' }, textColor: '#6b7a99' },
+        grid: { vertLines: { color: 'rgba(0,240,255,0.04)' }, horzLines: { color: 'rgba(0,240,255,0.04)' } },
+        rightPriceScale: { borderVisible: false },
+        timeScale: { borderVisible: false },
+        crosshair: { mode: 0 },
+      });
+
+      var colors = ['#00f0ff', '#b44dff', '#ff3860', '#00e87b', '#ffd036'];
+      validResults.forEach(function(r, idx) {
+        var C = r.data.closes;
+        var D = r.data.dates;
+        if (!C || C.length === 0) return;
+        var base = C[0];
+        var series = chtCompare.addLineSeries({
+          color: colors[idx % colors.length],
+          lineWidth: 2,
+          title: r.code,
+        });
+        var lineData = [];
+        for (var j = 0; j < C.length; j++) {
+          if (D[j] && base > 0) {
+            lineData.push({ time: D[j], value: ((C[j] - base) / base * 100) });
+          }
+        }
+        series.setData(lineData);
+      });
+      chtCompare.timeScale().fitContent();
+      document.getElementById('compare-chart-card').style.display = '';
+    }
+
+    document.getElementById('compare-loading').style.display = 'none';
+  } catch (e) {
+    document.getElementById('compare-loading').style.display = 'none';
+    toast('比較失敗：' + e.message);
+  }
+}
+
+// ============================================================
+// PORTFOLIO TRACKING (PRO feature)
+// ============================================================
+let gPortfolio = [];
+
+function openPortfolioModal() {
+  if (!userCanAccess('portfolio')) { showUpgradeModal('pro'); return; }
+  if (!gCurrentUser) { openAuthModal(); return; }
+  document.getElementById('port-code').value = '';
+  document.getElementById('port-price').value = '';
+  document.getElementById('port-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('port-shares').value = '1';
+  document.getElementById('port-notes').value = '';
+  document.getElementById('port-error').textContent = '';
+  document.getElementById('portfolio-overlay').classList.add('show');
+  setTimeout(function() { document.getElementById('port-code').focus(); }, 100);
+}
+
+function closePortfolioModal() {
+  document.getElementById('portfolio-overlay').classList.remove('show');
+}
+
+document.addEventListener('click', function(e) {
+  if (e.target && e.target.id === 'portfolio-overlay') closePortfolioModal();
+});
+
+async function submitPortfolio() {
+  var code = document.getElementById('port-code').value.trim();
+  var price = parseFloat(document.getElementById('port-price').value);
+  var date = document.getElementById('port-date').value;
+  var shares = parseInt(document.getElementById('port-shares').value) || 1;
+  var notes = document.getElementById('port-notes').value.trim();
+  var errEl = document.getElementById('port-error');
+  if (!code || !price || price <= 0) { errEl.textContent = '請輸入股票代號和買入價格'; return; }
+  var info = gStockDB[code];
+  var name = info ? info.name : '';
+  try {
+    var r = await authFetch('/api/portfolio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock_code: code, stock_name: name, entry_price: price, entry_date: date, shares: shares, notes: notes })
+    });
+    var data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || '新增失敗'; return; }
+    toast('已新增持倉：' + code + ' ' + name);
+    closePortfolioModal();
+    loadPortfolio();
+  } catch (e) { errEl.textContent = '網路錯誤'; }
+}
+
+async function loadPortfolio() {
+  var sec = document.getElementById('portfolio-section');
+  if (!sec) return;
+  if (!userCanAccess('portfolio') || !gCurrentUser) {
+    sec.style.display = 'none';
+    return;
+  }
+  sec.style.display = '';
+  try {
+    var r = await authFetch('/api/portfolio');
+    if (!r.ok) return;
+    var data = await r.json();
+    gPortfolio = data.portfolio || [];
+    renderPortfolio();
+  } catch (e) { /* silent */ }
+}
+
+function renderPortfolio() {
+  var el = document.getElementById('portfolio-container');
+  var sumEl = document.getElementById('portfolio-summary');
+  if (!el) return;
+  var open = gPortfolio.filter(function(p) { return p.status === 'open'; });
+  if (open.length === 0 && gPortfolio.length === 0) {
+    el.innerHTML = '<div class="text-muted" style="padding:16px;text-align:center;">尚無持倉，點擊上方「+ 新增持倉」開始追蹤</div>';
+    if (sumEl) sumEl.innerHTML = '';
+    return;
+  }
+
+  // Calculate P&L
+  var totalInvested = 0, totalCurrent = 0;
+  var rows = open.map(function(p) {
+    var mis = gMisCache[p.stock_code];
+    var currentPrice = mis ? mis.price : 0;
+    var invested = p.entry_price * p.shares * 1000;
+    var current = currentPrice * p.shares * 1000;
+    totalInvested += invested;
+    if (currentPrice > 0) totalCurrent += current;
+    else totalCurrent += invested;
+    var pnl = currentPrice > 0 ? (currentPrice - p.entry_price) * p.shares * 1000 : 0;
+    var pnlPct = p.entry_price > 0 && currentPrice > 0 ? ((currentPrice - p.entry_price) / p.entry_price * 100) : 0;
+    var cls = pnl >= 0 ? 'up' : 'down';
+    var days = Math.floor((new Date() - new Date(p.entry_date)) / 86400000);
+    return [
+      '<span class="clickable" onclick="goAnalyze(\'' + p.stock_code + '\')">' + p.stock_code + '</span>',
+      p.stock_name || '',
+      fmtNum(p.entry_price, 2),
+      currentPrice > 0 ? '<span class="' + cls + '">' + fmtNum(currentPrice, 2) + '</span>' : '--',
+      p.shares + ' 張',
+      '<span class="' + cls + '">' + (pnl >= 0 ? '+' : '') + fmtNum(Math.round(pnl)) + '</span>',
+      '<span class="' + cls + '">' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%</span>',
+      days + '天',
+      '<button class="btn btn-secondary" style="padding:2px 8px;font-size:10px;" onclick="closePosition(' + p.id + ')">平倉</button>' +
+      '<button class="btn btn-secondary" style="padding:2px 8px;font-size:10px;margin-left:4px;" onclick="deletePosition(' + p.id + ')">刪除</button>'
+    ];
+  });
+
+  el.innerHTML = mkTable(['代號', '名稱', '買入價', '現價', '張數', '損益', '報酬%', '持有', '操作'], rows);
+
+  // Summary
+  if (sumEl && totalInvested > 0) {
+    var unrealized = totalCurrent - totalInvested;
+    var pct = (unrealized / totalInvested * 100);
+    var cls = unrealized >= 0 ? 'up' : 'down';
+    sumEl.innerHTML = '<div class="stat-grid">' +
+      '<div class="stat-box"><div class="label">總投入</div><div class="value">' + fmtBig(totalInvested) + '</div></div>' +
+      '<div class="stat-box"><div class="label">現值</div><div class="value ' + cls + '">' + fmtBig(totalCurrent) + '</div></div>' +
+      '<div class="stat-box"><div class="label">未實現損益</div><div class="value ' + cls + '">' + (unrealized >= 0 ? '+' : '') + fmtBig(unrealized) + ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)</div></div></div>';
+  }
+}
+
+async function closePosition(id) {
+  var p = gPortfolio.find(function(x) { return x.id === id; });
+  if (!p) return;
+  var mis = gMisCache[p.stock_code];
+  var price = mis ? mis.price : 0;
+  var exitPrice = prompt('輸入賣出價格：', price || p.entry_price);
+  if (!exitPrice) return;
+  try {
+    await authFetch('/api/portfolio/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exit_price: parseFloat(exitPrice) })
+    });
+    toast('已平倉');
+    loadPortfolio();
+  } catch (e) { toast('操作失敗'); }
+}
+
+async function deletePosition(id) {
+  if (!confirm('確定刪除此持倉？')) return;
+  try {
+    await authFetch('/api/portfolio/' + id, { method: 'DELETE' });
+    gPortfolio = gPortfolio.filter(function(x) { return x.id !== id; });
+    renderPortfolio();
+    toast('已刪除');
+  } catch (e) { toast('刪除失敗'); }
+}
+
+// ============================================================
+// PRICE ALERTS (PRO feature)
+// ============================================================
+let gAlerts = [];
+
+function openAlertModal() {
+  if (!userCanAccess('price_alerts')) {
+    showUpgradeModal('pro');
+    return;
+  }
+  if (!gCurrentUser) { openAuthModal(); return; }
+  var codeInput = document.getElementById('stock-input');
+  var code = codeInput ? codeInput.value.trim().split(' ')[0] : '';
+  if (!code) { toast('請先搜尋一檔股票'); return; }
+  var info = gStockDB[code];
+  var name = info ? info.name : '';
+  document.getElementById('alert-stock-label').textContent = code + ' ' + name;
+  document.getElementById('alert-price').value = '';
+  document.getElementById('alert-error').textContent = '';
+  document.getElementById('alert-overlay').classList.add('show');
+  // Pre-fill with current price if available
+  var mis = gMisCache[code];
+  if (mis && mis.price) document.getElementById('alert-price').value = mis.price;
+  setTimeout(function() { document.getElementById('alert-price').focus(); }, 100);
+}
+
+function closeAlertModal() {
+  document.getElementById('alert-overlay').classList.remove('show');
+}
+
+document.addEventListener('click', function(e) {
+  if (e.target && e.target.id === 'alert-overlay') closeAlertModal();
+});
+
+async function submitAlert() {
+  var code = (document.getElementById('alert-stock-label').textContent || '').split(' ')[0];
+  var info = gStockDB[code];
+  var name = info ? info.name : '';
+  var condition = document.getElementById('alert-condition').value;
+  var price = parseFloat(document.getElementById('alert-price').value);
+  var errEl = document.getElementById('alert-error');
+  if (!price || price <= 0) { errEl.textContent = '請輸入有效價格'; return; }
+  try {
+    // Request notification permission on first alert
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+    var r = await authFetch('/api/alerts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock_code: code, stock_name: name, condition: condition, target_price: price })
+    });
+    var data = await r.json();
+    if (!r.ok) { errEl.textContent = data.error || '建立失敗'; return; }
+    toast('提醒已建立：' + code + ' ' + (condition === 'above' ? '漲破' : '跌破') + ' ' + price);
+    closeAlertModal();
+    loadAlerts();
+  } catch (e) {
+    errEl.textContent = '網路錯誤';
+  }
+}
+
+async function loadAlerts() {
+  if (!userCanAccess('price_alerts') || !gCurrentUser) {
+    var sec = document.getElementById('alerts-section');
+    if (sec) sec.style.display = 'none';
+    return;
+  }
+  try {
+    var r = await authFetch('/api/alerts');
+    if (!r.ok) return;
+    var data = await r.json();
+    gAlerts = data.alerts || [];
+    renderAlerts();
+  } catch (e) { /* silent */ }
+}
+
+function renderAlerts() {
+  var sec = document.getElementById('alerts-section');
+  var el = document.getElementById('alerts-container');
+  if (!sec || !el) return;
+  if (gAlerts.length === 0) {
+    sec.style.display = 'none';
+    return;
+  }
+  sec.style.display = '';
+  var active = gAlerts.filter(function(a) { return !a.triggered; });
+  var triggered = gAlerts.filter(function(a) { return a.triggered; });
+  var h = '';
+  if (active.length > 0) {
+    h += '<div style="margin-bottom:12px;font-size:12px;color:var(--text2);">進行中 (' + active.length + ')</div>';
+    active.forEach(function(a) {
+      var condLabel = a.condition === 'above' ? '漲破' : '跌破';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);">' +
+        '<div><span class="clickable" onclick="goAnalyze(\'' + a.stock_code + '\')" style="font-weight:600;">' + a.stock_code + '</span> ' +
+        '<span class="text-muted">' + (a.stock_name || '') + '</span> ' +
+        '<span style="color:var(--cyan);">' + condLabel + ' ' + a.target_price + '</span></div>' +
+        '<button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="deleteAlert(' + a.id + ')">刪除</button></div>';
+    });
+  }
+  if (triggered.length > 0) {
+    h += '<div style="margin-top:12px;margin-bottom:8px;font-size:12px;color:var(--text2);">已觸發 (' + triggered.length + ')</div>';
+    triggered.slice(0, 10).forEach(function(a) {
+      var condLabel = a.condition === 'above' ? '漲破' : '跌破';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);opacity:0.6;">' +
+        '<div><span>' + a.stock_code + '</span> <span class="text-muted">' + (a.stock_name || '') + '</span> ' +
+        condLabel + ' ' + a.target_price + ' <span class="text-muted text-sm">(' + (a.triggered_at || '') + ')</span></div>' +
+        '<button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="deleteAlert(' + a.id + ')">刪除</button></div>';
+    });
+  }
+  el.innerHTML = h;
+}
+
+async function deleteAlert(id) {
+  try {
+    await authFetch('/api/alerts/' + id, { method: 'DELETE' });
+    gAlerts = gAlerts.filter(function(a) { return a.id !== id; });
+    renderAlerts();
+    toast('提醒已刪除');
+  } catch (e) { toast('刪除失敗'); }
+}
+
+function checkPriceAlerts() {
+  if (!gAlerts || gAlerts.length === 0) return;
+  var active = gAlerts.filter(function(a) { return !a.triggered; });
+  active.forEach(function(a) {
+    var mis = gMisCache[a.stock_code];
+    if (!mis || !mis.price) return;
+    var price = mis.price;
+    var triggered = false;
+    if (a.condition === 'above' && price >= a.target_price) triggered = true;
+    if (a.condition === 'below' && price <= a.target_price) triggered = true;
+    if (triggered) {
+      a.triggered = 1;
+      a.triggered_at = new Date().toLocaleString('zh-TW');
+      // Send notification
+      var condLabel = a.condition === 'above' ? '漲破' : '跌破';
+      var msg = a.stock_code + ' ' + (a.stock_name || '') + ' 已' + condLabel + ' ' + a.target_price + '（現價 ' + price + '）';
+      toast(msg);
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('CT Investments 到價提醒', { body: msg, icon: '/manifest.json' });
+        } catch (e) { /* silent */ }
+      }
+      // Mark triggered on server
+      authFetch('/api/alerts/' + a.id + '/trigger', { method: 'POST' }).catch(function() {});
+      renderAlerts();
+    }
+  });
+}
+
+// ============================================================
+// INSTITUTIONAL STREAK (PRO feature)
+// ============================================================
+async function loadStockInstStreak(code) {
+  var el = document.getElementById('stock-inst-streak');
+  if (!el) return;
+  if (!userCanAccess('inst_streak')) {
+    el.innerHTML = '<div style="position:relative;padding:16px;background:var(--bg);border-radius:8px;min-height:60px;" class="feature-locked">' +
+      '<div style="filter:blur(3px);color:var(--text2);font-size:12px;">外資連買 -- 天，投信連買 -- 天</div>' +
+      '<button class="feature-locked-btn" onclick="showUpgradeModal(\'pro\')">升級 Pro 解鎖</button></div>';
+    return;
+  }
+  try {
+    var r = await authFetch('/api/inst-streak?code=' + code);
+    if (!r.ok) { el.innerHTML = ''; return; }
+    var data = await r.json();
+    var streaks = data.streaks || {};
+    var h = '<div style="display:flex;gap:10px;flex-wrap:wrap;">';
+    var labels = { foreign: '外資', trust: '投信', dealer: '自營商' };
+    ['foreign', 'trust', 'dealer'].forEach(function(t) {
+      var s = streaks[t] || {};
+      if (!s.streak) return;
+      var dirLabel = s.direction === 'buy' ? '連買' : '連賣';
+      var cls = s.direction === 'buy' ? 'up' : 'down';
+      h += '<span class="tag ' + cls + '" style="font-size:12px;padding:4px 10px;">' +
+        labels[t] + ' ' + dirLabel + ' <b>' + s.streak + '</b> 天 ' +
+        '<span style="font-size:11px;">(' + fmtShares(Math.abs(s.total_net)) + ')</span></span>';
+    });
+    h += '</div>';
+    if (h.indexOf('<span') === -1) h = '<div class="text-muted" style="font-size:12px;">尚無連續買賣超資料（資料持續累積中）</div>';
+    el.innerHTML = h;
+  } catch (e) {
+    el.innerHTML = '';
+  }
+}
+
+function onStreakTabClick(btn) {
+  document.querySelectorAll('.streak-tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  loadInstStreakRanking();
+}
+
+async function loadInstStreakRanking() {
+  var el = document.getElementById('inst-streak-ranking');
+  if (!el) return;
+  if (!userCanAccess('inst_streak')) {
+    el.classList.add('feature-locked');
+    el.innerHTML = '<div style="filter:blur(3px);padding:20px;"><table><thead><tr><th>代號</th><th>名稱</th><th>連續天數</th><th>累計張數</th></tr></thead><tbody>' +
+      '<tr><td>----</td><td>----</td><td>--</td><td>--</td></tr>'.repeat(5) + '</tbody></table></div>' +
+      '<button class="feature-locked-btn" onclick="showUpgradeModal(\'pro\')">升級 Pro 解鎖</button>';
+    return;
+  }
+
+  var activeBtn = el.parentElement.querySelector('.streak-tab-btn.active');
+  var type = activeBtn ? activeBtn.dataset.type : 'foreign';
+  var dir = activeBtn ? activeBtn.dataset.dir : 'buy';
+
+  el.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+  try {
+    var r = await authFetch('/api/inst-streak/top?type=' + type + '&dir=' + dir + '&limit=20');
+    if (!r.ok) { el.innerHTML = '<div class="text-muted">載入失敗</div>'; return; }
+    var data = await r.json();
+    var top = data.top || [];
+    if (top.length === 0) {
+      el.innerHTML = '<div class="text-muted" style="padding:16px;text-align:center;">資料累積中，請於 2-3 週後查看<br><span style="font-size:11px;">資料範圍：' + (data.data_from || '--') + ' ~ ' + (data.data_to || '--') + ' (' + (data.trading_days || 0) + ' 個交易日)</span></div>';
+      return;
+    }
+    var rows = top.map(function(s) {
+      var dirLabel = s.direction === 'buy' ? '連買' : '連賣';
+      var cls = s.direction === 'buy' ? 'up' : 'down';
+      return [
+        '<span class="clickable" onclick="goAnalyze(\'' + s.code + '\')">' + s.code + '</span>',
+        s.name,
+        '<span class="' + cls + '" style="font-weight:700;">' + dirLabel + ' ' + s.streak + ' 天</span>',
+        '<span class="' + cls + '">' + fmtShares(Math.abs(s.total_net)) + '</span>',
+        '<span class="' + cls + '">' + fmtShares(Math.abs(s.latest_net)) + '</span>'
+      ];
+    });
+    el.innerHTML = mkTable(['代號', '名稱', '連續天數', '累計張數', '最新一日'], rows) +
+      '<div class="text-sm text-muted" style="margin-top:8px;">資料範圍：' + (data.data_from || '--') + ' ~ ' + (data.data_to || '--') + ' (' + (data.trading_days || 0) + ' 個交易日)</div>';
+  } catch (e) {
+    el.innerHTML = '<div class="text-muted">載入失敗</div>';
   }
 }
 

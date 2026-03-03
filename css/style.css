@@ -2162,6 +2162,348 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* ===== DIVIDEND CALENDAR ===== */
+    .div-cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+      margin-top: 8px;
+    }
+    .div-cal-header {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text2);
+      padding: 6px 0;
+    }
+    .div-cal-cell {
+      min-height: 60px;
+      padding: 4px;
+      background: var(--bg);
+      border-radius: 6px;
+      border: 1px solid transparent;
+      transition: border-color 0.2s;
+    }
+    .div-cal-cell:hover {
+      border-color: var(--border-bright);
+    }
+    .div-cal-day {
+      font-size: 11px;
+      color: var(--text2);
+      margin-bottom: 2px;
+    }
+    .div-cal-item {
+      font-size: 10px;
+      padding: 2px 4px;
+      margin-bottom: 1px;
+      border-radius: 3px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .div-cal-item:hover { opacity: 0.8; }
+    .div-cal-cash { background: rgba(255,56,96,0.12); color: var(--red); }
+    .div-cal-stock { background: rgba(0,232,123,0.12); color: var(--green); }
+    .div-cal-both { background: rgba(180,77,255,0.12); color: var(--purple); }
+    .div-cal-empty { opacity: 0.3; }
+
+    /* ===== SECTOR HEATMAP ===== */
+    .hm-cell {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      cursor: default;
+      transition: opacity 0.2s;
+      border: 1px solid rgba(0,0,0,0.3);
+    }
+    .hm-cell:hover {
+      opacity: 0.85;
+      z-index: 1;
+      border-color: #fff;
+    }
+    .hm-cell-name {
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+      line-height: 1.2;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 95%;
+    }
+    .hm-cell-pct {
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.9);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    }
+
+    /* ===== PRICING MODAL ===== */
+    .pricing-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 10000;
+      justify-content: center;
+      align-items: center;
+      backdrop-filter: blur(4px);
+    }
+    .pricing-overlay.show { display: flex; }
+
+    .pricing-modal {
+      background: var(--bg2);
+      border: 1px solid var(--border-bright);
+      border-radius: 20px;
+      padding: 32px;
+      max-width: 780px;
+      width: 90vw;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+      box-shadow: 0 0 60px rgba(0, 240, 255, 0.1);
+    }
+
+    .pricing-modal h2 {
+      text-align: center;
+      font-size: 22px;
+      margin-bottom: 6px;
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .pricing-sub {
+      text-align: center;
+      color: var(--text2);
+      font-size: 13px;
+      margin-bottom: 24px;
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .plan-card {
+      background: var(--card-solid);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 18px;
+      transition: border-color 0.3s, transform 0.2s;
+      position: relative;
+    }
+
+    .plan-card:hover {
+      border-color: var(--border-bright);
+      transform: translateY(-2px);
+    }
+
+    .plan-card.popular {
+      border-color: var(--cyan);
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.15);
+    }
+
+    .plan-card.popular::before {
+      content: 'POPULAR';
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 12px;
+      border-radius: 10px;
+      letter-spacing: 1px;
+    }
+
+    .plan-card-name {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+
+    .plan-card-price {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--cyan);
+      margin-bottom: 16px;
+    }
+
+    .plan-card-price span {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text2);
+    }
+
+    .plan-card-features {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 18px 0;
+    }
+
+    .plan-card-features li {
+      font-size: 12px;
+      color: var(--text2);
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .plan-card-features li::before {
+      content: '\2713';
+      color: var(--green);
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .plan-card-btn {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .plan-card-btn:hover {
+      border-color: var(--cyan);
+      background: rgba(0, 240, 255, 0.08);
+      color: var(--cyan);
+    }
+
+    .plan-card-btn.current {
+      background: rgba(0, 240, 255, 0.1);
+      border-color: var(--cyan);
+      color: var(--cyan);
+      cursor: default;
+    }
+
+    .pricing-close {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: none;
+      border: none;
+      color: var(--text2);
+      font-size: 20px;
+      cursor: pointer;
+    }
+
+    .pricing-contact {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text2);
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ===== PLAN BADGE ===== */
+    .plan-badge {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      vertical-align: middle;
+      margin-left: 4px;
+    }
+    .plan-badge-free {
+      background: rgba(0,240,255,0.08);
+      color: var(--text2);
+      border: 1px solid var(--border);
+    }
+    .plan-badge-pro {
+      background: rgba(255,208,54,0.12);
+      color: var(--yellow);
+      border: 1px solid rgba(255,208,54,0.3);
+    }
+    .plan-badge-proplus {
+      background: rgba(180,77,255,0.12);
+      color: var(--purple);
+      border: 1px solid rgba(180,77,255,0.3);
+    }
+    .plan-badge-admin {
+      background: rgba(255,56,96,0.12);
+      color: var(--red);
+      border: 1px solid rgba(255,56,96,0.3);
+    }
+
+    /* ===== FEATURE LOCKED OVERLAY ===== */
+    .feature-locked {
+      position: relative;
+      overflow: hidden;
+    }
+    .feature-locked::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(6, 11, 24, 0.6);
+      backdrop-filter: blur(3px);
+      z-index: 2;
+      border-radius: inherit;
+    }
+    .feature-locked-btn {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 3;
+      background: linear-gradient(135deg, var(--cyan), var(--purple));
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+    }
+    .feature-locked-btn:hover {
+      transform: translate(-50%, -50%) scale(1.05);
+    }
+
+    /* ===== ADMIN PLAN SELECT ===== */
+    .admin-plan-select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 768px) {
+      .pricing-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .pricing-modal {
+        padding: 20px;
+        max-width: 95vw;
+      }
+    }
+
     /* ===== SCANLINE EFFECT (subtle) ===== */
     .scanline {
       position: fixed;

@@ -65,6 +65,9 @@
       <div class="nav-item" data-tab="screener">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 4h18v2H3zM5 10h14v2H5zM8 16h8v2H8z"/></svg><span>篩選</span>
       </div>
+      <div class="nav-item" data-tab="compare">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 20V10M12 20V4M6 20v-6"/></svg><span>比較</span>
+      </div>
       <div class="nav-item" data-tab="watchlist">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4l2.5 5.5L20 10l-4 4 1 5.5L12 17l-5 2.5 1-5.5-4-4 5.5-.5z"/></svg><span>關注</span>
       </div>
@@ -155,6 +158,12 @@
         <div id="sector-ranking"><div class="loading-box"><div class="spinner"></div></div></div>
       </div>
 
+      <div class="card">
+        <div class="card-title">&#x1F5FA; 產業熱力圖</div>
+        <div class="text-sm text-muted mb-12">面積代表產業權重，顏色代表漲跌幅（紅漲綠跌）</div>
+        <div id="sector-heatmap" style="position:relative;width:100%;height:320px;border-radius:8px;overflow:hidden;background:var(--bg);"></div>
+      </div>
+
       <div class="grid-2">
         <div class="card">
           <div class="card-title" style="color:var(--red);">&#9650; 漲幅排行 TOP 15</div>
@@ -174,6 +183,39 @@
         <div class="card-title">&#x1F3E6; 三大法人今日動態</div>
         <div id="inst-summary-overview"><div class="loading-box"><div class="spinner"></div></div></div>
       </div>
+
+      <div class="card">
+        <div class="card-title">&#x1F4CA; 大盤歷史回測 <span class="plan-badge plan-badge-proplus">Pro+</span></div>
+        <div class="text-sm text-muted mb-12">模擬不同投資策略在加權指數上的歷史績效</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">策略</label>
+            <select class="input" id="bt-strategy" style="width:140px;">
+              <option value="lump_sum">單筆投入</option>
+              <option value="dca">定期定額</option>
+              <option value="ma_cross">均線交叉</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">起始日期</label>
+            <input type="date" class="input" id="bt-start" value="2020-01-01" style="width:140px;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">金額 (TWD)</label>
+            <input type="number" class="input" id="bt-amount" value="100000" step="10000" style="width:120px;">
+          </div>
+          <div id="bt-ma-params" style="display:none;">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">均線參數</label>
+            <span class="text-sm">短</span>
+            <input type="number" class="input" id="bt-short-ma" value="5" min="2" max="60" style="width:50px;">
+            <span class="text-sm">長</span>
+            <input type="number" class="input" id="bt-long-ma" value="20" min="5" max="200" style="width:50px;">
+          </div>
+          <button class="btn btn-primary" onclick="runBacktest()">開始回測</button>
+        </div>
+        <div id="bt-result" style="display:none;"></div>
+        <div id="bt-chart" class="chart-box" style="height:250px;display:none;"></div>
+      </div>
     </div>
 
     <!-- ==================== 三大法人 ==================== -->
@@ -182,6 +224,19 @@
         <div class="card-title">&#x1F3E6; 三大法人買賣金額統計</div>
         <div id="inst-amount-table"><div class="loading-box"><div class="spinner"></div></div></div>
       </div>
+
+      <div class="card">
+        <div class="card-title">&#x1F4CA; 連續買賣超排行 <span class="plan-badge plan-badge-pro">PRO</span></div>
+        <div class="text-sm text-muted mb-12">法人連續多日買超/賣超個股排行，資料自系統部署日起累積</div>
+        <div class="tab-bar" id="streak-tabs">
+          <button class="tab-btn streak-tab-btn active" data-type="foreign" data-dir="buy" onclick="onStreakTabClick(this)">外資連買</button>
+          <button class="tab-btn streak-tab-btn" data-type="foreign" data-dir="sell" onclick="onStreakTabClick(this)">外資連賣</button>
+          <button class="tab-btn streak-tab-btn" data-type="trust" data-dir="buy" onclick="onStreakTabClick(this)">投信連買</button>
+          <button class="tab-btn streak-tab-btn" data-type="trust" data-dir="sell" onclick="onStreakTabClick(this)">投信連賣</button>
+        </div>
+        <div class="table-wrap" id="inst-streak-ranking"><div class="loading-box"><div class="spinner"></div></div></div>
+      </div>
+
       <div class="card">
         <div class="card-title">&#x1F3E6; 三大法人個股買賣超排行</div>
         <div class="tab-bar" id="inst-tabs">
@@ -213,6 +268,7 @@
           </div>
           <button class="btn btn-primary" onclick="analyzeStock()">開始分析</button>
           <button class="btn btn-secondary" onclick="addToWatchlistFromAnalysis()">&#x2B50; 加入關注</button>
+          <button class="btn btn-secondary" onclick="openAlertModal()" title="到價提醒">&#x1F514; 提醒</button>
         </div>
         <div id="recent-stocks" style="display:none;"></div>
         <div id="stock-header" style="display:none;">
@@ -494,6 +550,33 @@
       </div>
     </div>
 
+    <!-- ==================== 股票比較 ==================== -->
+    <div id="panel-compare" class="panel">
+      <div class="card">
+        <div class="card-title">&#x1F4CA; 股票比較</div>
+        <div class="text-sm text-muted mb-12">輸入 2~5 檔股票代號進行比較（Free 最多 2 檔，Pro 最多 5 檔）</div>
+        <div id="compare-inputs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+          <input type="text" class="input" id="cmp-1" placeholder="代號1 例如 2330" style="width:120px;" autocomplete="off">
+          <input type="text" class="input" id="cmp-2" placeholder="代號2 例如 2317" style="width:120px;" autocomplete="off">
+          <input type="text" class="input cmp-pro-input" id="cmp-3" placeholder="代號3" style="width:120px;" autocomplete="off">
+          <input type="text" class="input cmp-pro-input" id="cmp-4" placeholder="代號4" style="width:120px;" autocomplete="off">
+          <input type="text" class="input cmp-pro-input" id="cmp-5" placeholder="代號5" style="width:120px;" autocomplete="off">
+        </div>
+        <button class="btn btn-primary" onclick="runCompare()">開始比較</button>
+      </div>
+      <div id="compare-loading" style="display:none;">
+        <div class="card"><div class="loading-box"><div class="spinner"></div><div>載入比較資料...</div></div></div>
+      </div>
+      <div id="compare-chart-card" class="card" style="display:none;">
+        <div class="card-title">&#x1F4C8; 走勢疊圖（%）</div>
+        <div id="compare-chart" class="chart-box" style="height:300px;"></div>
+      </div>
+      <div id="compare-table-card" class="card" style="display:none;">
+        <div class="card-title">&#x1F4CB; 指標比較</div>
+        <div class="table-wrap" id="compare-table"></div>
+      </div>
+    </div>
+
     <!-- ==================== 我的關注 ==================== -->
     <div id="panel-watchlist" class="panel">
       <div class="flex-between mb-16">
@@ -512,6 +595,30 @@
         </div>
       </div>
       <div id="watchlist-container"></div>
+      <div class="card" id="dividend-section" style="display:none;">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>&#x1F4C5; 除權息行事曆</span>
+          <span>
+            <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="loadDividendCalendar('watchlist')">關注股</button>
+            <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px;" onclick="loadDividendCalendar('all')">全市場 <span class="plan-badge plan-badge-proplus" style="font-size:8px;">Pro+</span></button>
+          </span>
+        </div>
+        <div id="dividend-calendar"></div>
+      </div>
+
+      <div class="card" id="portfolio-section" style="display:none;">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>&#x1F4BC; 投資組合 <span class="plan-badge plan-badge-pro">PRO</span></span>
+          <button class="btn btn-secondary" style="padding:4px 12px;font-size:12px;" onclick="openPortfolioModal()">+ 新增持倉</button>
+        </div>
+        <div id="portfolio-summary" style="margin-bottom:12px;"></div>
+        <div class="table-wrap" id="portfolio-container"></div>
+      </div>
+
+      <div class="card" id="alerts-section" style="display:none;">
+        <div class="card-title">&#x1F514; 我的到價提醒 <span class="plan-badge plan-badge-pro">PRO</span></div>
+        <div id="alerts-container"><div class="loading-box"><div class="spinner"></div></div></div>
+      </div>
     </div>
 
     <!-- ==================== 謙堂觀點 ==================== -->
@@ -664,6 +771,110 @@
     <div class="auth-switch">
       <span id="auth-switch-text">還沒有帳號？</span>
       <a id="auth-switch-link" onclick="toggleAuthMode()">立即註冊</a>
+    </div>
+  </div>
+</div>
+
+<!-- PORTFOLIO MODAL -->
+<div class="auth-modal-overlay" id="portfolio-overlay">
+  <div class="auth-modal" style="position:relative;max-width:400px;">
+    <button class="auth-close" onclick="closePortfolioModal()">&times;</button>
+    <h2>&#x1F4BC; 新增持倉</h2>
+    <div class="auth-field">
+      <label>股票代號</label>
+      <input type="text" id="port-code" class="input" placeholder="例如 2330" style="width:100%;">
+    </div>
+    <div class="auth-field">
+      <label>買入價格</label>
+      <input type="number" id="port-price" class="input" placeholder="買入價" step="0.01" style="width:100%;">
+    </div>
+    <div class="auth-field">
+      <label>買入日期</label>
+      <input type="date" id="port-date" class="input" style="width:100%;">
+    </div>
+    <div class="auth-field">
+      <label>張數</label>
+      <input type="number" id="port-shares" class="input" placeholder="1" value="1" min="1" style="width:100%;">
+    </div>
+    <div class="auth-field">
+      <label>備註</label>
+      <input type="text" id="port-notes" class="input" placeholder="選填" style="width:100%;">
+    </div>
+    <div class="auth-error" id="port-error"></div>
+    <button class="auth-btn" onclick="submitPortfolio()">新增持倉</button>
+  </div>
+</div>
+
+<!-- ALERT MODAL -->
+<div class="auth-modal-overlay" id="alert-overlay">
+  <div class="auth-modal" style="position:relative;max-width:380px;">
+    <button class="auth-close" onclick="closeAlertModal()">&times;</button>
+    <h2>&#x1F514; 設定到價提醒</h2>
+    <div class="auth-sub" id="alert-stock-label"></div>
+    <div class="auth-field">
+      <label>條件</label>
+      <select id="alert-condition" class="input" style="width:100%;">
+        <option value="above">股價漲破（&ge;）</option>
+        <option value="below">股價跌破（&le;）</option>
+      </select>
+    </div>
+    <div class="auth-field">
+      <label>目標價格</label>
+      <input type="number" id="alert-price" class="input" placeholder="輸入目標價" step="0.01" style="width:100%;">
+    </div>
+    <div class="auth-error" id="alert-error"></div>
+    <button class="auth-btn" onclick="submitAlert()">建立提醒</button>
+  </div>
+</div>
+
+<!-- PRICING MODAL -->
+<div class="pricing-overlay" id="pricing-overlay">
+  <div class="pricing-modal">
+    <button class="pricing-close" onclick="closePricingModal()">&times;</button>
+    <h2>選擇您的方案</h2>
+    <div class="pricing-sub">解鎖進階功能，提升投資效率</div>
+    <div class="pricing-grid">
+      <div class="plan-card" id="pc-free">
+        <div class="plan-card-name">Free</div>
+        <div class="plan-card-price">$0 <span>/月</span></div>
+        <ul class="plan-card-features">
+          <li>市場總覽 / 法人 / 個股分析</li>
+          <li>當沖 / 題材 / 國際 / 晨訊 / AI</li>
+          <li>篩選器 / 關注清單</li>
+          <li>產業熱力圖</li>
+          <li>股票比較（最多 2 檔）</li>
+          <li>關注股除權息行事曆</li>
+        </ul>
+        <button class="plan-card-btn current" data-plan="free">目前方案</button>
+      </div>
+      <div class="plan-card popular" id="pc-pro">
+        <div class="plan-card-name">Pro</div>
+        <div class="plan-card-price">$4.99 <span>/月</span></div>
+        <ul class="plan-card-features">
+          <li>所有 Free 功能</li>
+          <li>到價提醒（10 組）</li>
+          <li>籌碼連續買賣超統計</li>
+          <li>投資組合績效追蹤</li>
+          <li>股票比較（最多 5 檔）</li>
+          <li>關注股除權息行事曆</li>
+        </ul>
+        <button class="plan-card-btn" data-plan="pro" onclick="requestUpgrade('pro')">升級 Pro</button>
+      </div>
+      <div class="plan-card" id="pc-proplus">
+        <div class="plan-card-name">Pro+</div>
+        <div class="plan-card-price">$9.99 <span>/月</span></div>
+        <ul class="plan-card-features">
+          <li>所有 Pro 功能</li>
+          <li>到價提醒（20 組）</li>
+          <li>大盤歷史回測</li>
+          <li>全市場除權息行事曆</li>
+          <li>未來新功能優先體驗</li>
+        </ul>
+        <button class="plan-card-btn" data-plan="proplus" onclick="requestUpgrade('proplus')">升級 Pro+</button>
+      </div>
+    </div>
+    <div class="pricing-contact">
+      升級請聯繫管理員：<b>chan010212@gmail.com</b>
     </div>
   </div>
 </div>
