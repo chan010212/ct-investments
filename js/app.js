@@ -1086,9 +1086,12 @@ const acInput = document.getElementById('stock-input');
 const acList = document.getElementById('ac-list');
 let acIdx = -1;
 
+let _acDebounce = null;
 acInput.addEventListener('input', () => {
+  clearTimeout(_acDebounce);
   const q = acInput.value.trim();
   if (q.length === 0) { closeAC(); return; }
+  _acDebounce = setTimeout(() => {
   const results = searchStocks(q);
   if (results.length === 0) { closeAC(); return; }
   acIdx = -1;
@@ -1112,6 +1115,7 @@ acInput.addEventListener('input', () => {
       analyzeStock();
     });
   });
+  }, 150); // debounce 150ms
 });
 
 acInput.addEventListener('keydown', (e) => {
@@ -1520,7 +1524,10 @@ function renderInstSummary(data) {
 // ============================================================
 function renderInstRank(type) {
   if (gInstStocks.length === 0 && gTpexInstStocks.length === 0) {
-    var msg = '<div class="text-muted" style="padding:20px;text-align:center;">盤中尚無法人個股買賣超資料，收盤後自動更新</div>';
+    var msg = '<div class="empty-state" style="padding:24px;text-align:center;">'
+      + '<div class="icon" style="font-size:28px;">&#x1F3E6;</div>'
+      + '<p>法人買賣超資料尚未載入</p>'
+      + '<p class="text-sm text-muted" style="margin-top:6px;">可能原因：盤中尚未公布、證交所限制存取<br>收盤後將自動更新</p></div>';
     document.getElementById('inst-buy-rank').innerHTML = msg;
     document.getElementById('inst-sell-rank').innerHTML = msg;
     return;
@@ -1805,14 +1812,19 @@ function renderWatchlist() {
     });
     loadingHtml += '</div>';
     box.innerHTML = loadingHtml;
-    // Auto-retry when data arrives
+    // Auto-retry when data arrives (max 60 retries = 30s timeout)
     if (!gWlPendingRefresh) {
       gWlPendingRefresh = true;
+      var retryCount = 0;
       var retryTimer = setInterval(function() {
+        retryCount++;
         if (Object.keys(gStockMap).length > 0) {
           clearInterval(retryTimer);
           gWlPendingRefresh = false;
           renderWatchlist();
+        } else if (retryCount >= 60) {
+          clearInterval(retryTimer);
+          gWlPendingRefresh = false;
         }
       }, 500);
     }
@@ -3034,10 +3046,19 @@ async function init() {
 
     // Render overview first (shown to user immediately)
     renderOverview();
-    if (instSummary) renderInstSummary(instSummary);
+    if (instSummary) {
+      renderInstSummary(instSummary);
+    } else {
+      var noInstMsg = '<div class="text-sm text-muted" style="padding:12px;text-align:center;">法人摘要暫無法取得（證交所限制）</div>';
+      var el1 = document.getElementById('inst-summary-overview');
+      var el2 = document.getElementById('inst-amount-table');
+      if (el1) el1.innerHTML = noInstMsg;
+      if (el2) el2.innerHTML = noInstMsg;
+    }
 
     const stockCount = Object.keys(gStockDB).length;
-    setStatus('', `已連線 (${gDate.slice(0,4)}/${gDate.slice(4,6)}/${gDate.slice(6,8)}) — ${stockCount} 檔股票（含上市/上櫃/興櫃）`);
+    const src = (allStocks && allStocks.stat === 'OK') ? '' : ' [OpenAPI]';
+    setStatus('', `已連線 (${gDate.slice(0,4)}/${gDate.slice(4,6)}/${gDate.slice(6,8)}) — ${stockCount} 檔股票${src}`);
 
     // Render secondary panels non-blocking (after first paint)
     requestAnimationFrame(() => {
@@ -3057,16 +3078,18 @@ async function init() {
 
   } catch (e) {
     setStatus('error', '連線失敗');
+    let reason = '未知錯誤';
+    if (e.message.includes('timeout') || e.message.includes('Timeout')) reason = '連線超時，伺服器回應過慢';
+    else if (e.message.includes('502') || e.message.includes('503')) reason = '證交所/櫃買中心暫時無法連線';
+    else if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) reason = '網路連線中斷，請檢查網路';
+    else if (e.message.includes('CORS')) reason = '瀏覽器安全限制（CORS）';
+    else reason = e.message;
     document.getElementById('market-stats').innerHTML =
       `<div class="empty-state">
         <div class="icon" style="color:var(--red);">&#x26A0;</div>
         <p style="color:var(--red);font-weight:600;">載入失敗</p>
         <p class="text-sm text-muted" style="margin-top:8px;">
-          ${e.message}<br><br>
-          可能原因：<br>
-          1. 證交所/櫃買中心伺服器維護中<br>
-          2. 瀏覽器 CORS 限制<br>
-          3. 網路連線問題<br><br>
+          ${reason}<br><br>
           <button class="btn btn-primary" onclick="location.reload()">重新整理</button>
         </p>
       </div>`;
@@ -3537,7 +3560,7 @@ async function maybeLoadDayTrade(forceRefresh) {
 
   try {
     // Day trade stats are published NEXT business day.
-    // Try dates sequentially (most recent first) to avoid TWSE rate limiting.
+    // Try dates sequentially (most recent first).
     var found = false;
     for (var i = 1; i <= 10; i++) {
       try {
@@ -3548,19 +3571,28 @@ async function maybeLoadDayTrade(forceRefresh) {
           found = true;
           break;
         }
-      } catch(e) {}
+      } catch(e) {
+        // If first attempt fails with network error, likely TWSE is blocked — stop retrying
+        if (i === 1 && (e.message.includes('502') || e.message.includes('Failed') || e.message.includes('307'))) break;
+      }
     }
 
     if (!found) {
       document.getElementById('dt-stats').innerHTML =
-        '<div class="text-muted" style="padding:20px;text-align:center;">近期無當沖資料（可能為非交易日或盤後尚未公布）<br><br>'
-        + '<button class="btn btn-primary" onclick="maybeLoadDayTrade(true)">重新載入</button></div>';
+        '<div class="empty-state" style="padding:24px;text-align:center;">'
+        + '<div class="icon" style="font-size:32px;">&#x26A1;</div>'
+        + '<p>當沖資料暫時無法取得</p>'
+        + '<p class="text-sm text-muted" style="margin-top:6px;">證交所可能限制雲端存取，盤後資料通常於次一營業日公布</p>'
+        + '<button class="btn btn-primary" style="margin-top:12px;" onclick="maybeLoadDayTrade(true)">重新載入</button></div>';
       document.getElementById('dt-rank').innerHTML = '';
     }
   } catch(e) {
     document.getElementById('dt-stats').innerHTML =
-      '<div class="text-muted" style="padding:20px;text-align:center;">當沖資料載入失敗<br><br>'
-      + '<button class="btn btn-primary" onclick="maybeLoadDayTrade(true)">重新載入</button></div>';
+      '<div class="empty-state" style="padding:24px;text-align:center;">'
+      + '<div class="icon" style="font-size:32px;color:var(--red);">&#x26A0;</div>'
+      + '<p>當沖資料載入失敗</p>'
+      + '<p class="text-sm text-muted" style="margin-top:6px;">' + e.message + '</p>'
+      + '<button class="btn btn-primary" style="margin-top:12px;" onclick="maybeLoadDayTrade(true)">重新載入</button></div>';
     document.getElementById('dt-rank').innerHTML = '';
   }
 }
@@ -3674,31 +3706,35 @@ document.addEventListener('keydown', e => {
   }
 });
 
+let _gsDebounce = null;
 searchInput.addEventListener('input', () => {
+  clearTimeout(_gsDebounce);
   const q = searchInput.value.trim();
   if (q.length === 0) { searchResults.innerHTML = ''; gsIdx = -1; return; }
-  const results = searchStocks(q);
-  gsIdx = -1;
-  if (results.length === 0) {
-    searchResults.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);font-size:13px;">找不到符合的股票</div>';
-    return;
-  }
-  searchResults.innerHTML = results.map((r, i) => {
-    const mCls = r.market === 'twse' ? 'tag-twse' : r.market === 'emerging' ? 'tag-emerging' : 'tag-tpex';
-    const mLabel = r.market === 'twse' ? '上市' : r.market === 'emerging' ? '興櫃' : '上櫃';
-    return `<div class="sm-item" data-idx="${i}" data-code="${r.code}">
-      <span><span style="color:var(--cyan);font-weight:600;font-size:15px;">${r.code}</span>
-      <span style="color:var(--text2);margin-left:8px;">${r.name}</span></span>
-      <span class="tag-market ${mCls}">${mLabel}</span>
-    </div>`;
-  }).join('');
-  searchResults.querySelectorAll('.sm-item').forEach(el => {
-    el.addEventListener('mousedown', e => {
-      e.preventDefault();
-      closeSearch();
-      goAnalyze(el.dataset.code);
+  _gsDebounce = setTimeout(() => {
+    const results = searchStocks(q);
+    gsIdx = -1;
+    if (results.length === 0) {
+      searchResults.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);font-size:13px;">找不到符合的股票</div>';
+      return;
+    }
+    searchResults.innerHTML = results.map((r, i) => {
+      const mCls = r.market === 'twse' ? 'tag-twse' : r.market === 'emerging' ? 'tag-emerging' : 'tag-tpex';
+      const mLabel = r.market === 'twse' ? '上市' : r.market === 'emerging' ? '興櫃' : '上櫃';
+      return `<div class="sm-item" data-idx="${i}" data-code="${r.code}">
+        <span><span style="color:var(--cyan);font-weight:600;font-size:15px;">${r.code}</span>
+        <span style="color:var(--text2);margin-left:8px;">${r.name}</span></span>
+        <span class="tag-market ${mCls}">${mLabel}</span>
+      </div>`;
+    }).join('');
+    searchResults.querySelectorAll('.sm-item').forEach(el => {
+      el.addEventListener('mousedown', e => {
+        e.preventDefault();
+        closeSearch();
+        goAnalyze(el.dataset.code);
+      });
     });
-  });
+  }, 150);
 });
 
 searchInput.addEventListener('keydown', e => {
@@ -3837,10 +3873,17 @@ function startAutoRefresh() {
   gAutoRefreshTimer = setInterval(() => {
     const now = new Date();
     const h = now.getHours(), m = now.getMinutes(), dow = now.getDay();
+    // Trading hours: 9:00-13:30 (30s interval)
     const isTrading = dow >= 1 && dow <= 5 && ((h === 9 && m >= 0) || (h >= 10 && h < 13) || (h === 13 && m <= 30));
-    if (!isTrading) return;
-    doAutoRefresh(true);
-  }, 30000); // every 30 seconds
+    // After-hours: 14:00-15:00 — institutional data gets published (60s interval)
+    const isAfterHours = dow >= 1 && dow <= 5 && (h === 14 || (h === 15 && m === 0));
+    if (isTrading) {
+      doAutoRefresh(true);
+    } else if (isAfterHours) {
+      // Slower refresh for after-hours (only every other tick = ~60s)
+      if (m % 2 === 0 && now.getSeconds() < 30) doAutoRefresh(true);
+    }
+  }, 30000);
 }
 
 async function manualRefresh() {
@@ -4592,12 +4635,13 @@ function updateClock() {
   el.textContent = clockText;
 }
 
+let _tickerTimer = null, _clockTimer = null;
 init().then(async () => {
   loadTicker();
-  setInterval(loadTicker, 5 * 60 * 1000);
+  _tickerTimer = setInterval(loadTicker, 5 * 60 * 1000);
   startAutoRefresh();
   updateClock();
-  setInterval(updateClock, 1000);
+  _clockTimer = setInterval(updateClock, 1000);
   await checkAuth();
 
   // Set initial history state
@@ -4612,5 +4656,20 @@ init().then(async () => {
     document.getElementById('stock-input').value = stockParam;
     if (tabParam !== 'analysis') switchTab('analysis', false);
     setTimeout(() => analyzeStock(), 300);
+  }
+});
+
+// Pause timers when tab is hidden (saves battery on mobile)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (_tickerTimer) { clearInterval(_tickerTimer); _tickerTimer = null; }
+    if (_clockTimer) { clearInterval(_clockTimer); _clockTimer = null; }
+    if (gAutoRefreshTimer) { clearInterval(gAutoRefreshTimer); gAutoRefreshTimer = null; }
+  } else {
+    // Resume when tab becomes visible
+    if (!_tickerTimer) { loadTicker(); _tickerTimer = setInterval(loadTicker, 5 * 60 * 1000); }
+    if (!_clockTimer) { updateClock(); _clockTimer = setInterval(updateClock, 1000); }
+    startAutoRefresh();
+    doAutoRefresh(true); // Refresh data after returning
   }
 });
