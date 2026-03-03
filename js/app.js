@@ -4755,7 +4755,7 @@ function brEarnings(earnings) {
       ? '<a href="' + n.url + '" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">' + brEscHtml(n.title) + '</a>'
       : brEscHtml(n.title);
     var summ = n.summary ? '<div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.6;">' + brEscHtml(n.summary) + '</div>' : '';
-    return '<div style="padding:10px 0;border-bottom:1px solid var(--border);">'
+    return '<div style="padding:14px 0;border-bottom:1px solid var(--border);">'
       + '<div style="font-size:14px;line-height:1.5;"><span style="color:var(--text2);font-size:11px;margin-right:8px;">' + n.time + '</span>' + link + '</div>' + summ + '</div>';
   }).join('');
   return '<div class="br-section"><div class="br-section-title">最新財報 · 營收 · 獲利動態</div>' + rows + '</div>';
@@ -4776,7 +4776,7 @@ function brNews(news) {
       var link = n.url
         ? '<a href="' + n.url + '" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">' + brEscHtml(n.title) + '</a>'
         : brEscHtml(n.title);
-      return '<div style="display:flex;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.02);">'
+      return '<div style="display:flex;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.02);">'
         + '<span style="color:var(--text2);font-size:11px;flex-shrink:0;width:40px;">' + n.time + '</span>'
         + '<span style="font-size:13px;line-height:1.5;">' + link + '</span></div>';
     }).join('');
