@@ -3435,7 +3435,6 @@ function stopRealtimeUpdates() {
 let gSectorsLoaded = false;
 let gGlobalLoaded = false;
 let gGlobalSuccess = false;
-let gDayTradeSuccess = false;
 let gOpinionLoaded = false;
 let gOpinionSuccess = false;
 
@@ -3478,7 +3477,6 @@ async function maybeLoadDayTrade(forceRefresh) {
         var data = await API_TWSE.dayTrade(d);
         if (data && renderDayTrade(data)) {
           gDayTradeCache = data;
-          gDayTradeSuccess = true;
           found = true;
           break;
         }
