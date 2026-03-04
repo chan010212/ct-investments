@@ -1274,7 +1274,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/api/health':
-            self.send_json({'status': 'ok', 'time': datetime.now().isoformat()})
+            self.send_json({'status': 'ok', 'time': datetime.now().isoformat(), 'v': '20260305a', 'fugle': bool(FUGLE_API_KEY), 'finmind': bool(FINMIND_TOKEN)})
             return
         elif self.path == '/api/morning-report':
             self.handle_morning_report()
