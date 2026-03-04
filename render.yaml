@@ -3,7 +3,10 @@ services:
     name: ct-investments
     runtime: python
     buildCommand: echo "No build needed"
-    startCommand: python server.py
+    startCommand: python3 server.py
+    healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: "3.12"
+      - key: PYTHONUNBUFFERED
+        value: "1"

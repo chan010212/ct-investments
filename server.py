@@ -2612,17 +2612,24 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 if __name__ == '__main__':
-    os.chdir(Path(__file__).parent)
-    init_db()
-    # Backfill inst_daily from FinMind in background thread
-    if FINMIND_TOKEN:
-        threading.Thread(target=_backfill_inst_daily, daemon=True).start()
-    server = ThreadingHTTPServer(('0.0.0.0', PORT), StockProxyHandler)
-    print(f'CT Investments server started on port {PORT} (threaded)')
-    print(f'  Database: {DB_PATH}')
-    print(f'  Open: http://localhost:{PORT}')
     try:
+        os.chdir(Path(__file__).parent)
+        print(f'[BOOT] Python {sys.version}')
+        print(f'[BOOT] PORT={PORT}, CWD={os.getcwd()}')
+        init_db()
+        # Backfill inst_daily from FinMind in background thread
+        if FINMIND_TOKEN:
+            threading.Thread(target=_backfill_inst_daily, daemon=True).start()
+        server = ThreadingHTTPServer(('0.0.0.0', PORT), StockProxyHandler)
+        print(f'CT Investments server started on port {PORT} (threaded)')
+        print(f'  Database: {DB_PATH}')
+        print(f'  Open: http://localhost:{PORT}')
+        sys.stdout.flush()
         server.serve_forever()
     except KeyboardInterrupt:
         print('\nServer stopped')
         server.server_close()
+    except Exception as e:
+        print(f'[FATAL] Server failed to start: {e}')
+        import traceback; traceback.print_exc()
+        sys.exit(1)
