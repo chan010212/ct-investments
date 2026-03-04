@@ -6218,12 +6218,13 @@ function updateClock() {
 }
 
 let _tickerTimer = null, _clockTimer = null;
+// Start ticker & clock immediately (Yahoo Finance, no dependency on TWSE init)
+loadTicker();
+_tickerTimer = setInterval(loadTicker, 60 * 1000);
+updateClock();
+_clockTimer = setInterval(updateClock, 1000);
 init().then(async () => {
-  loadTicker();
-  _tickerTimer = setInterval(loadTicker, 60 * 1000);
   startAutoRefresh();
-  updateClock();
-  _clockTimer = setInterval(updateClock, 1000);
   await checkAuth();
 
   // Set initial history state
