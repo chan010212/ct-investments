@@ -927,7 +927,7 @@ def _fugle_batch(codes):
 def _finmind_fetch(dataset, date_str):
     """Fetch data from FinMind API."""
     if not FINMIND_TOKEN:
-        return None
+        return {'_error': 'FINMIND_TOKEN not configured'}
     cache_key = f'finmind_{dataset}_{date_str}'
     cached = api_cache_get(cache_key, FINMIND_CACHE_TTL)
     if cached is not None:
@@ -944,11 +944,12 @@ def _finmind_fetch(dataset, date_str):
             result = data.get('data', [])
             api_cache_set(cache_key, result)
             return result
-        print(f'[FINMIND] Bad status for {dataset}: {data.get("msg", "")}')
-        return None
+        msg = data.get('msg', '') if data else 'empty response'
+        print(f'[FINMIND] Bad status for {dataset}: {msg}')
+        return {'_error': f'FinMind API: {msg}'}
     except Exception as e:
         print(f'[FINMIND] Fetch error {dataset}/{date_str}: {e}')
-        return None
+        return {'_error': str(e)}
 
 
 def _finmind_inst_aggregate(rows):
@@ -2402,8 +2403,9 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
             self.send_json({'error': 'FinMind token not configured'}, 503)
             return
         rows = _finmind_fetch('TaiwanStockInstitutionalInvestorsBuySell', date)
-        if rows is None:
-            self.send_json({'error': 'Fetch failed'}, 502)
+        if rows is None or (isinstance(rows, dict) and '_error' in rows):
+            err = rows.get('_error', 'Unknown') if isinstance(rows, dict) else 'Fetch failed'
+            self.send_json({'error': err}, 502)
             return
         agg = _finmind_inst_aggregate(rows)
         self.send_json(agg)
@@ -2420,8 +2422,9 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
             self.send_json({'error': 'FinMind token not configured'}, 503)
             return
         rows = _finmind_fetch('TaiwanStockDayTrading', date)
-        if rows is None:
-            self.send_json({'error': 'Fetch failed'}, 502)
+        if rows is None or (isinstance(rows, dict) and '_error' in rows):
+            err = rows.get('_error', 'Unknown') if isinstance(rows, dict) else 'Fetch failed'
+            self.send_json({'error': err}, 502)
             return
         self.send_json(rows)
 
