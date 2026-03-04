@@ -935,7 +935,7 @@ def _finmind_fetch(dataset, date_str):
     try:
         params = urllib.parse.urlencode({
             'dataset': dataset,
-            'date': date_str,
+            'start_date': date_str,
             'token': FINMIND_TOKEN,
         })
         url = f'https://api.finmindtrade.com/api/v4/data?{params}'
