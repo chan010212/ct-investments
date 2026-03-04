@@ -20,12 +20,28 @@ import urllib.parse
 import urllib.error
 import ssl
 import http.cookiejar
+import subprocess
+import binascii
+import secrets
 from pathlib import Path
 from datetime import datetime, timedelta
 
 PORT = int(os.environ.get('PORT', 8888))
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ct-investments-secret-key-change-in-production')
 DB_PATH = Path(__file__).parent / 'data' / 'ct_invest.db'
+
+# ============================================================
+# NEWEBPAY (藍新金流) CONFIGURATION
+# ============================================================
+NEWEBPAY_MERCHANT_ID = os.environ.get('NEWEBPAY_MERCHANT_ID', '')
+NEWEBPAY_HASH_KEY = os.environ.get('NEWEBPAY_HASH_KEY', '')
+NEWEBPAY_HASH_IV = os.environ.get('NEWEBPAY_HASH_IV', '')
+NEWEBPAY_TEST_MODE = os.environ.get('NEWEBPAY_TEST_MODE', '1') == '1'
+SITE_URL = os.environ.get('SITE_URL', 'https://ct-investments.onrender.com')
+NEWEBPAY_MPG_URL = (
+    'https://ccore.newebpay.com/MPG/mpg_gateway' if NEWEBPAY_TEST_MODE
+    else 'https://core.newebpay.com/MPG/mpg_gateway'
+)
 
 ALLOWED_HOSTS = [
     'www.twse.com.tw',
@@ -43,10 +59,16 @@ ALLOWED_HOSTS = [
 # ============================================================
 PLAN_HIERARCHY = {'free': 0, 'pro': 1, 'proplus': 2, 'admin': 99}
 
+PLAN_PRICING = {
+    'pro': {'monthly': 149, 'yearly': 1490},
+    'proplus': {'monthly': 299, 'yearly': 2990},
+}
+
 PLAN_FEATURES = {
     'free': {
         'name': 'Free',
         'price': 0,
+        'currency': 'TWD',
         'features': [
             '市場總覽 / 法人 / 個股分析',
             '當沖 / 題材 / 國際 / 晨訊 / AI',
@@ -58,7 +80,8 @@ PLAN_FEATURES = {
     },
     'pro': {
         'name': 'Pro',
-        'price': 4.99,
+        'price': 149,
+        'currency': 'TWD',
         'features': [
             '所有 Free 功能',
             '到價提醒（10 組）',
@@ -70,7 +93,8 @@ PLAN_FEATURES = {
     },
     'proplus': {
         'name': 'Pro+',
-        'price': 9.99,
+        'price': 299,
+        'currency': 'TWD',
         'features': [
             '所有 Pro 功能',
             '到價提醒（20 組）',
@@ -904,6 +928,26 @@ def init_db():
         created_at TEXT DEFAULT (datetime('now'))
     )''')
 
+    c.execute('''CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_no TEXT UNIQUE NOT NULL,
+        user_id INTEGER NOT NULL,
+        plan TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        period TEXT DEFAULT 'monthly',
+        status TEXT DEFAULT 'pending',
+        trade_no TEXT,
+        payment_type TEXT,
+        pay_time TEXT,
+        gateway_status TEXT,
+        raw_response TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        paid_at TEXT,
+        expire_at TEXT
+    )''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id, status)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_orders_no ON orders(order_no)')
+
     # Add plan columns to users table (safe migration)
     for col_sql in [
         "ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'",
@@ -1010,6 +1054,51 @@ def verify_password(password, stored_hash):
 
 
 # ============================================================
+# NEWEBPAY AES HELPERS (uses openssl subprocess — no pip)
+# ============================================================
+def newebpay_encrypt(plaintext):
+    """AES-256-CBC encrypt, returns hex string."""
+    if not NEWEBPAY_HASH_KEY or not NEWEBPAY_HASH_IV:
+        raise RuntimeError('NewebPay credentials not configured')
+    key_hex = binascii.hexlify(NEWEBPAY_HASH_KEY.encode()).decode()
+    iv_hex = binascii.hexlify(NEWEBPAY_HASH_IV.encode()).decode()
+    result = subprocess.run(
+        ['openssl', 'enc', '-aes-256-cbc', '-nosalt', '-K', key_hex, '-iv', iv_hex],
+        input=plaintext.encode(), capture_output=True
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f'openssl encrypt failed: {result.stderr.decode()}')
+    return binascii.hexlify(result.stdout).decode()
+
+
+def newebpay_decrypt(hex_cipher):
+    """AES-256-CBC decrypt from hex string, returns plaintext."""
+    key_hex = binascii.hexlify(NEWEBPAY_HASH_KEY.encode()).decode()
+    iv_hex = binascii.hexlify(NEWEBPAY_HASH_IV.encode()).decode()
+    encrypted_bytes = binascii.unhexlify(hex_cipher)
+    result = subprocess.run(
+        ['openssl', 'enc', '-aes-256-cbc', '-nosalt', '-d', '-K', key_hex, '-iv', iv_hex],
+        input=encrypted_bytes, capture_output=True
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f'openssl decrypt failed: {result.stderr.decode()}')
+    return result.stdout.decode()
+
+
+def newebpay_sha256(trade_info_hex):
+    """SHA256 hash for TradeSha verification."""
+    raw = f'HashKey={NEWEBPAY_HASH_KEY}&{trade_info_hex}&HashIV={NEWEBPAY_HASH_IV}'
+    return hashlib.sha256(raw.encode()).hexdigest().upper()
+
+
+def generate_order_no():
+    """Generate unique MerchantOrderNo (max 20 chars per NewebPay spec)."""
+    ts = datetime.now().strftime('%Y%m%d%H%M%S')
+    rand = secrets.token_hex(3).upper()
+    return f'CT{ts}{rand}'[:20]
+
+
+# ============================================================
 # HTTP HANDLER
 # ============================================================
 class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
@@ -1031,6 +1120,12 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_picks()
         elif self.path == '/api/plan/features':
             self.send_json(PLAN_FEATURES)
+        elif self.path.startswith('/api/checkout'):
+            self.handle_checkout()
+        elif self.path.startswith('/api/payment/return'):
+            self.handle_payment_return()
+        elif self.path == '/api/orders':
+            self.handle_get_orders()
         elif self.path.startswith('/api/inst-streak'):
             self.handle_inst_streak()
         elif self.path == '/api/alerts':
@@ -1039,7 +1134,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_portfolio()
         elif self.path.startswith('/api/dividends'):
             self.handle_dividends()
-        elif self.path.startswith('/api/admin/') and self.path.split('?')[0] in ('/api/admin/users', '/api/admin/actions', '/api/admin/stats'):
+        elif self.path.startswith('/api/admin/') and self.path.split('?')[0] in ('/api/admin/users', '/api/admin/actions', '/api/admin/stats', '/api/admin/orders'):
             self.handle_admin_get()
         elif self.path == '/' or self.path == '':
             self.path = '/index.html'
@@ -1066,6 +1161,10 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_post_portfolio()
         elif self.path == '/api/backtest':
             self.handle_backtest()
+        elif self.path == '/api/payment/notify':
+            self.handle_payment_notify()
+        elif self.path.startswith('/api/payment/return'):
+            self.handle_payment_return()
         elif self.path.startswith('/api/alerts/') and self.path.endswith('/trigger'):
             self.handle_trigger_alert()
         else:
@@ -1149,6 +1248,33 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
         # admin bypasses all plan checks
         if role == 'admin':
             return user
+        # Check plan expiration from database
+        if plan in ('pro', 'proplus'):
+            db = get_db()
+            try:
+                row = db.execute(
+                    'SELECT plan, plan_expires_at FROM users WHERE id = ?',
+                    (user['uid'],)
+                ).fetchone()
+                if row:
+                    plan = row['plan'] or 'free'
+                    expires = row['plan_expires_at']
+                    if expires:
+                        try:
+                            exp_dt = datetime.fromisoformat(expires)
+                            if datetime.now() > exp_dt:
+                                db.execute('UPDATE users SET plan = ? WHERE id = ?', ('free', user['uid']))
+                                db.execute(
+                                    'INSERT INTO plan_changes (user_id, old_plan, new_plan, reason) VALUES (?, ?, ?, ?)',
+                                    (user['uid'], plan, 'free', 'Auto-expired')
+                                )
+                                db.commit()
+                                plan = 'free'
+                        except Exception:
+                            pass
+                    user['plan'] = plan
+            finally:
+                db.close()
         user_level = PLAN_HIERARCHY.get(plan, 0)
         required_level = PLAN_HIERARCHY.get(min_plan, 0)
         if user_level < required_level:
@@ -1264,12 +1390,38 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
         user = self.require_user()
         if not user:
             return
+        # Query live plan from DB (JWT plan may be stale after payment)
+        current_plan = user.get('plan', 'free')
+        expires_at = None
+        db = get_db()
+        try:
+            row = db.execute(
+                'SELECT plan, plan_expires_at FROM users WHERE id = ?',
+                (user['uid'],)
+            ).fetchone()
+            if row:
+                current_plan = row['plan'] or 'free'
+                expires_at = row['plan_expires_at']
+                if current_plan in ('pro', 'proplus') and expires_at:
+                    try:
+                        if datetime.now() > datetime.fromisoformat(expires_at):
+                            db.execute('UPDATE users SET plan = ? WHERE id = ?', ('free', user['uid']))
+                            db.commit()
+                            current_plan = 'free'
+                            expires_at = None
+                    except Exception:
+                        pass
+            if user.get('role') == 'admin':
+                current_plan = 'proplus'
+        finally:
+            db.close()
         self.send_json({'user': {
             'id': user['uid'],
             'email': user['email'],
             'name': user['name'],
             'role': user['role'],
-            'plan': user.get('plan', 'free')
+            'plan': current_plan,
+            'plan_expires_at': expires_at,
         }})
 
     # --- Watchlist ---
@@ -1411,6 +1563,14 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                     'total_picks': total_picks,
                     'popular_stocks': [{'code': r['stock_code'], 'count': r['cnt']} for r in popular]
                 })
+
+            elif path == '/api/admin/orders':
+                rows = db.execute('''
+                    SELECT o.*, u.email, u.display_name
+                    FROM orders o JOIN users u ON o.user_id = u.id
+                    ORDER BY o.created_at DESC LIMIT 200
+                ''').fetchall()
+                self.send_json({'orders': [dict(r) for r in rows]})
         finally:
             db.close()
 
@@ -1696,6 +1856,291 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             db.close()
 
     # --- Admin Plan Management ---
+    # --- Payment (NewebPay) ---
+    def handle_checkout(self):
+        user = self.require_user()
+        if not user:
+            return
+        query = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(query)
+        plan = params.get('plan', [''])[0]
+        period = params.get('period', ['monthly'])[0]
+
+        if plan not in ('pro', 'proplus'):
+            self.send_json({'error': '無效的方案'}, 400)
+            return
+        if period not in ('monthly', 'yearly'):
+            self.send_json({'error': '無效的付款週期'}, 400)
+            return
+        if not NEWEBPAY_MERCHANT_ID:
+            self.send_json({'error': '付款功能尚未啟用，請聯繫管理員 chan010212@gmail.com'}, 503)
+            return
+
+        pricing = PLAN_PRICING.get(plan, {})
+        amount = pricing.get(period, 0)
+        if amount <= 0:
+            self.send_json({'error': '價格設定錯誤'}, 500)
+            return
+
+        order_no = generate_order_no()
+        plan_label = 'Pro' if plan == 'pro' else 'Pro+'
+        period_label = '月費' if period == 'monthly' else '年費'
+        item_desc = f'CT Investments {plan_label} {period_label}'
+
+        db = get_db()
+        try:
+            db.execute(
+                '''INSERT INTO orders (order_no, user_id, plan, amount, period, status)
+                   VALUES (?, ?, ?, ?, ?, 'pending')''',
+                (order_no, user['uid'], plan, amount, period)
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        timestamp = int(time.time())
+        trade_params = urllib.parse.urlencode({
+            'MerchantID': NEWEBPAY_MERCHANT_ID,
+            'RespondType': 'JSON',
+            'TimeStamp': str(timestamp),
+            'Version': '2.0',
+            'MerchantOrderNo': order_no,
+            'Amt': str(amount),
+            'ItemDesc': item_desc,
+            'Email': user['email'],
+            'LoginType': '0',
+            'NotifyURL': f'{SITE_URL}/api/payment/notify',
+            'ReturnURL': f'{SITE_URL}/api/payment/return',
+            'ClientBackURL': f'{SITE_URL}',
+            'CREDIT': '1',
+            'WEBATM': '1',
+            'VACC': '1',
+        })
+
+        trade_info = newebpay_encrypt(trade_params)
+        trade_sha = newebpay_sha256(trade_info)
+
+        self.send_json({
+            'mpg_url': NEWEBPAY_MPG_URL,
+            'MerchantID': NEWEBPAY_MERCHANT_ID,
+            'TradeInfo': trade_info,
+            'TradeSha': trade_sha,
+            'Version': '2.0',
+            'order_no': order_no,
+            'amount': amount,
+            'plan': plan,
+            'period': period,
+        })
+
+    def handle_payment_notify(self):
+        """NewebPay server-to-server notification (NotifyURL)."""
+        length = int(self.headers.get('Content-Length', 0))
+        if length == 0:
+            self.send_json({'error': 'empty body'}, 400)
+            return
+
+        raw_body = self.rfile.read(length).decode()
+        params = urllib.parse.parse_qs(raw_body)
+        trade_info_hex = params.get('TradeInfo', [''])[0]
+        trade_sha = params.get('TradeSha', [''])[0]
+
+        if not trade_info_hex or not trade_sha:
+            self.send_json({'error': 'missing fields'}, 400)
+            return
+
+        expected_sha = newebpay_sha256(trade_info_hex)
+        if not hmac.compare_digest(trade_sha.upper(), expected_sha.upper()):
+            print('[PAYMENT] TradeSha verification FAILED')
+            self.send_json({'error': 'hash mismatch'}, 400)
+            return
+
+        try:
+            decrypted = newebpay_decrypt(trade_info_hex)
+            result = json.loads(decrypted)
+        except Exception as e:
+            print(f'[PAYMENT] Decrypt failed: {e}')
+            self.send_json({'error': 'decrypt failed'}, 400)
+            return
+
+        status_code = result.get('Status')
+        result_data = result.get('Result', {})
+        if isinstance(result_data, str):
+            try:
+                result_data = json.loads(result_data)
+            except Exception:
+                result_data = {}
+
+        order_no = result_data.get('MerchantOrderNo', '')
+        trade_no = result_data.get('TradeNo', '')
+        payment_type = result_data.get('PaymentType', '')
+        pay_time = result_data.get('PayTime', '')
+        amount = int(result_data.get('Amt', 0))
+
+        print(f'[PAYMENT] Notify: order={order_no} status={status_code} '
+              f'trade_no={trade_no} type={payment_type} amt={amount}')
+
+        db = get_db()
+        try:
+            order = db.execute(
+                'SELECT * FROM orders WHERE order_no = ?', (order_no,)
+            ).fetchone()
+
+            if not order:
+                print(f'[PAYMENT] Order not found: {order_no}')
+                self.send_json({'error': 'order not found'}, 404)
+                return
+
+            if order['status'] == 'paid':
+                self.send_json({'status': 'already processed'})
+                return
+
+            if amount != order['amount']:
+                print(f'[PAYMENT] Amount mismatch: expected={order["amount"]} got={amount}')
+                self.send_json({'error': 'amount mismatch'}, 400)
+                return
+
+            if status_code == 'SUCCESS':
+                now = datetime.now()
+                if order['period'] == 'yearly':
+                    expire_at = (now + timedelta(days=365)).isoformat()
+                else:
+                    expire_at = (now + timedelta(days=30)).isoformat()
+
+                db.execute('''
+                    UPDATE orders SET status='paid', trade_no=?, payment_type=?,
+                    pay_time=?, paid_at=datetime('now'), expire_at=?,
+                    gateway_status=?, raw_response=?
+                    WHERE order_no=?
+                ''', (trade_no, payment_type, pay_time, expire_at,
+                      status_code, json.dumps(result, ensure_ascii=False), order_no))
+
+                user_id = order['user_id']
+                old_row = db.execute('SELECT plan FROM users WHERE id=?', (user_id,)).fetchone()
+                old_plan = old_row['plan'] if old_row else 'free'
+
+                db.execute(
+                    'UPDATE users SET plan=?, plan_expires_at=? WHERE id=?',
+                    (order['plan'], expire_at, user_id)
+                )
+                db.execute(
+                    '''INSERT INTO plan_changes (user_id, old_plan, new_plan, reason)
+                       VALUES (?, ?, ?, ?)''',
+                    (user_id, old_plan, order['plan'],
+                     f'Payment: {order_no} ({payment_type})')
+                )
+                log_action(db, user_id, 'payment_success',
+                           json.dumps({'order_no': order_no, 'plan': order['plan'],
+                                       'amount': amount, 'expire_at': expire_at},
+                                      ensure_ascii=False))
+                db.commit()
+                print(f'[PAYMENT] Activated plan={order["plan"]} for user={user_id} until {expire_at}')
+            else:
+                db.execute('''
+                    UPDATE orders SET status='failed', gateway_status=?, raw_response=?
+                    WHERE order_no=?
+                ''', (status_code, json.dumps(result, ensure_ascii=False), order_no))
+                log_action(db, order['user_id'], 'payment_failed',
+                           json.dumps({'order_no': order_no, 'status': status_code},
+                                      ensure_ascii=False))
+                db.commit()
+        finally:
+            db.close()
+
+        self.send_json({'status': 'ok'})
+
+    def handle_payment_return(self):
+        """NewebPay browser redirect (ReturnURL). Shows result page."""
+        trade_info_hex = ''
+        trade_sha = ''
+
+        # Handle both GET (query string) and POST (form body)
+        if self.command == 'POST':
+            length = int(self.headers.get('Content-Length', 0))
+            if length > 0:
+                raw = self.rfile.read(length).decode()
+                params = urllib.parse.parse_qs(raw)
+                trade_info_hex = params.get('TradeInfo', [''])[0]
+                trade_sha = params.get('TradeSha', [''])[0]
+        else:
+            query = urllib.parse.urlparse(self.path).query
+            params = urllib.parse.parse_qs(query)
+            trade_info_hex = params.get('TradeInfo', [''])[0]
+            trade_sha = params.get('TradeSha', [''])[0]
+
+        success = False
+        order_no = ''
+        message = '付款處理中...'
+
+        if trade_info_hex and trade_sha:
+            expected_sha = newebpay_sha256(trade_info_hex)
+            if hmac.compare_digest(trade_sha.upper(), expected_sha.upper()):
+                try:
+                    decrypted = newebpay_decrypt(trade_info_hex)
+                    result = json.loads(decrypted)
+                    if result.get('Status') == 'SUCCESS':
+                        success = True
+                        rd = result.get('Result', {})
+                        if isinstance(rd, str):
+                            try:
+                                rd = json.loads(rd)
+                            except Exception:
+                                rd = {}
+                        order_no = rd.get('MerchantOrderNo', '')
+                        message = '付款成功！您的方案已升級。'
+                    else:
+                        message = f'付款未完成：{result.get("Message", "未知錯誤")}'
+                except Exception:
+                    message = '付款結果解析失敗，請稍後查看帳戶狀態。'
+
+        icon = '&#10004;' if success else '&#10060;'
+        title = '付款成功' if success else '付款未完成'
+        color = '#00f0ff' if success else '#ff6b6b'
+        order_html = f'<p>訂單編號：{order_no}</p>' if order_no else ''
+
+        html = f'''<!DOCTYPE html>
+<html lang="zh-TW"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>付款結果 - CT Investments</title>
+<style>
+body{{font-family:system-ui;background:#060b18;color:#e0e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}}
+.card{{background:#0d1829;border:1px solid #1a2a40;border-radius:16px;padding:40px;text-align:center;max-width:420px}}
+.icon{{font-size:48px;margin-bottom:16px}}
+h2{{color:{color};margin:0 0 12px}}
+p{{color:#8899aa;line-height:1.6}}
+a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-gradient(135deg,#00f0ff,#0080ff);color:#060b18;text-decoration:none;border-radius:8px;font-weight:700}}
+</style></head><body>
+<div class="card">
+<div class="icon">{icon}</div>
+<h2>{title}</h2>
+<p>{message}</p>{order_html}
+<a href="/">返回 CT Investments</a>
+</div>
+<script>setTimeout(function(){{window.location.href="/";}},5000);</script>
+</body></html>'''
+
+        body = html.encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def handle_get_orders(self):
+        user = self.require_user()
+        if not user:
+            return
+        db = get_db()
+        try:
+            rows = db.execute(
+                '''SELECT order_no, plan, amount, period, status, payment_type,
+                          created_at, paid_at, expire_at
+                   FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 50''',
+                (user['uid'],)
+            ).fetchall()
+            self.send_json({'orders': [dict(r) for r in rows]})
+        finally:
+            db.close()
+
     def handle_admin_plan(self):
         admin = self.require_admin()
         if not admin:

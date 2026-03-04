@@ -4119,10 +4119,68 @@ function updatePricingButtons() {
   });
 }
 
-function requestUpgrade(plan) {
-  if (gCurrentUser && gCurrentUser.role === 'admin') return;
-  trackAction('upgrade_request', plan);
-  toast('已送出升級請求，請聯繫管理員 chan010212@gmail.com');
+var gPricingPeriod = 'monthly';
+var PLAN_PRICING_TWD = {
+  pro: { monthly: 149, yearly: 1490 },
+  proplus: { monthly: 299, yearly: 2990 }
+};
+
+function setPricingPeriod(period) {
+  gPricingPeriod = period;
+  document.querySelectorAll('.period-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.period === period);
+  });
+  var suffix = period === 'yearly' ? '/年' : '/月';
+  var proEl = document.getElementById('price-pro');
+  var ppEl = document.getElementById('price-proplus');
+  if (proEl) proEl.innerHTML = 'NT$' + PLAN_PRICING_TWD.pro[period] + ' <span>' + suffix + '</span>';
+  if (ppEl) ppEl.innerHTML = 'NT$' + PLAN_PRICING_TWD.proplus[period] + ' <span>' + suffix + '</span>';
+}
+
+async function requestUpgrade(plan) {
+  if (!gCurrentUser) { openAuthModal(); return; }
+  if (gCurrentUser.role === 'admin') return;
+  if (plan === gCurrentPlan) return;
+
+  var period = gPricingPeriod || 'monthly';
+  trackAction('checkout_start', plan + '_' + period);
+
+  var btn = document.querySelector('.plan-card-btn[data-plan="' + plan + '"]');
+  if (btn) { btn.disabled = true; btn.textContent = '處理中...'; }
+
+  try {
+    var resp = await authFetch('/api/checkout?plan=' + plan + '&period=' + period);
+    var data = await resp.json();
+    if (data.error) {
+      toast(data.error);
+      return;
+    }
+    // Create hidden form and POST to NewebPay MPG
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = data.mpg_url;
+    form.style.display = 'none';
+    var fields = {
+      MerchantID: data.MerchantID,
+      TradeInfo: data.TradeInfo,
+      TradeSha: data.TradeSha,
+      Version: data.Version
+    };
+    for (var key in fields) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = fields[key];
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
+  } catch (e) {
+    toast('付款請求失敗，請稍後再試');
+    console.error('Checkout error:', e);
+  } finally {
+    if (btn) { btn.disabled = false; updatePricingButtons(); }
+  }
 }
 
 // Pricing overlay close on background click
@@ -4277,7 +4335,7 @@ function renderUserSection() {
       <div class="user-avatar">${initial}</div>
       <div class="user-info">
         <div class="user-name">${gCurrentUser.name || gCurrentUser.email} ${planBadge}</div>
-        <div class="user-role" style="cursor:pointer;" onclick="showUpgradeModal()">${gCurrentPlan === 'free' ? '升級方案' : gCurrentPlan === 'pro' ? 'Pro 會員' : gCurrentPlan === 'proplus' ? 'Pro+ 會員' : ''}</div>
+        <div class="user-role" style="cursor:pointer;" onclick="showUpgradeModal()">${gCurrentPlan === 'free' ? '升級方案' : gCurrentPlan === 'pro' ? 'Pro 會員' : gCurrentPlan === 'proplus' ? 'Pro+ 會員' : ''}${gCurrentUser.plan_expires_at && gCurrentPlan !== 'free' && gCurrentUser.role !== 'admin' ? ' (到期 ' + gCurrentUser.plan_expires_at.slice(0,10) + ')' : ''}</div>
       </div>
       <button class="user-logout" onclick="logout()">登出</button>
     </div>`;
@@ -4310,6 +4368,7 @@ async function checkAuth() {
     if (r.ok) {
       const data = await r.json();
       gCurrentUser = data.user;
+      gCurrentUser.plan_expires_at = data.user.plan_expires_at || null;
       gCurrentPlan = data.user.plan || 'free';
       if (data.user.role === 'admin') gCurrentPlan = 'proplus';
       renderUserSection();

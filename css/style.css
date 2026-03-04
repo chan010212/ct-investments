@@ -2284,7 +2284,44 @@
       text-align: center;
       color: var(--text2);
       font-size: 13px;
-      margin-bottom: 24px;
+      margin-bottom: 16px;
+    }
+
+    .pricing-period-toggle {
+      display: flex;
+      justify-content: center;
+      gap: 4px;
+      margin-bottom: 20px;
+      background: var(--bg2);
+      border-radius: 8px;
+      padding: 3px;
+      width: fit-content;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .period-btn {
+      padding: 6px 18px;
+      border: none;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text2);
+      cursor: pointer;
+      font-size: 13px;
+      transition: all .2s;
+    }
+    .period-btn.active {
+      background: var(--cyan);
+      color: var(--bg1);
+      font-weight: 600;
+    }
+    .save-badge {
+      background: #ff6b35;
+      color: #fff;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      margin-left: 4px;
+      font-weight: 600;
     }
 
     .pricing-grid {

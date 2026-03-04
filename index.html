@@ -833,10 +833,14 @@
     <button class="pricing-close" onclick="closePricingModal()">&times;</button>
     <h2>選擇您的方案</h2>
     <div class="pricing-sub">解鎖進階功能，提升投資效率</div>
+    <div class="pricing-period-toggle">
+      <button class="period-btn active" data-period="monthly" onclick="setPricingPeriod('monthly')">月繳</button>
+      <button class="period-btn" data-period="yearly" onclick="setPricingPeriod('yearly')">年繳 <span class="save-badge">省17%</span></button>
+    </div>
     <div class="pricing-grid">
       <div class="plan-card" id="pc-free">
         <div class="plan-card-name">Free</div>
-        <div class="plan-card-price">$0 <span>/月</span></div>
+        <div class="plan-card-price">NT$0 <span>/月</span></div>
         <ul class="plan-card-features">
           <li>市場總覽 / 法人 / 個股分析</li>
           <li>當沖 / 題材 / 國際 / 晨訊 / AI</li>
@@ -849,7 +853,7 @@
       </div>
       <div class="plan-card popular" id="pc-pro">
         <div class="plan-card-name">Pro</div>
-        <div class="plan-card-price">$4.99 <span>/月</span></div>
+        <div class="plan-card-price" id="price-pro">NT$149 <span>/月</span></div>
         <ul class="plan-card-features">
           <li>所有 Free 功能</li>
           <li>到價提醒（10 組）</li>
@@ -862,7 +866,7 @@
       </div>
       <div class="plan-card" id="pc-proplus">
         <div class="plan-card-name">Pro+</div>
-        <div class="plan-card-price">$9.99 <span>/月</span></div>
+        <div class="plan-card-price" id="price-proplus">NT$299 <span>/月</span></div>
         <ul class="plan-card-features">
           <li>所有 Pro 功能</li>
           <li>到價提醒（20 組）</li>
@@ -872,9 +876,6 @@
         </ul>
         <button class="plan-card-btn" data-plan="proplus" onclick="requestUpgrade('proplus')">升級 Pro+</button>
       </div>
-    </div>
-    <div class="pricing-contact">
-      升級請聯繫管理員：<b>chan010212@gmail.com</b>
     </div>
   </div>
 </div>
