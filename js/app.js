@@ -3444,10 +3444,12 @@ async function fetchYahooQuotes(symbols) {
           const r = await fetch('/api/proxy?url=' + encodeURIComponent(url));
           if (!r.ok) continue;
           const d = await r.json();
-          const meta = d.chart?.result?.[0]?.meta;
+          const result = d.chart?.result?.[0];
+          const meta = result?.meta;
           if (!meta) continue;
           const price = meta.regularMarketPrice || 0;
-          const prevClose = meta.chartPreviousClose || price;
+          const closes = result?.indicators?.quote?.[0]?.close || [];
+          const prevClose = (closes.length >= 2 ? closes[closes.length - 2] : null) || meta.chartPreviousClose || price;
           const chg = price - prevClose;
           const pct = prevClose ? (chg / prevClose) * 100 : 0;
           return {
