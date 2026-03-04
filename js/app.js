@@ -3440,7 +3440,7 @@ async function fetchYahooQuotes(symbols) {
       const hosts = ['query1.finance.yahoo.com', 'query2.finance.yahoo.com'];
       for (const host of hosts) {
         try {
-          const url = `https://${host}/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
+          const url = `https://${host}/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2d`;
           const r = await fetch('/api/proxy?url=' + encodeURIComponent(url));
           if (!r.ok) continue;
           const d = await r.json();
