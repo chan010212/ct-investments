@@ -969,11 +969,14 @@ def _finmind_inst_aggregate(rows):
         buy = int(r.get('buy', 0))
         sell = int(r.get('sell', 0))
         net = buy - sell
-        if '外資' in inv and '自營' not in inv:
+        # FinMind uses English names: Foreign_Investor, Foreign_Dealer_Self,
+        # Investment_Trust, Dealer_self, Dealer_Hedging
+        inv_lower = inv.lower()
+        if inv_lower == 'foreign_investor' or ('外資' in inv and '自營' not in inv):
             agg[code]['f'] += net
-        elif '投信' in inv:
+        elif inv_lower == 'investment_trust' or '投信' in inv:
             agg[code]['t'] += net
-        elif '自營' in inv:
+        elif inv_lower in ('dealer_self', 'dealer_hedging', 'foreign_dealer_self') or '自營' in inv:
             agg[code]['d'] += net
         agg[code]['total'] += net
     return agg
