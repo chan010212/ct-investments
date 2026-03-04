@@ -6218,7 +6218,7 @@ function updateClock() {
 let _tickerTimer = null, _clockTimer = null;
 init().then(async () => {
   loadTicker();
-  _tickerTimer = setInterval(loadTicker, 5 * 60 * 1000);
+  _tickerTimer = setInterval(loadTicker, 60 * 1000);
   startAutoRefresh();
   updateClock();
   _clockTimer = setInterval(updateClock, 1000);
@@ -6247,7 +6247,7 @@ document.addEventListener('visibilitychange', () => {
     if (gAutoRefreshTimer) { clearInterval(gAutoRefreshTimer); gAutoRefreshTimer = null; }
   } else {
     // Resume when tab becomes visible
-    if (!_tickerTimer) { loadTicker(); _tickerTimer = setInterval(loadTicker, 5 * 60 * 1000); }
+    if (!_tickerTimer) { loadTicker(); _tickerTimer = setInterval(loadTicker, 60 * 1000); }
     if (!_clockTimer) { updateClock(); _clockTimer = setInterval(updateClock, 1000); }
     startAutoRefresh();
     doAutoRefresh(true); // Refresh data after returning
