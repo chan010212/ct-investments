@@ -3834,11 +3834,12 @@ function renderDayTradeFinMind(rows) {
   rows.forEach(function(r) {
     var code = r.stock_id || '';
     if (!code || !/^\d{4}$/.test(code)) return;
-    var buy = parseInt(r.buy) || 0;
-    var sell = parseInt(r.sell) || 0;
-    var vol = buy + sell;
+    // FinMind fields: Volume (shares), BuyAmount (dollars), SellAmount (dollars)
+    var vol = parseInt(r.Volume) || 0;
+    var buy = parseInt(r.BuyAmount) || 0;
+    var sell = parseInt(r.SellAmount) || 0;
     totalVol += vol; totalBuy += buy; totalSell += sell;
-    if (!stockMap[code]) stockMap[code] = { code: code, name: r.stock_name || (gStockDB[code] ? gStockDB[code].name : '') || code, vol: 0, buy: 0, sell: 0 };
+    if (!stockMap[code]) stockMap[code] = { code: code, name: (gStockDB[code] ? gStockDB[code].name : '') || code, vol: 0, buy: 0, sell: 0 };
     stockMap[code].vol += vol;
     stockMap[code].buy += buy;
     stockMap[code].sell += sell;
@@ -3846,9 +3847,9 @@ function renderDayTradeFinMind(rows) {
 
   // Stats header
   document.getElementById('dt-stats').innerHTML =
-    '<div class="stat-box"><div class="label">當沖成交量</div><div class="value">' + fmtBig(totalVol) + '</div></div>'
-    + '<div class="stat-box"><div class="label">當沖買進</div><div class="value">' + fmtBig(totalBuy) + '</div></div>'
-    + '<div class="stat-box"><div class="label">當沖賣出</div><div class="value">' + fmtBig(totalSell) + '</div></div>'
+    '<div class="stat-box"><div class="label">當沖成交股數</div><div class="value">' + fmtBig(totalVol) + '</div></div>'
+    + '<div class="stat-box"><div class="label">當沖買進金額</div><div class="value">' + fmtBig(totalBuy) + '</div></div>'
+    + '<div class="stat-box"><div class="label">當沖賣出金額</div><div class="value">' + fmtBig(totalSell) + '</div></div>'
     + '<div class="stat-box"><div class="label">資料來源</div><div class="value" style="font-size:13px;">FinMind</div></div>';
 
   // Rank list
@@ -3868,7 +3869,7 @@ function renderDayTradeFinMind(rows) {
     document.getElementById('dt-rank').innerHTML = h;
   } else {
     document.getElementById('dt-rank').innerHTML = mkTable(
-      ['代號', '名稱', '當沖量', '買進', '賣出'],
+      ['代號', '名稱', '當沖股數', '買進金額', '賣出金額'],
       list.map(function(s) {
         return [
           '<span class="clickable" onclick="goAnalyze(\'' + s.code + '\')">' + s.code + '</span>',

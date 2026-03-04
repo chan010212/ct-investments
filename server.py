@@ -983,6 +983,62 @@ def _finmind_inst_aggregate(rows):
 
 
 # ============================================================
+# BACKFILL inst_daily FROM FINMIND (for streak calculation)
+# ============================================================
+_backfill_lock = threading.Lock()
+_backfill_done = False
+
+def _backfill_inst_daily():
+    """Backfill inst_daily from FinMind for the past 30 trading days."""
+    global _backfill_done
+    if not FINMIND_TOKEN or _backfill_done:
+        return
+    with _backfill_lock:
+        if _backfill_done:
+            return
+        _backfill_done = True
+    try:
+        db = sqlite3.connect(str(DB_PATH))
+        existing_days = db.execute('SELECT COUNT(DISTINCT trade_date) FROM inst_daily').fetchone()[0]
+        if existing_days >= 10:
+            print(f'[BACKFILL] Already have {existing_days} days, skipping')
+            db.close()
+            return
+        print('[BACKFILL] Starting FinMind inst_daily backfill...')
+        filled = 0
+        for i in range(1, 35):
+            d = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+            d_compact = d.replace('-', '')
+            # Skip if already have data for this date
+            cnt = db.execute('SELECT COUNT(*) FROM inst_daily WHERE trade_date = ?', (d_compact,)).fetchone()[0]
+            if cnt > 0:
+                continue
+            rows = _finmind_fetch('TaiwanStockInstitutionalInvestorsBuySell', d)
+            if not rows or not isinstance(rows, list) or len(rows) == 0:
+                continue
+            agg = _finmind_inst_aggregate(rows)
+            count = 0
+            for code, data in agg.items():
+                if not code or not code[0].isdigit():
+                    continue
+                db.execute(
+                    'INSERT OR IGNORE INTO inst_daily (trade_date, stock_code, stock_name, foreign_net, trust_net, dealer_net, total_net) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    (d_compact, code, data.get('name', ''), data['f'], data['t'], data['d'], data['total'])
+                )
+                count += 1
+            db.commit()
+            if count > 0:
+                filled += 1
+                print(f'[BACKFILL] {d}: {count} stocks')
+            time.sleep(1)  # Rate limit
+        db.close()
+        print(f'[BACKFILL] Done, filled {filled} days')
+    except Exception as e:
+        print(f'[BACKFILL] Error: {e}')
+        import traceback; traceback.print_exc()
+
+
+# ============================================================
 # DATABASE
 # ============================================================
 def init_db():
@@ -2558,6 +2614,9 @@ class ThreadingHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 if __name__ == '__main__':
     os.chdir(Path(__file__).parent)
     init_db()
+    # Backfill inst_daily from FinMind in background thread
+    if FINMIND_TOKEN:
+        threading.Thread(target=_backfill_inst_daily, daemon=True).start()
     server = ThreadingHTTPServer(('0.0.0.0', PORT), StockProxyHandler)
     print(f'CT Investments server started on port {PORT} (threaded)')
     print(f'  Database: {DB_PATH}')
