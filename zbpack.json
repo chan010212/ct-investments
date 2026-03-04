@@ -1,0 +1,6 @@
+{
+  "python": {
+    "entry": "server.py",
+    "version": "3.12"
+  }
+}

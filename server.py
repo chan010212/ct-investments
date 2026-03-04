@@ -37,7 +37,7 @@ NEWEBPAY_MERCHANT_ID = os.environ.get('NEWEBPAY_MERCHANT_ID', '')
 NEWEBPAY_HASH_KEY = os.environ.get('NEWEBPAY_HASH_KEY', '')
 NEWEBPAY_HASH_IV = os.environ.get('NEWEBPAY_HASH_IV', '')
 NEWEBPAY_TEST_MODE = os.environ.get('NEWEBPAY_TEST_MODE', '1') == '1'
-SITE_URL = os.environ.get('SITE_URL', 'https://ct-investments.onrender.com')
+SITE_URL = os.environ.get('SITE_URL', 'https://ct-investments.zeabur.app')
 
 # ============================================================
 # FUGLE & FINMIND API KEYS
