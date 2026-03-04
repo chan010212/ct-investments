@@ -939,7 +939,7 @@ def _finmind_fetch(dataset, date_str):
             'token': FINMIND_TOKEN,
         })
         url = f'https://api.finmindtrade.com/api/v4/data?{params}'
-        data = _api_fetch_json(url, {'Authorization': f'Bearer {FINMIND_TOKEN}'})
+        data = _api_fetch_json(url)
         if data and data.get('status') == 200:
             result = data.get('data', [])
             api_cache_set(cache_key, result)
