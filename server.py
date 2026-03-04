@@ -38,6 +38,12 @@ NEWEBPAY_HASH_KEY = os.environ.get('NEWEBPAY_HASH_KEY', '')
 NEWEBPAY_HASH_IV = os.environ.get('NEWEBPAY_HASH_IV', '')
 NEWEBPAY_TEST_MODE = os.environ.get('NEWEBPAY_TEST_MODE', '1') == '1'
 SITE_URL = os.environ.get('SITE_URL', 'https://ct-investments.onrender.com')
+
+# ============================================================
+# FUGLE & FINMIND API KEYS
+# ============================================================
+FUGLE_API_KEY = os.environ.get('FUGLE_API_KEY', '')
+FINMIND_TOKEN = os.environ.get('FINMIND_TOKEN', '')
 NEWEBPAY_MPG_URL = (
     'https://ccore.newebpay.com/MPG/mpg_gateway' if NEWEBPAY_TEST_MODE
     else 'https://core.newebpay.com/MPG/mpg_gateway'
@@ -812,6 +818,167 @@ def _streak_top(db, inst_type, direction, limit=20):
 
 
 # ============================================================
+# FUGLE + FINMIND API — rate-limited cache + helpers
+# ============================================================
+_api_cache = {}          # key → { data, ts }
+_api_cache_lock = threading.Lock()
+FUGLE_CACHE_TTL = 10     # 10 seconds for real-time quotes
+FINMIND_CACHE_TTL = 600  # 10 minutes for institutional/daytrade
+
+# Rate limiter for Fugle: max 50 requests per 60 seconds
+_fugle_req_times = []
+_fugle_rate_lock = threading.Lock()
+
+
+def api_cache_get(key, ttl):
+    with _api_cache_lock:
+        entry = _api_cache.get(key)
+        if not entry:
+            return None
+        if time.time() - entry['ts'] > ttl:
+            del _api_cache[key]
+            return None
+        return entry['data']
+
+
+def api_cache_set(key, data):
+    with _api_cache_lock:
+        _api_cache[key] = {'data': data, 'ts': time.time()}
+        if len(_api_cache) > 300:
+            cutoff = time.time() - FINMIND_CACHE_TTL
+            stale = [k for k, v in _api_cache.items() if v['ts'] < cutoff]
+            for k in stale:
+                del _api_cache[k]
+
+
+def _api_fetch_json(url, headers=None):
+    """Fetch JSON from URL with custom headers."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    h = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+    }
+    if headers:
+        h.update(headers)
+    req = urllib.request.Request(url, headers=h)
+    with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+        return json.loads(resp.read().decode('utf-8'))
+
+
+def _fugle_rate_check():
+    """Returns True if we can make a Fugle request (< 50 req/60s)."""
+    now = time.time()
+    with _fugle_rate_lock:
+        _fugle_req_times[:] = [t for t in _fugle_req_times if now - t < 60]
+        if len(_fugle_req_times) >= 50:
+            return False
+        _fugle_req_times.append(now)
+        return True
+
+
+def _fugle_quote(code):
+    """Fetch single stock intraday quote from Fugle API."""
+    if not FUGLE_API_KEY:
+        return None
+    cache_key = f'fugle_quote_{code}'
+    cached = api_cache_get(cache_key, FUGLE_CACHE_TTL)
+    if cached is not None:
+        return cached
+    if not _fugle_rate_check():
+        return None
+    try:
+        url = f'https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/{code}'
+        data = _api_fetch_json(url, {'X-API-KEY': FUGLE_API_KEY})
+        api_cache_set(cache_key, data)
+        return data
+    except Exception as e:
+        print(f'[FUGLE] Quote error for {code}: {e}')
+        return None
+
+
+def _fugle_batch(codes):
+    """Fetch batch quotes from Fugle (max 30 per call)."""
+    if not FUGLE_API_KEY or not codes:
+        return {}
+    # Deduplicate and limit
+    codes = list(set(codes))[:30]
+    cache_key = 'fugle_batch_' + ','.join(sorted(codes))
+    cached = api_cache_get(cache_key, FUGLE_CACHE_TTL)
+    if cached is not None:
+        return cached
+    # Fetch individually (Fugle v1 doesn't have a true batch endpoint)
+    result = {}
+    for code in codes:
+        if not _fugle_rate_check():
+            break
+        try:
+            url = f'https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/{code}'
+            data = _api_fetch_json(url, {'X-API-KEY': FUGLE_API_KEY})
+            result[code] = data
+            api_cache_set(f'fugle_quote_{code}', data)
+        except Exception as e:
+            print(f'[FUGLE] Batch quote error for {code}: {e}')
+    api_cache_set(cache_key, result)
+    return result
+
+
+def _finmind_fetch(dataset, date_str):
+    """Fetch data from FinMind API."""
+    if not FINMIND_TOKEN:
+        return None
+    cache_key = f'finmind_{dataset}_{date_str}'
+    cached = api_cache_get(cache_key, FINMIND_CACHE_TTL)
+    if cached is not None:
+        return cached
+    try:
+        params = urllib.parse.urlencode({
+            'dataset': dataset,
+            'date': date_str,
+            'token': FINMIND_TOKEN,
+        })
+        url = f'https://api.finmindtrade.com/api/v4/data?{params}'
+        data = _api_fetch_json(url, {'Authorization': f'Bearer {FINMIND_TOKEN}'})
+        if data and data.get('status') == 200:
+            result = data.get('data', [])
+            api_cache_set(cache_key, result)
+            return result
+        print(f'[FINMIND] Bad status for {dataset}: {data.get("msg", "")}')
+        return None
+    except Exception as e:
+        print(f'[FINMIND] Fetch error {dataset}/{date_str}: {e}')
+        return None
+
+
+def _finmind_inst_aggregate(rows):
+    """Aggregate FinMind TaiwanStockInstitutionalInvestorsBuySell rows.
+    Returns { "2330": { f, t, d, total }, ... }
+    """
+    if not rows:
+        return {}
+    agg = {}
+    for r in rows:
+        code = r.get('stock_id', '')
+        if not code or not code[0].isdigit():
+            continue
+        if code not in agg:
+            agg[code] = {'f': 0, 't': 0, 'd': 0, 'total': 0, 'name': r.get('stock_name', '')}
+        inv = r.get('name', '')
+        buy = int(r.get('buy', 0))
+        sell = int(r.get('sell', 0))
+        net = buy - sell
+        if '外資' in inv and '自營' not in inv:
+            agg[code]['f'] += net
+        elif '投信' in inv:
+            agg[code]['t'] += net
+        elif '自營' in inv:
+            agg[code]['d'] += net
+        agg[code]['total'] += net
+    return agg
+
+
+# ============================================================
 # DATABASE
 # ============================================================
 def init_db():
@@ -1134,6 +1301,14 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_portfolio()
         elif self.path.startswith('/api/dividends'):
             self.handle_dividends()
+        elif self.path.startswith('/api/fugle/quote/'):
+            self.handle_fugle_quote()
+        elif self.path.startswith('/api/fugle/batch'):
+            self.handle_fugle_batch()
+        elif self.path.startswith('/api/finmind/inst'):
+            self.handle_finmind_inst()
+        elif self.path.startswith('/api/finmind/daytrade'):
+            self.handle_finmind_daytrade()
         elif self.path.startswith('/api/admin/') and self.path.split('?')[0] in ('/api/admin/users', '/api/admin/actions', '/api/admin/stats', '/api/admin/orders'):
             self.handle_admin_get()
         elif self.path == '/' or self.path == '':
@@ -2184,6 +2359,72 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
         self.send_json({'status': 'generating'})
 
     # --- Proxy ---
+    # --- Fugle + FinMind API endpoints ---
+    def handle_fugle_quote(self):
+        """GET /api/fugle/quote/{code}"""
+        code = self.path.split('/api/fugle/quote/')[-1].split('?')[0].strip()
+        if not code or not code[0].isdigit():
+            self.send_json({'error': 'Invalid stock code'}, 400)
+            return
+        if not FUGLE_API_KEY:
+            self.send_json({'error': 'Fugle API key not configured'}, 503)
+            return
+        data = _fugle_quote(code)
+        if data is None:
+            self.send_json({'error': 'Rate limited or fetch failed'}, 429)
+            return
+        self.send_json(data)
+
+    def handle_fugle_batch(self):
+        """GET /api/fugle/batch?codes=2330,2317"""
+        query = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(query)
+        codes_str = params.get('codes', [''])[0]
+        if not codes_str:
+            self.send_json({'error': 'Missing codes parameter'}, 400)
+            return
+        if not FUGLE_API_KEY:
+            self.send_json({'error': 'Fugle API key not configured'}, 503)
+            return
+        codes = [c.strip() for c in codes_str.split(',') if c.strip()]
+        data = _fugle_batch(codes)
+        self.send_json(data)
+
+    def handle_finmind_inst(self):
+        """GET /api/finmind/inst?date=2026-03-04"""
+        query = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(query)
+        date = params.get('date', [''])[0]
+        if not date:
+            self.send_json({'error': 'Missing date parameter'}, 400)
+            return
+        if not FINMIND_TOKEN:
+            self.send_json({'error': 'FinMind token not configured'}, 503)
+            return
+        rows = _finmind_fetch('TaiwanStockInstitutionalInvestorsBuySell', date)
+        if rows is None:
+            self.send_json({'error': 'Fetch failed'}, 502)
+            return
+        agg = _finmind_inst_aggregate(rows)
+        self.send_json(agg)
+
+    def handle_finmind_daytrade(self):
+        """GET /api/finmind/daytrade?date=2026-03-04"""
+        query = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(query)
+        date = params.get('date', [''])[0]
+        if not date:
+            self.send_json({'error': 'Missing date parameter'}, 400)
+            return
+        if not FINMIND_TOKEN:
+            self.send_json({'error': 'FinMind token not configured'}, 503)
+            return
+        rows = _finmind_fetch('TaiwanStockDayTrading', date)
+        if rows is None:
+            self.send_json({'error': 'Fetch failed'}, 502)
+            return
+        self.send_json(rows)
+
     def handle_proxy(self):
         try:
             query = urllib.parse.urlparse(self.path).query

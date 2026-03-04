@@ -816,10 +816,21 @@ function rebuildMaps() {
     if (c) gStockMap[c] = { data: s, market: 'tpex' };
   });
   gInstMap = {};
+
+  // Priority 1: FinMind institutional data (most reliable on cloud)
+  if (gFinMindInst && typeof gFinMindInst === 'object' && !gFinMindInst.error) {
+    Object.keys(gFinMindInst).forEach(function(code) {
+      var d = gFinMindInst[code];
+      gInstMap[code] = { f: d.f || 0, t: d.t || 0, d: d.d || 0 };
+    });
+  }
+
+  // Priority 2: TWSE T86 (overwrites FinMind if available — T86 is more detailed)
   gInstStocks.forEach(r => {
     var c = r[0].trim();
     gInstMap[c] = { f: parseNum(r[4]), t: parseNum(r[10]), d: parseNum(r[11]) };
   });
+  // Priority 3: TPEX inst (overwrites for TPEX stocks)
   gTpexInstStocks.forEach(r => {
     var c = (r[0]||'').trim();
     try { gInstMap[c] = { f: parseNum(r[10]), t: parseNum(r[13]), d: parseNum(r[22]) }; } catch(e) {}
@@ -843,60 +854,78 @@ let gMisCache = {}; // code → { price, chg, pct, vol, high, low, open, time }
 
 async function fetchMisBatch(codes) {
   if (!codes || codes.length === 0) return {};
-  // Build ex_ch string: tse_2330.tw|otc_6547.tw|...
-  // Split into chunks of 20 to avoid URL too long / rate limit
-  var chunks = [];
-  for (var i = 0; i < codes.length; i += 20) {
-    chunks.push(codes.slice(i, i + 20));
-  }
-  for (var ci = 0; ci < chunks.length; ci++) {
-    var chunk = chunks[ci];
-    var exCh = chunk.map(function(code) {
-      var m = getMarket(code);
-      return (m === 'tpex' ? 'otc_' : 'tse_') + code + '.tw';
-    }).join('|');
-    try {
-      var url = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=' + encodeURIComponent(exCh) + '&json=1&delay=0&_=' + Date.now();
-      var r = await fetch('/api/proxy?url=' + encodeURIComponent(url));
-      if (!r.ok) continue;
-      var d = await r.json();
-      if (!d.msgArray) continue;
-      d.msgArray.forEach(function(info) {
-        var code = info.c;
-        if (!code) return;
-        // z = last trade price, pz = previous trade, y = yesterday close
-        // For low-volume stocks z might be "-", fallback chain:
-        var price = parseFloat(info.z);
-        if (!price || isNaN(price)) price = parseFloat(info.pz);
-        if (!price || isNaN(price)) {
-          // Use best bid/ask midpoint as estimate
-          var bestAsk = parseFloat((info.a || '').split('_')[0]);
-          var bestBid = parseFloat((info.b || '').split('_')[0]);
-          if (bestAsk > 0 && bestBid > 0) price = (bestAsk + bestBid) / 2;
-          else if (bestAsk > 0) price = bestAsk;
-          else if (bestBid > 0) price = bestBid;
+
+  // Try Fugle batch first (up to 30 codes)
+  var fugleGot = {};
+  try {
+    var batchData = await fetchFugleBatch(codes.slice(0, 30));
+    if (batchData && typeof batchData === 'object' && !batchData.error) {
+      Object.keys(batchData).forEach(function(code) {
+        var q = batchData[code];
+        if (!q || q.error) return;
+        var price = q.closePrice || q.lastPrice || q.tradePrice || 0;
+        var prev = q.previousClose || q.referencePrice || 0;
+        if (price > 0 && prev > 0) {
+          var chg = price - prev;
+          gMisCache[code] = {
+            price: price, chg: chg, pct: (chg / prev * 100),
+            vol: q.tradeVolume || q.totalVolume || 0,
+            high: q.highPrice || 0, low: q.lowPrice || 0,
+            open: q.openPrice || 0, time: '', name: q.name || '',
+          };
+          fugleGot[code] = true;
         }
-        if (!price || isNaN(price)) price = parseFloat(info.o); // open price
-        if (!price || isNaN(price)) price = parseFloat(info.y); // yesterday close
-        if (!price || isNaN(price)) price = 0;
-        var prevClose = parseFloat(info.y) || 0;
-        var chg = price > 0 && prevClose > 0 ? price - prevClose : 0;
-        var pct = prevClose > 0 ? (chg / prevClose * 100) : 0;
-        gMisCache[code] = {
-          price: price,
-          chg: chg,
-          pct: pct,
-          vol: parseInt(info.v) || 0,
-          high: parseFloat(info.h) || 0,
-          low: parseFloat(info.l) || 0,
-          open: parseFloat(info.o) || 0,
-          time: info.t || '',
-          name: info.n || '',
-        };
       });
-    } catch(e) {}
-    // Rate limit: wait 2s between chunks to avoid IP ban (3 req / 5s)
-    if (ci < chunks.length - 1) await sleep(2000);
+    }
+  } catch(e) {}
+
+  // MIS fallback for codes not covered by Fugle
+  var misCodes = codes.filter(function(c) { return !fugleGot[c]; });
+  if (misCodes.length > 0) {
+    var chunks = [];
+    for (var i = 0; i < misCodes.length; i += 20) {
+      chunks.push(misCodes.slice(i, i + 20));
+    }
+    for (var ci = 0; ci < chunks.length; ci++) {
+      var chunk = chunks[ci];
+      var exCh = chunk.map(function(code) {
+        var m = getMarket(code);
+        return (m === 'tpex' ? 'otc_' : 'tse_') + code + '.tw';
+      }).join('|');
+      try {
+        var url = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=' + encodeURIComponent(exCh) + '&json=1&delay=0&_=' + Date.now();
+        var r = await fetch('/api/proxy?url=' + encodeURIComponent(url));
+        if (!r.ok) continue;
+        var d = await r.json();
+        if (!d.msgArray) continue;
+        d.msgArray.forEach(function(info) {
+          var code = info.c;
+          if (!code) return;
+          var price = parseFloat(info.z);
+          if (!price || isNaN(price)) price = parseFloat(info.pz);
+          if (!price || isNaN(price)) {
+            var bestAsk = parseFloat((info.a || '').split('_')[0]);
+            var bestBid = parseFloat((info.b || '').split('_')[0]);
+            if (bestAsk > 0 && bestBid > 0) price = (bestAsk + bestBid) / 2;
+            else if (bestAsk > 0) price = bestAsk;
+            else if (bestBid > 0) price = bestBid;
+          }
+          if (!price || isNaN(price)) price = parseFloat(info.o);
+          if (!price || isNaN(price)) price = parseFloat(info.y);
+          if (!price || isNaN(price)) price = 0;
+          var prevClose = parseFloat(info.y) || 0;
+          var chg = price > 0 && prevClose > 0 ? price - prevClose : 0;
+          var pct = prevClose > 0 ? (chg / prevClose * 100) : 0;
+          gMisCache[code] = {
+            price: price, chg: chg, pct: pct,
+            vol: parseInt(info.v) || 0,
+            high: parseFloat(info.h) || 0, low: parseFloat(info.l) || 0,
+            open: parseFloat(info.o) || 0, time: info.t || '', name: info.n || '',
+          };
+        });
+      } catch(e) {}
+      if (ci < chunks.length - 1) await sleep(2000);
+    }
   }
   return gMisCache;
 }
@@ -1692,7 +1721,10 @@ function renderInstSummary(data) {
 // RENDER: INSTITUTIONAL PER-STOCK RANK (TWSE + TPEx)
 // ============================================================
 function renderInstRank(type) {
-  if (gInstStocks.length === 0 && gTpexInstStocks.length === 0) {
+  var hasTraditional = gInstStocks.length > 0 || gTpexInstStocks.length > 0;
+  var hasFinMind = gFinMindInst && typeof gFinMindInst === 'object' && !gFinMindInst.error && Object.keys(gFinMindInst).length > 0;
+
+  if (!hasTraditional && !hasFinMind) {
     var msg = '<div class="empty-state" style="padding:24px;text-align:center;">'
       + '<div class="icon" style="font-size:28px;">&#x1F3E6;</div>'
       + '<p>法人買賣超資料尚未載入</p>'
@@ -1735,6 +1767,26 @@ function renderInstRank(type) {
     } catch(e) {}
     if (!isNaN(net)) parsed.push({ code, name: (r[1]||'').trim(), net, market: 'tpex' });
   });
+
+  // FinMind fallback: fill in stocks not already covered by T86/TPEX
+  if (hasFinMind && parsed.length < 50) {
+    var existingCodes = {};
+    parsed.forEach(function(p) { existingCodes[p.code] = true; });
+    Object.keys(gFinMindInst).forEach(function(code) {
+      if (existingCodes[code]) return;
+      if (!/^\d{4}$/.test(code)) return;
+      var d = gFinMindInst[code];
+      var net = 0;
+      switch (type) {
+        case 'foreign': net = d.f || 0; break;
+        case 'trust': net = d.t || 0; break;
+        case 'dealer': net = d.d || 0; break;
+        default: net = d.total || 0; break;
+      }
+      var name = d.name || (gStockDB[code] ? gStockDB[code].name : '') || code;
+      parsed.push({ code: code, name: name, net: net, market: gStockMap[code] ? gStockMap[code].market : 'twse' });
+    });
+  }
 
   const sorted = [...parsed].sort((a, b) => b.net - a.net);
   const buyers  = sorted.slice(0, 20);
@@ -3564,52 +3616,75 @@ async function fetchIntradayChart(code) {
 
 async function fetchRealtimeQuote(code) {
   const market = getMarket(code);
-  const exCh = market === 'tpex' ? `otc_${code}.tw` : `tse_${code}.tw`;
-  try {
-    const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${exCh}`;
-    const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
-    const r = await fetch(proxyUrl);
-    if (!r.ok) return;
-    const d = await r.json();
-    const info = d.msgArray?.[0];
-    if (!info) return;
 
-    var lastPrice = parseFloat(info.z);
-    if (!lastPrice || isNaN(lastPrice)) lastPrice = parseFloat(info.pz);
+  // Try Fugle first for price data, MIS for order book
+  var fugleData = null, misInfo = null;
+  try {
+    const [fugleRes, misRes] = await Promise.allSettled([
+      fetchFugleQuote(code),
+      (async function() {
+        const exCh = market === 'tpex' ? `otc_${code}.tw` : `tse_${code}.tw`;
+        const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${exCh}`;
+        const r = await fetch('/api/proxy?url=' + encodeURIComponent(url));
+        if (!r.ok) return null;
+        const d = await r.json();
+        return d.msgArray?.[0] || null;
+      })()
+    ]);
+    fugleData = fugleRes.status === 'fulfilled' ? fugleRes.value : null;
+    misInfo = misRes.status === 'fulfilled' ? misRes.value : null;
+  } catch(e) {}
+
+  // Extract price from Fugle
+  var lastPrice = 0, prevClose = 0, open = 0, high = 0, low = 0, vol = 0, timeStr = '';
+  if (fugleData && !fugleData.error) {
+    lastPrice = fugleData.closePrice || fugleData.lastPrice || fugleData.tradePrice || 0;
+    prevClose = fugleData.previousClose || fugleData.referencePrice || 0;
+    open = fugleData.openPrice || 0;
+    high = fugleData.highPrice || 0;
+    low = fugleData.lowPrice || 0;
+    vol = fugleData.tradeVolume || fugleData.totalVolume || 0;
+    timeStr = fugleData.lastUpdated ? fugleData.lastUpdated.slice(11, 19) : '';
+  }
+
+  // Fallback to MIS if Fugle didn't provide price
+  if ((!lastPrice || lastPrice === 0) && misInfo) {
+    lastPrice = parseFloat(misInfo.z);
+    if (!lastPrice || isNaN(lastPrice)) lastPrice = parseFloat(misInfo.pz);
     if (!lastPrice || isNaN(lastPrice)) {
-      var ba = parseFloat((info.a||'').split('_')[0]), bb = parseFloat((info.b||'').split('_')[0]);
+      var ba = parseFloat((misInfo.a||'').split('_')[0]), bb = parseFloat((misInfo.b||'').split('_')[0]);
       if (ba > 0 && bb > 0) lastPrice = (ba + bb) / 2;
       else if (ba > 0) lastPrice = ba;
       else if (bb > 0) lastPrice = bb;
     }
-    if (!lastPrice || isNaN(lastPrice)) lastPrice = parseFloat(info.o);
-    if (!lastPrice || isNaN(lastPrice)) lastPrice = parseFloat(info.y);
+    if (!lastPrice || isNaN(lastPrice)) lastPrice = parseFloat(misInfo.o);
+    if (!lastPrice || isNaN(lastPrice)) lastPrice = parseFloat(misInfo.y);
     if (!lastPrice || isNaN(lastPrice)) lastPrice = 0;
-    const prevClose = parseFloat(info.y) || 0;
-    const open = parseFloat(info.o) || 0;
-    const high = parseFloat(info.h) || 0;
-    const low = parseFloat(info.l) || 0;
-    const vol = parseInt(info.v) || 0;
+    prevClose = parseFloat(misInfo.y) || 0;
+    open = parseFloat(misInfo.o) || 0;
+    high = parseFloat(misInfo.h) || 0;
+    low = parseFloat(misInfo.l) || 0;
+    vol = parseInt(misInfo.v) || 0;
+    timeStr = misInfo.t || '';
+  }
 
-    // Update header price
-    if (lastPrice > 0 && prevClose > 0) {
-      const chg = lastPrice - prevClose;
-      const pct = (chg / prevClose * 100);
-      document.getElementById('stock-price').textContent = fmtNum(lastPrice, 2);
-      document.getElementById('stock-price').className = chg >= 0 ? 'up' : 'down';
-      document.getElementById('stock-change').innerHTML =
-        `<span class="${chg >= 0 ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`;
-    }
+  // Update header price
+  if (lastPrice > 0 && prevClose > 0) {
+    const chg = lastPrice - prevClose;
+    const pct = (chg / prevClose * 100);
+    document.getElementById('stock-price').textContent = fmtNum(lastPrice, 2);
+    document.getElementById('stock-price').className = chg >= 0 ? 'up' : 'down';
+    document.getElementById('stock-change').innerHTML =
+      `<span class="${chg >= 0 ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`;
+  }
 
-    // Order book
-    renderOrderBook(info, prevClose);
+  // Order book (MIS only — Fugle free tier doesn't have order book)
+  if (misInfo) renderOrderBook(misInfo, prevClose || parseFloat(misInfo.y) || 0);
 
-    // Realtime info
+  // Realtime info
+  if (lastPrice > 0) {
     document.getElementById('realtime-info').innerHTML =
-      `開盤 ${fmtNum(open,2)} | 最高 <span class="up">${fmtNum(high,2)}</span> | 最低 <span class="down">${fmtNum(low,2)}</span> | 量 ${fmtNum(vol,0)} 張 | ${info.t || ''}`;
-
-  } catch (e) {
-    // silently fail
+      `開盤 ${fmtNum(open,2)} | 最高 <span class="up">${fmtNum(high,2)}</span> | 最低 <span class="down">${fmtNum(low,2)}</span> | 量 ${fmtNum(vol,0)} 張 | ${timeStr}`;
   }
 }
 
@@ -3702,11 +3777,115 @@ async function maybeLoadGlobal() {
 }
 
 let gDayTradeCache = null; // cache successful day trade data
+let gFinMindInst = null;   // FinMind institutional data: { "2330": { f, t, d, total, name }, ... }
+
+// ============================================================
+// FUGLE + FINMIND API (server-proxied)
+// ============================================================
+async function fetchFugleQuote(code) {
+  try {
+    const r = await fetch('/api/fugle/quote/' + encodeURIComponent(code));
+    if (!r.ok) return null;
+    return await r.json();
+  } catch(e) { return null; }
+}
+
+async function fetchFugleBatch(codes) {
+  if (!codes || codes.length === 0) return {};
+  try {
+    const r = await fetch('/api/fugle/batch?codes=' + encodeURIComponent(codes.join(',')));
+    if (!r.ok) return {};
+    return await r.json();
+  } catch(e) { return {}; }
+}
+
+async function fetchFinMindInst(dateStr) {
+  // dateStr = "20260304" → convert to "2026-03-04"
+  var d = dateStr;
+  if (d.length === 8 && d.indexOf('-') === -1) {
+    d = d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8);
+  }
+  try {
+    const r = await fetch('/api/finmind/inst?date=' + encodeURIComponent(d));
+    if (!r.ok) return null;
+    return await r.json();
+  } catch(e) { return null; }
+}
+
+async function fetchFinMindDayTrade(dateStr) {
+  var d = dateStr;
+  if (d.length === 8 && d.indexOf('-') === -1) {
+    d = d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8);
+  }
+  try {
+    const r = await fetch('/api/finmind/daytrade?date=' + encodeURIComponent(d));
+    if (!r.ok) return null;
+    return await r.json();
+  } catch(e) { return null; }
+}
+
+function renderDayTradeFinMind(rows) {
+  // rows = FinMind TaiwanStockDayTrading array
+  if (!rows || rows.length === 0) return false;
+
+  // Aggregate stats
+  var totalVol = 0, totalBuy = 0, totalSell = 0;
+  var stockMap = {};
+  rows.forEach(function(r) {
+    var code = r.stock_id || '';
+    if (!code || !/^\d{4}$/.test(code)) return;
+    var buy = parseInt(r.buy) || 0;
+    var sell = parseInt(r.sell) || 0;
+    var vol = buy + sell;
+    totalVol += vol; totalBuy += buy; totalSell += sell;
+    if (!stockMap[code]) stockMap[code] = { code: code, name: r.stock_name || (gStockDB[code] ? gStockDB[code].name : '') || code, vol: 0, buy: 0, sell: 0 };
+    stockMap[code].vol += vol;
+    stockMap[code].buy += buy;
+    stockMap[code].sell += sell;
+  });
+
+  // Stats header
+  document.getElementById('dt-stats').innerHTML =
+    '<div class="stat-box"><div class="label">當沖成交量</div><div class="value">' + fmtBig(totalVol) + '</div></div>'
+    + '<div class="stat-box"><div class="label">當沖買進</div><div class="value">' + fmtBig(totalBuy) + '</div></div>'
+    + '<div class="stat-box"><div class="label">當沖賣出</div><div class="value">' + fmtBig(totalSell) + '</div></div>'
+    + '<div class="stat-box"><div class="label">資料來源</div><div class="value" style="font-size:13px;">FinMind</div></div>';
+
+  // Rank list
+  var list = Object.values(stockMap).sort(function(a, b) { return b.vol - a.vol; }).slice(0, 30);
+  var isMob = window.innerWidth <= 768;
+  if (isMob) {
+    var h = '<div class="dt-card-list">';
+    list.forEach(function(s, i) {
+      var pnl = s.sell - s.buy;
+      h += '<div class="rank-card" onclick="goAnalyze(\'' + s.code + '\')">'
+        + '<div class="rank-card-head"><span class="rank-card-num">' + (i+1) + '</span>'
+        + '<span class="rank-card-code">' + s.code + '</span>'
+        + '<span class="rank-card-name">' + s.name + '</span>'
+        + '<span class="rank-card-pct">' + fmtBig(s.vol) + '</span></div></div>';
+    });
+    h += '</div>';
+    document.getElementById('dt-rank').innerHTML = h;
+  } else {
+    document.getElementById('dt-rank').innerHTML = mkTable(
+      ['代號', '名稱', '當沖量', '買進', '賣出'],
+      list.map(function(s) {
+        return [
+          '<span class="clickable" onclick="goAnalyze(\'' + s.code + '\')">' + s.code + '</span>',
+          '<span class="clickable" onclick="goAnalyze(\'' + s.code + '\')">' + s.name + '</span>',
+          fmtBig(s.vol), fmtBig(s.buy), fmtBig(s.sell)
+        ];
+      })
+    );
+  }
+  return true;
+}
 
 async function maybeLoadDayTrade(forceRefresh) {
   // Use cache if available
   if (!forceRefresh && gDayTradeCache) {
-    renderDayTrade(gDayTradeCache);
+    if (Array.isArray(gDayTradeCache)) renderDayTradeFinMind(gDayTradeCache);
+    else renderDayTrade(gDayTradeCache);
     return;
   }
 
@@ -3714,21 +3893,35 @@ async function maybeLoadDayTrade(forceRefresh) {
   document.getElementById('dt-rank').innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
 
   try {
-    // Day trade stats are published NEXT business day.
-    // Try dates sequentially (most recent first).
     var found = false;
-    for (var i = 1; i <= 10; i++) {
+
+    // Strategy 1: Try FinMind first (most reliable on cloud)
+    for (var i = 1; i <= 5; i++) {
       try {
         var d = dateStr(i);
-        var data = await API_TWSE.dayTrade(d);
-        if (data && renderDayTrade(data)) {
-          gDayTradeCache = data;
+        var fmData = await fetchFinMindDayTrade(d);
+        if (fmData && Array.isArray(fmData) && fmData.length > 0 && renderDayTradeFinMind(fmData)) {
+          gDayTradeCache = fmData;
           found = true;
           break;
         }
-      } catch(e) {
-        // If first attempt fails with network error, likely TWSE is blocked — stop retrying
-        if (i === 1 && (e.message.includes('502') || e.message.includes('Failed') || e.message.includes('307'))) break;
+      } catch(e) {}
+    }
+
+    // Strategy 2: TWTB4U fallback
+    if (!found) {
+      for (var i = 1; i <= 10; i++) {
+        try {
+          var d = dateStr(i);
+          var data = await API_TWSE.dayTrade(d);
+          if (data && renderDayTrade(data)) {
+            gDayTradeCache = data;
+            found = true;
+            break;
+          }
+        } catch(e) {
+          if (i === 1 && (e.message.includes('502') || e.message.includes('Failed') || e.message.includes('307'))) break;
+        }
       }
     }
 
@@ -3934,6 +4127,7 @@ async function doAutoRefresh(silent) {
     });
 
     // Refresh core data — OpenAPI as fallback when traditional endpoints are blocked
+    // FinMind institutional data fetched in parallel
     const results = await Promise.allSettled([
       API_TWSE.allStocks(gDate),
       API_TPEX.allStocks(gDate),
@@ -3942,6 +4136,7 @@ async function doAutoRefresh(silent) {
       apiFetch(OPENAPI_TWSE_ALL),
       apiFetch(OPENAPI_TPEX_ALL),
       apiFetch(OPENAPI_TPEX_CLOSE),
+      fetchFinMindInst(gDate),
     ]);
     const allStocks  = results[0].status === 'fulfilled' ? results[0].value : null;
     const tpexAll    = results[1].status === 'fulfilled' ? results[1].value : null;
@@ -3950,6 +4145,10 @@ async function doAutoRefresh(silent) {
     const openTwse   = results[4].status === 'fulfilled' ? results[4].value : null;
     const openTpex   = results[5].status === 'fulfilled' ? results[5].value : null;
     const openTpexC  = results[6].status === 'fulfilled' ? results[6].value : null;
+    const finMindInst = results[7].status === 'fulfilled' ? results[7].value : null;
+    if (finMindInst && typeof finMindInst === 'object' && !finMindInst.error) {
+      gFinMindInst = finMindInst;
+    }
 
     // TWSE all stocks: traditional first, OpenAPI fallback
     if (allStocks && allStocks.stat === 'OK' && allStocks.data && allStocks.data.length > 0) {
