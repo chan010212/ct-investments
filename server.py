@@ -119,55 +119,116 @@ import threading
 
 _healthcheck_result = {}  # latest health check result
 
+def _hc_fetch(url, headers=None, timeout=10):
+    """Helper: fetch URL and return parsed JSON."""
+    hdrs = {'User-Agent': 'Mozilla/5.0'}
+    if headers:
+        hdrs.update(headers)
+    req = urllib.request.Request(url, headers=hdrs)
+    ctx = ssl.create_default_context()
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+        return json.loads(r.read())
+
 def _run_daily_healthcheck():
     """Check all critical systems and cache the result."""
     print('[HEALTHCHECK] Starting daily pre-market check...')
     sys.stdout.flush()
     checks = {}
-    # 1. Database
+
+    # 1. Database — 連線、會員數、觀點數、關注清單數
     try:
         db = get_db()
-        db.execute('SELECT COUNT(*) FROM users')
         user_count = db.execute('SELECT COUNT(*) FROM users').fetchone()[0]
         pick_count = db.execute('SELECT COUNT(*) FROM stock_picks').fetchone()[0]
+        watchlist_count = db.execute('SELECT COUNT(*) FROM watchlist').fetchone()[0]
+        alert_count = db.execute('SELECT COUNT(*) FROM alerts').fetchone()[0]
         db.close()
-        checks['database'] = {'status': 'ok', 'users': user_count, 'picks': pick_count}
+        checks['database'] = {'status': 'ok', 'users': user_count, 'picks': pick_count,
+                              'watchlists': watchlist_count, 'alerts': alert_count}
     except Exception as e:
         checks['database'] = {'status': 'error', 'error': str(e)}
 
-    # 2. TWSE OpenAPI
+    # 2. TWSE OpenAPI — 證交所公開 API
     try:
-        req = urllib.request.Request('https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK',
-                                     headers={'User-Agent': 'Mozilla/5.0'})
-        ctx = ssl.create_default_context()
-        with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
-            data = json.loads(r.read())
+        data = _hc_fetch('https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK')
         checks['twse_openapi'] = {'status': 'ok', 'records': len(data)}
     except Exception as e:
         checks['twse_openapi'] = {'status': 'error', 'error': str(e)}
 
-    # 3. Yahoo Finance
+    # 3. TWSE 傳統 API（BFI82U 法人買賣超）
     try:
-        req = urllib.request.Request('https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII?interval=1d&range=2d',
-                                     headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
-            data = json.loads(r.read())
-        price = data['chart']['result'][0]['meta']['regularMarketPrice']
-        checks['yahoo_finance'] = {'status': 'ok', 'twii': price}
+        today = datetime.now().strftime('%Y%m%d')
+        data = _hc_fetch(f'https://www.twse.com.tw/fund/BFI82U?response=json&dayDate={today}')
+        checks['twse_traditional'] = {'status': 'ok' if data.get('stat') == 'OK' else 'no_data',
+                                      'stat': data.get('stat', 'unknown')}
+    except Exception as e:
+        checks['twse_traditional'] = {'status': 'error', 'error': str(e)}
+
+    # 4. TPEX（櫃買中心）
+    try:
+        data = _hc_fetch('https://openapi.twse.com.tw/v1/opendata/t187ap03_L')
+        checks['tpex'] = {'status': 'ok', 'records': len(data)}
+    except Exception as e:
+        checks['tpex'] = {'status': 'error', 'error': str(e)}
+
+    # 5. Yahoo Finance — 加權指數 + 美股
+    try:
+        data = _hc_fetch('https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII?interval=1d&range=2d')
+        twii = data['chart']['result'][0]['meta']['regularMarketPrice']
+        data2 = _hc_fetch('https://query1.finance.yahoo.com/v8/finance/chart/TSM?interval=1d&range=2d')
+        tsm = data2['chart']['result'][0]['meta']['regularMarketPrice']
+        checks['yahoo_finance'] = {'status': 'ok', 'twii': twii, 'tsm_adr': tsm}
     except Exception as e:
         checks['yahoo_finance'] = {'status': 'error', 'error': str(e)}
 
-    # 4. Morning report pre-warm (觸發晨訊預載)
+    # 6. Fugle API
+    if FUGLE_API_KEY:
+        try:
+            data = _hc_fetch(f'https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/2330',
+                             headers={'X-API-KEY': FUGLE_API_KEY})
+            checks['fugle'] = {'status': 'ok', 'symbol': data.get('symbol', '2330')}
+        except Exception as e:
+            checks['fugle'] = {'status': 'error', 'error': str(e)}
+    else:
+        checks['fugle'] = {'status': 'skipped', 'reason': 'no API key'}
+
+    # 7. FinMind API
+    if FINMIND_TOKEN:
+        try:
+            yesterday = (datetime.now() - timedelta(days=3)).strftime('%Y-%m-%d')
+            url = f'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=2330&start_date={yesterday}&token={FINMIND_TOKEN}'
+            data = _hc_fetch(url)
+            checks['finmind'] = {'status': 'ok', 'records': len(data.get('data', []))}
+        except Exception as e:
+            checks['finmind'] = {'status': 'error', 'error': str(e)}
+    else:
+        checks['finmind'] = {'status': 'skipped', 'reason': 'no token'}
+
+    # 8. Proxy 功能（透過自身 proxy 測試）
     try:
-        req = urllib.request.Request(f'http://127.0.0.1:{PORT}/api/morning-report',
-                                     headers={'User-Agent': 'HealthCheck'})
-        with urllib.request.urlopen(req, timeout=5) as r:
-            mr = json.loads(r.read())
-        checks['morning_report'] = {'status': mr.get('status', 'unknown')}
+        data = _hc_fetch(f'http://127.0.0.1:{PORT}/api/proxy?url=' +
+                         urllib.parse.quote('https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK'),
+                         timeout=10)
+        checks['proxy'] = {'status': 'ok', 'records': len(data)}
+    except Exception as e:
+        checks['proxy'] = {'status': 'error', 'error': str(e)}
+
+    # 9. 觀點 API
+    try:
+        data = _hc_fetch(f'http://127.0.0.1:{PORT}/api/picks', timeout=5)
+        checks['picks'] = {'status': 'ok', 'count': len(data.get('picks', []))}
+    except Exception as e:
+        checks['picks'] = {'status': 'error', 'error': str(e)}
+
+    # 10. 晨訊預載（觸發背景生成）
+    try:
+        data = _hc_fetch(f'http://127.0.0.1:{PORT}/api/morning-report', timeout=5)
+        checks['morning_report'] = {'status': data.get('status', 'unknown')}
     except Exception as e:
         checks['morning_report'] = {'status': 'error', 'error': str(e)}
 
-    all_ok = all(c.get('status') in ('ok', 'generating', 'cached') for c in checks.values())
+    all_ok = all(c.get('status') in ('ok', 'generating', 'cached', 'no_data', 'skipped')
+                 for c in checks.values())
     result = {
         'status': 'ok' if all_ok else 'warning',
         'checked_at': datetime.now().isoformat(),
@@ -175,8 +236,14 @@ def _run_daily_healthcheck():
     }
     global _healthcheck_result
     _healthcheck_result = result
-    status_icon = 'OK' if all_ok else 'WARNING'
-    print(f'[HEALTHCHECK] {status_icon} — DB:{checks["database"]["status"]} TWSE:{checks["twse_openapi"]["status"]} Yahoo:{checks["yahoo_finance"]["status"]} MR:{checks["morning_report"]["status"]}')
+
+    ok_count = sum(1 for c in checks.values() if c['status'] in ('ok', 'cached', 'skipped'))
+    total = len(checks)
+    status_icon = 'ALL OK' if all_ok else 'WARNING'
+    print(f'[HEALTHCHECK] {status_icon} — {ok_count}/{total} passed')
+    for name, c in checks.items():
+        icon = 'v' if c['status'] in ('ok', 'cached', 'skipped', 'generating', 'no_data') else 'X'
+        print(f'  [{icon}] {name}: {c["status"]}')
     sys.stdout.flush()
 
 def _healthcheck_scheduler():
