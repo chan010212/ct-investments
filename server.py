@@ -112,9 +112,103 @@ PLAN_FEATURES = {
 }
 
 # ============================================================
-# SERVER-SIDE PROXY CACHE (avoid hammering upstream APIs)
+# ============================================================
+# DAILY HEALTH CHECK (每日 8:00 台灣時間自動健檢)
 # ============================================================
 import threading
+
+_healthcheck_result = {}  # latest health check result
+
+def _run_daily_healthcheck():
+    """Check all critical systems and cache the result."""
+    print('[HEALTHCHECK] Starting daily pre-market check...')
+    sys.stdout.flush()
+    checks = {}
+    # 1. Database
+    try:
+        db = get_db()
+        db.execute('SELECT COUNT(*) FROM users')
+        user_count = db.execute('SELECT COUNT(*) FROM users').fetchone()[0]
+        pick_count = db.execute('SELECT COUNT(*) FROM stock_picks').fetchone()[0]
+        db.close()
+        checks['database'] = {'status': 'ok', 'users': user_count, 'picks': pick_count}
+    except Exception as e:
+        checks['database'] = {'status': 'error', 'error': str(e)}
+
+    # 2. TWSE OpenAPI
+    try:
+        req = urllib.request.Request('https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK',
+                                     headers={'User-Agent': 'Mozilla/5.0'})
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
+            data = json.loads(r.read())
+        checks['twse_openapi'] = {'status': 'ok', 'records': len(data)}
+    except Exception as e:
+        checks['twse_openapi'] = {'status': 'error', 'error': str(e)}
+
+    # 3. Yahoo Finance
+    try:
+        req = urllib.request.Request('https://query1.finance.yahoo.com/v8/finance/chart/%5ETWII?interval=1d&range=2d',
+                                     headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as r:
+            data = json.loads(r.read())
+        price = data['chart']['result'][0]['meta']['regularMarketPrice']
+        checks['yahoo_finance'] = {'status': 'ok', 'twii': price}
+    except Exception as e:
+        checks['yahoo_finance'] = {'status': 'error', 'error': str(e)}
+
+    # 4. Morning report pre-warm (觸發晨訊預載)
+    try:
+        req = urllib.request.Request(f'http://127.0.0.1:{PORT}/api/morning-report',
+                                     headers={'User-Agent': 'HealthCheck'})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            mr = json.loads(r.read())
+        checks['morning_report'] = {'status': mr.get('status', 'unknown')}
+    except Exception as e:
+        checks['morning_report'] = {'status': 'error', 'error': str(e)}
+
+    all_ok = all(c.get('status') in ('ok', 'generating', 'cached') for c in checks.values())
+    result = {
+        'status': 'ok' if all_ok else 'warning',
+        'checked_at': datetime.now().isoformat(),
+        'checks': checks
+    }
+    global _healthcheck_result
+    _healthcheck_result = result
+    status_icon = 'OK' if all_ok else 'WARNING'
+    print(f'[HEALTHCHECK] {status_icon} — DB:{checks["database"]["status"]} TWSE:{checks["twse_openapi"]["status"]} Yahoo:{checks["yahoo_finance"]["status"]} MR:{checks["morning_report"]["status"]}')
+    sys.stdout.flush()
+
+def _healthcheck_scheduler():
+    """Run health check at 8:00 AM Taiwan time daily."""
+    import calendar
+    while True:
+        try:
+            now = datetime.utcnow()
+            # Taiwan = UTC+8
+            tw_now = now + timedelta(hours=8)
+            # Next 8:00 AM Taiwan time
+            target = tw_now.replace(hour=8, minute=0, second=0, microsecond=0)
+            if tw_now >= target:
+                target += timedelta(days=1)
+            # Skip weekends (Saturday=5, Sunday=6)
+            while target.weekday() >= 5:
+                target += timedelta(days=1)
+            wait_seconds = (target - tw_now).total_seconds()
+            next_run = target.strftime('%Y-%m-%d %H:%M')
+            print(f'[HEALTHCHECK] Next run: {next_run} (TWN), waiting {wait_seconds:.0f}s')
+            sys.stdout.flush()
+            time.sleep(wait_seconds)
+            _run_daily_healthcheck()
+        except Exception as e:
+            print(f'[HEALTHCHECK] Scheduler error: {e}')
+            sys.stdout.flush()
+            time.sleep(60)
+
+
+# ============================================================
+# SERVER-SIDE PROXY CACHE (avoid hammering upstream APIs)
+# ============================================================
 _proxy_cache = {}       # url → { data, content_type, ts }
 _proxy_cache_lock = threading.Lock()
 PROXY_CACHE_TTL = 120   # 2 minutes for most APIs
@@ -1333,7 +1427,10 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/api/health':
-            self.send_json({'status': 'ok', 'time': datetime.now().isoformat()})
+            resp = {'status': 'ok', 'time': datetime.now().isoformat()}
+            if _healthcheck_result:
+                resp['daily_check'] = _healthcheck_result
+            self.send_json(resp)
             return
         elif self.path == '/api/morning-report':
             self.handle_morning_report()
@@ -2620,6 +2717,8 @@ if __name__ == '__main__':
         # Backfill inst_daily from FinMind in background thread
         if FINMIND_TOKEN:
             threading.Thread(target=_backfill_inst_daily, daemon=True).start()
+        # Start daily health check scheduler (8:00 AM Taiwan time, weekdays)
+        threading.Thread(target=_healthcheck_scheduler, daemon=True).start()
         server = ThreadingHTTPServer(('0.0.0.0', PORT), StockProxyHandler)
         print(f'CT Investments server started on port {PORT} (threaded)')
         print(f'  Database: {DB_PATH}')
