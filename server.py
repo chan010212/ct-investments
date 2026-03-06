@@ -2789,6 +2789,25 @@ if __name__ == '__main__':
         print(f'[BOOT] PORT={PORT}, CWD={os.getcwd()}')
         print(f'[BOOT] DB_DIR={os.environ.get("DB_DIR", "NOT SET")}, DB_PATH={DB_PATH}')
         print(f'[BOOT] DB exists={DB_PATH.exists()}, DB dir exists={DB_PATH.parent.exists()}')
+
+        # Wait for volume mount (Zeabur mounts volumes after container starts)
+        if os.environ.get('DB_DIR') and not DB_PATH.exists():
+            print('[BOOT] Waiting for volume mount...')
+            for i in range(15):
+                # Check if a file we didn't create exists, or if mount changes
+                time.sleep(2)
+                if DB_PATH.exists():
+                    print(f'[BOOT] DB found after {(i+1)*2}s')
+                    break
+                # Write a marker to detect if volume overwrites it
+                marker = DB_PATH.parent / '.zeabur_mount_check'
+                if not marker.exists():
+                    marker.write_text(str(time.time()))
+                elif marker.read_text() != str(time.time()):
+                    print(f'[BOOT] Volume mounted after {(i+1)*2}s (marker changed)')
+                    break
+            print(f'[BOOT] After wait: DB exists={DB_PATH.exists()}')
+
         init_db()
         # Backfill inst_daily from FinMind in background thread
         if FINMIND_TOKEN:
