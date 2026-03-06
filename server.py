@@ -1642,6 +1642,10 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
         if not user:
             self.send_json({'error': '請先登入'}, 401)
             return None
+        # TESTING MODE: bypass all plan checks, treat everyone as proplus
+        if os.environ.get('TESTING_MODE', '1') == '1':
+            user['plan'] = 'proplus'
+            return user
         role = user.get('role', 'free')
         plan = user.get('plan', 'free')
         # admin bypasses all plan checks
