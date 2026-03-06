@@ -140,8 +140,8 @@ def _run_daily_healthcheck():
         db = get_db()
         user_count = db.execute('SELECT COUNT(*) FROM users').fetchone()[0]
         pick_count = db.execute('SELECT COUNT(*) FROM stock_picks').fetchone()[0]
-        watchlist_count = db.execute('SELECT COUNT(*) FROM watchlist').fetchone()[0]
-        alert_count = db.execute('SELECT COUNT(*) FROM alerts').fetchone()[0]
+        watchlist_count = db.execute('SELECT COUNT(*) FROM watchlists').fetchone()[0]
+        alert_count = db.execute('SELECT COUNT(*) FROM price_alerts').fetchone()[0]
         db.close()
         checks['database'] = {'status': 'ok', 'users': user_count, 'picks': pick_count,
                               'watchlists': watchlist_count, 'alerts': alert_count}
