@@ -2784,6 +2784,8 @@ if __name__ == '__main__':
         os.chdir(Path(__file__).parent)
         print(f'[BOOT] Python {sys.version}')
         print(f'[BOOT] PORT={PORT}, CWD={os.getcwd()}')
+        print(f'[BOOT] DB_DIR={os.environ.get("DB_DIR", "NOT SET")}, DB_PATH={DB_PATH}')
+        print(f'[BOOT] DB exists={DB_PATH.exists()}, DB dir exists={DB_PATH.parent.exists()}')
         init_db()
         # Backfill inst_daily from FinMind in background thread
         if FINMIND_TOKEN:
