@@ -28,7 +28,10 @@ from datetime import datetime, timedelta
 
 PORT = int(os.environ.get('PORT', 8888))
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ct-investments-secret-key-change-in-production')
-DB_PATH = Path(os.environ.get('DB_DIR', Path(__file__).parent / 'data')) / 'ct_invest.db'
+# Use /data if it exists (Zeabur volume), otherwise local ./data
+_db_dir = Path('/data') if Path('/data').is_dir() else Path(__file__).parent / 'data'
+_db_dir = Path(os.environ.get('DB_DIR', str(_db_dir)))
+DB_PATH = _db_dir / 'ct_invest.db'
 
 # ============================================================
 # NEWEBPAY (藍新金流) CONFIGURATION
