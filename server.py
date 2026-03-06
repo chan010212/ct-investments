@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 
 PORT = int(os.environ.get('PORT', 8888))
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ct-investments-secret-key-change-in-production')
-DB_PATH = Path(__file__).parent / 'data' / 'ct_invest.db'
+DB_PATH = Path(os.environ.get('DB_DIR', Path(__file__).parent / 'data')) / 'ct_invest.db'
 
 # ============================================================
 # NEWEBPAY (藍新金流) CONFIGURATION
