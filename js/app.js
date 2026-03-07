@@ -40,6 +40,12 @@ function fmtShares(n) {
   return fmtNum(n) + ' 股';
 }
 
+function limitTag(pct) {
+  if (pct >= 9.5) return '<span class="limit-tag limit-up">漲停</span>';
+  if (pct <= -9.5) return '<span class="limit-tag limit-down">跌停</span>';
+  return '';
+}
+
 function rocToISO(roc) {
   const parts = roc.trim().split('/');
   const y = parseInt(parts[0]) + 1911;
@@ -1331,7 +1337,7 @@ function renderOverview() {
           <div class="rank-card-head">
             <span class="rank-card-num">${i+1}</span>
             <span class="rank-card-code">${s.code}</span>
-            <span class="rank-card-name">${s.name}</span>
+            <span class="rank-card-name">${s.name}</span>${limitTag(s.pct)}
             <span class="rank-card-pct ${cls}">${s.pct>0?'+':''}${s.pct.toFixed(2)}%</span>
           </div>
           <div class="rank-card-body">
@@ -1350,7 +1356,7 @@ function renderOverview() {
         : '<span class="tag-market tag-tpex">上櫃</span>';
       return [
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
-        `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>`, mTag,
+        `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>${limitTag(s.pct)}`, mTag,
         fmtNum(s.close, 2),
         `<span class="${s.chg > 0 ? 'up' : 'down'}">${s.chg > 0 ? '+' : ''}${fmtNum(s.chg, 2)}</span>`,
         `<span class="${s.pct > 0 ? 'up' : 'down'}">${s.pct > 0 ? '+' : ''}${s.pct.toFixed(2)}%</span>`,
@@ -2094,7 +2100,7 @@ function renderWatchlist() {
         + '<div class="sc-bar" style="background:' + mBarColor + ';"></div>'
         + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
         + '<div class="sc-top"><div>'
-        + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + mName + '</span> ' + mMkt + '</div>'
+        + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + mName + '</span> ' + mMkt + limitTag(mis.pct) + '</div>'
         + '</div><div>'
         + '<div class="sc-price ' + (mIsUp ? 'up' : mis.chg < 0 ? 'down' : '') + '">' + fmtNum(mis.price, 2) + '</div>'
         + '<div class="sc-change ' + (mIsUp ? 'up' : mis.chg < 0 ? 'down' : '') + '">' + (mis.chg > 0 ? '&#x25B2;+' : mis.chg < 0 ? '&#x25BC;' : '') + fmtNum(mis.chg, 2) + ' (' + (mis.pct > 0 ? '+' : '') + mis.pct.toFixed(2) + '%) <span style="font-size:10px;color:var(--text2);">' + mis.time + '</span></div>'
@@ -2122,7 +2128,7 @@ function renderWatchlist() {
           + '<div class="sc-bar" style="background:' + yBarColor + ';"></div>'
           + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
           + '<div class="sc-top"><div>'
-          + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + yName + '</span> ' + yMkt + '</div>'
+          + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + yName + '</span> ' + yMkt + limitTag(yc.pct) + '</div>'
           + '</div><div>'
           + '<div class="sc-price ' + (yIsUp ? 'up' : yc.chg < 0 ? 'down' : '') + '">' + fmtNum(yc.price, 2) + '</div>'
           + '<div class="sc-change ' + (yIsUp ? 'up' : yc.chg < 0 ? 'down' : '') + '">' + (yc.chg > 0 ? '&#x25B2;+' : yc.chg < 0 ? '&#x25BC;' : '') + fmtNum(yc.chg, 2) + ' (' + (yc.pct > 0 ? '+' : '') + yc.pct.toFixed(2) + '%)</div>'
@@ -2434,7 +2440,7 @@ async function analyzeStock(code) {
     document.getElementById('stock-market-tag').innerHTML = mTag;
     document.getElementById('stock-price').textContent = fmtNum(lastC, 2);
     document.getElementById('stock-price').className = chg >= 0 ? 'up' : 'down';
-    document.getElementById('stock-change').innerHTML = `<span class="${chg >= 0 ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`;
+    document.getElementById('stock-change').innerHTML = `<span class="${chg >= 0 ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>${limitTag(pct)}`;
     document.getElementById('stock-header').style.display = 'block';
 
     // Indicators

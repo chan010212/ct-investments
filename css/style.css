@@ -480,6 +480,32 @@
     .text-muted { color: var(--text2); }
     .text-sm { font-size: 12px; }
 
+    /* Limit up/down tags */
+    .limit-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      vertical-align: middle;
+      margin-left: 5px;
+    }
+    .limit-up {
+      background: rgba(255, 56, 96, 0.18);
+      color: var(--red);
+      border: 1px solid rgba(255, 56, 96, 0.4);
+    }
+    .limit-up::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .limit-down {
+      background: rgba(0, 232, 123, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(0, 232, 123, 0.35);
+    }
+    .limit-down::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+
     .flex { display: flex; }
     .flex-between { display: flex; justify-content: space-between; align-items: center; }
     .flex-center { display: flex; align-items: center; }
