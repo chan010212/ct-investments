@@ -5171,6 +5171,9 @@ function runScreener() {
   const fVolShrink = document.getElementById('f-vol-shrink').checked;
   const fVolMin = parseFloat(document.getElementById('f-vol-min').value);
   const fVolMax = parseFloat(document.getElementById('f-vol-max').value);
+  const fWarning = document.getElementById('f-warning').checked;
+  const fDisposition = document.getElementById('f-disposition').checked;
+  const fNearWarning = document.getElementById('f-near-warning').checked;
   const fMktTwse = document.getElementById('f-mkt-twse').checked;
   const fMktTpex = document.getElementById('f-mkt-tpex').checked;
 
@@ -5178,7 +5181,8 @@ function runScreener() {
   const hasFilter = fForeignBuy || fTrustBuy || fDealerBuy || fAllBuy || fAllSell ||
     fLimitUp || fLimitDown || fUp3 || fDown3 ||
     !isNaN(fPctMin) || !isNaN(fPctMax) || !isNaN(fPriceMin) || !isNaN(fPriceMax) ||
-    fVolBurst || fVolUp || fVolShrink || !isNaN(fVolMin) || !isNaN(fVolMax);
+    fVolBurst || fVolUp || fVolShrink || !isNaN(fVolMin) || !isNaN(fVolMax) ||
+    fWarning || fDisposition || fNearWarning;
 
   if (!hasFilter) {
     toast('請至少選擇一個篩選條件');
@@ -5231,6 +5235,15 @@ function runScreener() {
       if (fVolBurst && volLots < 3000) return;   // 爆量 > 3000張
       if (fVolUp && volLots < 1000) return;       // 量增 > 1000張
       if (fVolShrink && volLots > 500) return;    // 量縮 < 500張
+    }
+
+    // Warning / Disposition / Near-warning filters (OR logic among the three)
+    if (fWarning || fDisposition || fNearWarning) {
+      let match = false;
+      if (fWarning && gWarningSet.has(s.code)) match = true;
+      if (fDisposition && gDispositionSet.has(s.code)) match = true;
+      if (fNearWarning && Math.abs(s.pct) >= 6 && volLots > 1000) match = true;
+      if (!match) return;
     }
 
     s.inst = inst;
@@ -5295,7 +5308,7 @@ function runScreener() {
         return [
           i + 1,
           `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
-          `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>`,
+          `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>${warningTag(s.code)}`,
           mTag,
           limitPrice(s.close, s.pct),
           `<span class="${s.chg>0?'up':'down'}">${s.chg>0?'+':''}${fmtNum(s.chg,2)}</span>`,
