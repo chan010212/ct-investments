@@ -46,6 +46,40 @@ function limitTag(pct) {
   return '';
 }
 
+function limitPrice(price, pct) {
+  const txt = fmtNum(price, 2);
+  if (pct >= 9.5) return '<span class="limit-price limit-price-up">' + txt + '</span>';
+  if (pct <= -9.5) return '<span class="limit-price limit-price-down">' + txt + '</span>';
+  return txt;
+}
+
+// Warning / Disposition stock sets
+let gWarningSet = new Set();
+let gDispositionSet = new Set();
+
+async function loadWarningStocks() {
+  try {
+    const [wRes, dRes] = await Promise.allSettled([
+      apiFetch(TWSE + '/announcement/attentionStk?response=json'),
+      apiFetch(TWSE + '/announcement/dispositionStk?response=json')
+    ]);
+    if (wRes.status === 'fulfilled' && wRes.value && wRes.value.data) {
+      wRes.value.data.forEach(r => { if (r[0]) gWarningSet.add(r[0].trim()); });
+    }
+    if (dRes.status === 'fulfilled' && dRes.value && dRes.value.data) {
+      dRes.value.data.forEach(r => { if (r[0]) gDispositionSet.add(r[0].trim()); });
+    }
+    console.log('[CT] Warning stocks:', gWarningSet.size, '/ Disposition stocks:', gDispositionSet.size);
+  } catch (e) { console.warn('[CT] loadWarningStocks error:', e); }
+}
+
+function warningTag(code) {
+  let tag = '';
+  if (gDispositionSet.has(code)) tag += '<span class="badge-disposition">處置</span>';
+  if (gWarningSet.has(code)) tag += '<span class="badge-warning">警示</span>';
+  return tag;
+}
+
 function rocToISO(roc) {
   const parts = roc.trim().split('/');
   const y = parseInt(parts[0]) + 1911;
@@ -1016,15 +1050,22 @@ function mkTable(headers, rows) {
 // NAVIGATION (with History API for back gesture support)
 // ============================================================
 let navHistoryDepth = 0;
+const _tabScrollPos = {}; // { tabName: scrollTop }
 
-function switchTab(tabName, pushHistory) {
+function switchTab(tabName, pushHistory, restoreScroll) {
   if (pushHistory === undefined) pushHistory = false;
   const currentNav = document.querySelector('.nav-item.active');
   const currentTab = currentNav ? currentNav.dataset.tab : null;
   if (currentTab === tabName && !pushHistory) return;
 
+  // Save scroll position of current panel before leaving
+  if (currentTab) {
+    const curPanel = document.getElementById('panel-' + currentTab);
+    if (curPanel) _tabScrollPos[currentTab] = curPanel.scrollTop;
+  }
+
   if (pushHistory && currentTab) {
-    history.pushState({ tab: tabName }, '', '');
+    history.pushState({ tab: tabName, fromTab: currentTab }, '', '');
     navHistoryDepth++;
   }
 
@@ -1035,7 +1076,11 @@ function switchTab(tabName, pushHistory) {
   const panel = document.getElementById('panel-' + tabName);
   if (panel) {
     panel.classList.add('active');
-    panel.scrollTo({ top: 0, behavior: 'instant' });
+    if (restoreScroll && _tabScrollPos[tabName] != null) {
+      panel.scrollTo({ top: _tabScrollPos[tabName], behavior: 'instant' });
+    } else if (!restoreScroll) {
+      panel.scrollTo({ top: 0, behavior: 'instant' });
+    }
   }
 
   if (tabName === 'analysis' && !gChartsReady) initCharts();
@@ -1064,9 +1109,9 @@ function switchTab(tabName, pushHistory) {
 window.addEventListener('popstate', function(e) {
   navHistoryDepth = Math.max(0, navHistoryDepth - 1);
   if (e.state && e.state.tab) {
-    switchTab(e.state.tab, false);
+    switchTab(e.state.tab, false, true);
   } else {
-    switchTab('overview', false);
+    switchTab('overview', false, true);
   }
 });
 
@@ -1337,11 +1382,11 @@ function renderOverview() {
           <div class="rank-card-head">
             <span class="rank-card-num">${i+1}</span>
             <span class="rank-card-code">${s.code}</span>
-            <span class="rank-card-name">${s.name}</span>${limitTag(s.pct)}
+            <span class="rank-card-name">${s.name}</span>${limitTag(s.pct)}${warningTag(s.code)}
             <span class="rank-card-pct ${cls}">${s.pct>0?'+':''}${s.pct.toFixed(2)}%</span>
           </div>
           <div class="rank-card-body">
-            <div><span class="dt-label">收盤</span><span>${fmtNum(s.close,2)}</span></div>
+            <div><span class="dt-label">收盤</span><span>${limitPrice(s.close, s.pct)}</span></div>
             <div><span class="dt-label">漲跌</span><span class="${cls}">${s.chg>0?'+':''}${fmtNum(s.chg,2)}</span></div>
             <div><span class="dt-label">成交量</span><span>${fmtBig(s.vol)}</span></div>
           </div>
@@ -1356,8 +1401,8 @@ function renderOverview() {
         : '<span class="tag-market tag-tpex">上櫃</span>';
       return [
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
-        `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>${limitTag(s.pct)}`, mTag,
-        fmtNum(s.close, 2),
+        `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>${limitTag(s.pct)}${warningTag(s.code)}`, mTag,
+        limitPrice(s.close, s.pct),
         `<span class="${s.chg > 0 ? 'up' : 'down'}">${s.chg > 0 ? '+' : ''}${fmtNum(s.chg, 2)}</span>`,
         `<span class="${s.pct > 0 ? 'up' : 'down'}">${s.pct > 0 ? '+' : ''}${s.pct.toFixed(2)}%</span>`,
         fmtBig(s.vol)
@@ -1807,7 +1852,7 @@ function renderInstRank(type) {
           <div class="rank-card-head">
             <span class="rank-card-num">${i+1}</span>
             <span class="rank-card-code">${s.code}</span>
-            <span class="rank-card-name">${s.name}</span>
+            <span class="rank-card-name">${s.name}</span>${warningTag(s.code)}
             <span class="rank-card-pct ${cls}">${s.net>0?'+':''}${fmtShares(s.net)}</span>
           </div>
         </div>`;
@@ -1821,7 +1866,7 @@ function renderInstRank(type) {
         : '<span class="tag-market tag-tpex">上櫃</span>';
       return [
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
-        `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>`, mTag,
+        `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>${warningTag(s.code)}`, mTag,
         `<span class="${s.net > 0 ? 'up' : 'down'}" style="font-weight:600">${s.net > 0 ? '+' : ''}${fmtShares(s.net)}</span>`
       ];
     }));
@@ -1967,7 +2012,7 @@ function renderAIRank() {
         i + 1,
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>`, mTag,
-        fmtNum(s.close, 2),
+        limitPrice(s.close, s.pct),
         `<span class="${s.pct > 0 ? 'up' : 'down'}">${s.pct > 0 ? '+' : ''}${s.pct.toFixed(2)}%</span>`,
         fmtBig(s.vol),
         `<span class="${inst.f > 0 ? 'up' : 'down'}">${fmtShares(inst.f)}</span>`,
@@ -2100,9 +2145,9 @@ function renderWatchlist() {
         + '<div class="sc-bar" style="background:' + mBarColor + ';"></div>'
         + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
         + '<div class="sc-top"><div>'
-        + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + mName + '</span> ' + mMkt + limitTag(mis.pct) + '</div>'
+        + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + mName + '</span> ' + mMkt + limitTag(mis.pct) + warningTag(code) + '</div>'
         + '</div><div>'
-        + '<div class="sc-price ' + (mIsUp ? 'up' : mis.chg < 0 ? 'down' : '') + '">' + fmtNum(mis.price, 2) + '</div>'
+        + '<div class="sc-price ' + (mis.pct >= 9.5 ? 'limit-price limit-price-up' : mis.pct <= -9.5 ? 'limit-price limit-price-down' : mIsUp ? 'up' : mis.chg < 0 ? 'down' : '') + '">' + fmtNum(mis.price, 2) + '</div>'
         + '<div class="sc-change ' + (mIsUp ? 'up' : mis.chg < 0 ? 'down' : '') + '">' + (mis.chg > 0 ? '&#x25B2;+' : mis.chg < 0 ? '&#x25BC;' : '') + fmtNum(mis.chg, 2) + ' (' + (mis.pct > 0 ? '+' : '') + mis.pct.toFixed(2) + '%) <span style="font-size:10px;color:var(--text2);">' + mis.time + '</span></div>'
         + '</div></div>'
         + '<div class="sc-stats">'
@@ -2128,9 +2173,9 @@ function renderWatchlist() {
           + '<div class="sc-bar" style="background:' + yBarColor + ';"></div>'
           + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
           + '<div class="sc-top"><div>'
-          + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + yName + '</span> ' + yMkt + limitTag(yc.pct) + '</div>'
+          + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + yName + '</span> ' + yMkt + limitTag(yc.pct) + warningTag(code) + '</div>'
           + '</div><div>'
-          + '<div class="sc-price ' + (yIsUp ? 'up' : yc.chg < 0 ? 'down' : '') + '">' + fmtNum(yc.price, 2) + '</div>'
+          + '<div class="sc-price ' + (yc.pct >= 9.5 ? 'limit-price limit-price-up' : yc.pct <= -9.5 ? 'limit-price limit-price-down' : yIsUp ? 'up' : yc.chg < 0 ? 'down' : '') + '">' + fmtNum(yc.price, 2) + '</div>'
           + '<div class="sc-change ' + (yIsUp ? 'up' : yc.chg < 0 ? 'down' : '') + '">' + (yc.chg > 0 ? '&#x25B2;+' : yc.chg < 0 ? '&#x25BC;' : '') + fmtNum(yc.chg, 2) + ' (' + (yc.pct > 0 ? '+' : '') + yc.pct.toFixed(2) + '%)</div>'
           + '</div></div>'
           + '<div class="sc-stats">'
@@ -2182,9 +2227,9 @@ function renderWatchlist() {
       + '<div class="sc-bar" style="background:' + barColor + ';"></div>'
       + '<div class="sc-del" onclick="event.stopPropagation();rmWatchlist(\'' + code + '\')">&#x2715;</div>'
       + '<div class="sc-top"><div>'
-      + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + name + '</span> ' + mTag + '</div>'
+      + '<div class="sc-code">' + code + ' <span style="font-size:12px;font-weight:400;color:var(--text2);">' + name + '</span> ' + mTag + warningTag(code) + '</div>'
       + '</div><div>'
-      + '<div class="sc-price ' + (isUp ? 'up' : chg < 0 ? 'down' : '') + '">' + fmtNum(close, 2) + '</div>'
+      + '<div class="sc-price ' + (pct >= 9.5 ? 'limit-price limit-price-up' : pct <= -9.5 ? 'limit-price limit-price-down' : isUp ? 'up' : chg < 0 ? 'down' : '') + '">' + fmtNum(close, 2) + '</div>'
       + '<div class="sc-change ' + (isUp ? 'up' : chg < 0 ? 'down' : '') + '">' + (chg > 0 ? '&#x25B2;+' : chg < 0 ? '&#x25BC;' : '') + fmtNum(chg, 2) + ' (' + (pct > 0 ? '+' : '') + pct.toFixed(2) + '%)</div>'
       + '</div></div>'
       + '<div class="sc-stats">'
@@ -2438,8 +2483,15 @@ async function analyzeStock(code) {
         ? '<span class="tag-market tag-twse">上市</span>'
         : '<span class="tag-market tag-tpex">上櫃</span>';
     document.getElementById('stock-market-tag').innerHTML = mTag;
+    document.getElementById('stock-warning-badge').innerHTML = warningTag(code);
+    if (pct >= 9.5) {
+      document.getElementById('stock-price').className = 'limit-price limit-price-up';
+    } else if (pct <= -9.5) {
+      document.getElementById('stock-price').className = 'limit-price limit-price-down';
+    } else {
+      document.getElementById('stock-price').className = chg >= 0 ? 'up' : 'down';
+    }
     document.getElementById('stock-price').textContent = fmtNum(lastC, 2);
-    document.getElementById('stock-price').className = chg >= 0 ? 'up' : 'down';
     document.getElementById('stock-change').innerHTML = `<span class="${chg >= 0 ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>${limitTag(pct)}`;
     document.getElementById('stock-header').style.display = 'block';
 
@@ -3124,6 +3176,14 @@ function toggleChartFullscreen() {
   // Create overlay
   _fsOverlay = document.createElement('div');
   _fsOverlay.className = 'chart-fullscreen-overlay' + (isMobile ? ' fs-landscape' : '');
+  if (isMobile) {
+    // Use actual visible viewport (window.innerHeight excludes browser chrome)
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    _fsOverlay.style.width = vh + 'px';
+    _fsOverlay.style.height = vw + 'px';
+    _fsOverlay.style.left = vw + 'px';
+  }
 
   // Header
   const header = document.createElement('div');
@@ -3167,58 +3227,69 @@ function toggleChartFullscreen() {
   // Prevent body scroll
   document.body.style.overflow = 'hidden';
 
-  // Create new chart filling the body
-  const w = body.clientWidth;
-  const h = body.clientHeight;
+  // Wait one frame so the DOM has settled and dimensions are correct
+  requestAnimationFrame(() => {
+    const w = body.clientWidth;
+    const h = body.clientHeight;
 
-  const mob = isMobile;
-  _fsChart = LightweightCharts.createChart(body, {
-    width: w, height: h,
-    layout: { background: { color: '#060b18' }, textColor: '#8896b3', fontSize: mob ? 11 : 12, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
-    grid: { vertLines: { color: 'rgba(0,240,255,0.05)' }, horzLines: { color: 'rgba(0,240,255,0.05)' } },
-    crosshair: { mode: 0, vertLine: { color: 'rgba(0,240,255,0.3)', style: 2, labelBackgroundColor: '#1a2540' }, horzLine: { color: 'rgba(0,240,255,0.3)', style: 2, labelBackgroundColor: '#1a2540' } },
-    timeScale: { borderColor: 'rgba(0,240,255,0.1)', timeVisible: false, fixLeftEdge: true, fixRightEdge: true, rightOffset: 5 },
-    rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 }, minimumWidth: 70 },
-    handleScroll: true, handleScale: true,
+    const mob = isMobile;
+    _fsChart = LightweightCharts.createChart(body, {
+      width: w, height: h,
+      layout: { background: { color: '#060b18' }, textColor: '#8896b3', fontSize: mob ? 11 : 12, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
+      grid: { vertLines: { color: 'rgba(0,240,255,0.05)' }, horzLines: { color: 'rgba(0,240,255,0.05)' } },
+      crosshair: { mode: 0, vertLine: { color: 'rgba(0,240,255,0.3)', style: 2, labelBackgroundColor: '#1a2540' }, horzLine: { color: 'rgba(0,240,255,0.3)', style: 2, labelBackgroundColor: '#1a2540' } },
+      timeScale: { borderColor: 'rgba(0,240,255,0.1)', timeVisible: false, fixLeftEdge: true, fixRightEdge: true, rightOffset: 5 },
+      rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 }, minimumWidth: mob ? 55 : 70 },
+      handleScroll: true, handleScale: true,
+    });
+
+    // Copy data from main chart series
+    const fsCan = _fsChart.addCandlestickSeries({
+      upColor: '#ff4070', downColor: '#00ff88',
+      borderUpColor: '#ff4070', borderDownColor: '#00ff88',
+      wickUpColor: '#ff5c7c', wickDownColor: '#33ee99',
+    });
+    const fsVol = _fsChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+    _fsChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    const fsMa5 = _fsChart.addLineSeries({ color: '#ffd036', lineWidth: 1.5, title: 'MA5' });
+    const fsMa10 = _fsChart.addLineSeries({ color: '#00d4ff', lineWidth: 1.5, title: 'MA10' });
+    const fsMa20 = _fsChart.addLineSeries({ color: '#b44dff', lineWidth: 1.5, title: 'MA20' });
+    const fsBbU = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2 });
+    const fsBbL = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2 });
+
+    // Copy data from existing series
+    try {
+      if (sCan) fsCan.setData(sCan.data ? sCan.data() : []);
+      if (sVol) fsVol.setData(sVol.data ? sVol.data() : []);
+      if (sMa5) fsMa5.setData(sMa5.data ? sMa5.data() : []);
+      if (sMa10) fsMa10.setData(sMa10.data ? sMa10.data() : []);
+      if (sMa20) fsMa20.setData(sMa20.data ? sMa20.data() : []);
+      if (sBbU) fsBbU.setData(sBbU.data ? sBbU.data() : []);
+      if (sBbL) fsBbL.setData(sBbL.data ? sBbL.data() : []);
+    } catch(e) { console.warn('[CT] FS chart data copy:', e); }
+
+    _fsChart.timeScale().fitContent();
+
+    // Handle resize in fullscreen
+    window.addEventListener('resize', _fsResize);
   });
-
-  // Copy data from main chart series
-  const fsCan = _fsChart.addCandlestickSeries({
-    upColor: '#ff3860', downColor: '#00e87b',
-    borderUpColor: '#ff3860', borderDownColor: '#00e87b',
-    wickUpColor: '#ff5c7c', wickDownColor: '#33ee99',
-  });
-  const fsVol = _fsChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
-  _fsChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-  const fsMa5 = _fsChart.addLineSeries({ color: '#ffd036', lineWidth: 1.5, title: 'MA5' });
-  const fsMa10 = _fsChart.addLineSeries({ color: '#00d4ff', lineWidth: 1.5, title: 'MA10' });
-  const fsMa20 = _fsChart.addLineSeries({ color: '#b44dff', lineWidth: 1.5, title: 'MA20' });
-  const fsBbU = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2 });
-  const fsBbL = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2 });
-
-  // Copy data from existing series
-  try {
-    if (sCan) fsCan.setData(sCan.data ? sCan.data() : []);
-    if (sVol) fsVol.setData(sVol.data ? sVol.data() : []);
-    if (sMa5) fsMa5.setData(sMa5.data ? sMa5.data() : []);
-    if (sMa10) fsMa10.setData(sMa10.data ? sMa10.data() : []);
-    if (sMa20) fsMa20.setData(sMa20.data ? sMa20.data() : []);
-    if (sBbU) fsBbU.setData(sBbU.data ? sBbU.data() : []);
-    if (sBbL) fsBbL.setData(sBbL.data ? sBbL.data() : []);
-  } catch(e) { console.warn('[CT] FS chart data copy:', e); }
-
-  _fsChart.timeScale().fitContent();
-
-  // Handle resize in fullscreen
-  window.addEventListener('resize', _fsResize);
 }
 
 function _fsResize() {
   if (!_fsChart || !_fsOverlay) return;
-  const body = _fsOverlay.querySelector('.chart-fs-body');
-  if (body) {
-    _fsChart.applyOptions({ width: body.clientWidth, height: body.clientHeight });
+  // Recalculate overlay size on mobile (browser chrome show/hide changes innerHeight)
+  if (_fsOverlay.classList.contains('fs-landscape')) {
+    _fsOverlay.style.width = window.innerHeight + 'px';
+    _fsOverlay.style.height = window.innerWidth + 'px';
+    _fsOverlay.style.left = window.innerWidth + 'px';
   }
+  requestAnimationFrame(() => {
+    if (!_fsChart || !_fsOverlay) return;
+    const body = _fsOverlay.querySelector('.chart-fs-body');
+    if (body) {
+      _fsChart.applyOptions({ width: body.clientWidth, height: body.clientHeight });
+    }
+  });
 }
 
 function zoomFsChart(action) {
@@ -3284,6 +3355,7 @@ async function init() {
 
   try {
     gDate = await findTradingDate();
+    loadWarningStocks(); // fire-and-forget, populates gWarningSet/gDispositionSet
     setStatus('loading', '載入市場資料（上市+上櫃）...');
 
     // Fetch essential data + OpenAPI stock lists in parallel
@@ -3507,7 +3579,7 @@ function renderSectorStocks() {
     rows.push([
       `<span class="clickable" onclick="goAnalyze('${code}')">${code}</span>`,
       `<span class="clickable" onclick="goAnalyze('${code}')">${name}</span>`, mTag,
-      fmtNum(close, 2),
+      limitPrice(close, pct),
       `<span class="${chg >= 0 ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)}</span>`,
       `<span class="${pct >= 0 ? 'up' : 'down'}">${pct > 0 ? '+' : ''}${pct.toFixed(2)}%</span>`,
       fmtBig(vol),
@@ -3816,7 +3888,13 @@ async function fetchRealtimeQuote(code) {
     const chg = lastPrice - prevClose;
     const pct = (chg / prevClose * 100);
     document.getElementById('stock-price').textContent = fmtNum(lastPrice, 2);
-    document.getElementById('stock-price').className = chg >= 0 ? 'up' : 'down';
+    if (pct >= 9.5) {
+      document.getElementById('stock-price').className = 'limit-price limit-price-up';
+    } else if (pct <= -9.5) {
+      document.getElementById('stock-price').className = 'limit-price limit-price-down';
+    } else {
+      document.getElementById('stock-price').className = chg >= 0 ? 'up' : 'down';
+    }
     document.getElementById('stock-change').innerHTML =
       `<span class="${chg >= 0 ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`;
   }
@@ -4005,7 +4083,7 @@ function renderDayTradeFinMind(rows) {
       h += '<div class="rank-card" onclick="goAnalyze(\'' + s.code + '\')">'
         + '<div class="rank-card-head"><span class="rank-card-num">' + (i+1) + '</span>'
         + '<span class="rank-card-code">' + s.code + '</span>'
-        + '<span class="rank-card-name">' + s.name + '</span>'
+        + '<span class="rank-card-name">' + s.name + '</span>' + warningTag(s.code)
         + '<span class="rank-card-pct">' + fmtBig(s.vol) + '</span></div></div>';
     });
     h += '</div>';
@@ -5193,11 +5271,11 @@ function runScreener() {
         <div class="rank-card-head">
           <span class="rank-card-num">${i+1}</span>
           <span class="rank-card-code">${s.code}</span>
-          <span class="rank-card-name">${s.name}</span>
+          <span class="rank-card-name">${s.name}</span>${warningTag(s.code)}
           <span class="rank-card-pct ${cls}">${s.pct>0?'+':''}${s.pct.toFixed(2)}%</span>
         </div>
         <div class="rank-card-body">
-          <div><span class="dt-label">收盤</span><span>${fmtNum(s.close,2)}</span></div>
+          <div><span class="dt-label">收盤</span><span>${limitPrice(s.close, s.pct)}</span></div>
           <div><span class="dt-label">漲跌</span><span class="${cls}">${s.chg>0?'+':''}${fmtNum(s.chg,2)}</span></div>
           <div><span class="dt-label">成交量</span><span>${fmtBig(s.vol)}</span></div>
         </div>
@@ -5219,7 +5297,7 @@ function runScreener() {
           `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
           `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>`,
           mTag,
-          fmtNum(s.close, 2),
+          limitPrice(s.close, s.pct),
           `<span class="${s.chg>0?'up':'down'}">${s.chg>0?'+':''}${fmtNum(s.chg,2)}</span>`,
           `<span class="${s.pct>0?'up':'down'}">${s.pct>0?'+':''}${s.pct.toFixed(2)}%</span>`,
           fmtBig(s.vol),
