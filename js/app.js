@@ -3105,6 +3105,141 @@ function zoomChart(action) {
 }
 
 // ============================================================
+// CHART FULLSCREEN
+// ============================================================
+let _fsOverlay = null;
+let _fsChart = null;
+
+function toggleChartFullscreen() {
+  if (_fsOverlay) { closeChartFullscreen(); return; }
+
+  const isMobile = window.innerWidth <= 768;
+
+  // Create overlay
+  _fsOverlay = document.createElement('div');
+  _fsOverlay.className = 'chart-fullscreen-overlay' + (isMobile ? ' fs-landscape' : '');
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'chart-fs-header';
+
+  const title = document.createElement('span');
+  title.className = 'chart-fs-title';
+  const code = document.getElementById('stock-code');
+  const name = document.getElementById('stock-title');
+  title.textContent = (code ? code.textContent : '') + ' ' + (name ? name.textContent : '') + ' — K 線 / 布林通道';
+
+  const controls = document.createElement('div');
+  controls.className = 'chart-fs-controls';
+
+  // Zoom buttons in fullscreen
+  [{ label: '+', act: 'in' }, { label: '⊙', act: 'reset' }, { label: '−', act: 'out' }].forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'chart-zoom-btn';
+    btn.textContent = b.label;
+    btn.onclick = () => zoomFsChart(b.act);
+    controls.appendChild(btn);
+  });
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'chart-fs-close';
+  closeBtn.innerHTML = '✕';
+  closeBtn.onclick = closeChartFullscreen;
+  controls.appendChild(closeBtn);
+
+  header.appendChild(title);
+  header.appendChild(controls);
+
+  // Chart body
+  const body = document.createElement('div');
+  body.className = 'chart-fs-body';
+
+  _fsOverlay.appendChild(header);
+  _fsOverlay.appendChild(body);
+  document.body.appendChild(_fsOverlay);
+
+  // Prevent body scroll
+  document.body.style.overflow = 'hidden';
+
+  // Create new chart filling the body
+  const w = body.clientWidth;
+  const h = body.clientHeight;
+
+  const mob = isMobile;
+  _fsChart = LightweightCharts.createChart(body, {
+    width: w, height: h,
+    layout: { background: { color: '#060b18' }, textColor: '#8896b3', fontSize: mob ? 11 : 12, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
+    grid: { vertLines: { color: 'rgba(0,240,255,0.05)' }, horzLines: { color: 'rgba(0,240,255,0.05)' } },
+    crosshair: { mode: 0, vertLine: { color: 'rgba(0,240,255,0.3)', style: 2, labelBackgroundColor: '#1a2540' }, horzLine: { color: 'rgba(0,240,255,0.3)', style: 2, labelBackgroundColor: '#1a2540' } },
+    timeScale: { borderColor: 'rgba(0,240,255,0.1)', timeVisible: false, fixLeftEdge: true, fixRightEdge: true, rightOffset: 5 },
+    rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 }, minimumWidth: 70 },
+    handleScroll: true, handleScale: true,
+  });
+
+  // Copy data from main chart series
+  const fsCan = _fsChart.addCandlestickSeries({
+    upColor: '#ff3860', downColor: '#00e87b',
+    borderUpColor: '#ff3860', borderDownColor: '#00e87b',
+    wickUpColor: '#ff5c7c', wickDownColor: '#33ee99',
+  });
+  const fsVol = _fsChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+  _fsChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+  const fsMa5 = _fsChart.addLineSeries({ color: '#ffd036', lineWidth: 1.5, title: 'MA5' });
+  const fsMa10 = _fsChart.addLineSeries({ color: '#00d4ff', lineWidth: 1.5, title: 'MA10' });
+  const fsMa20 = _fsChart.addLineSeries({ color: '#b44dff', lineWidth: 1.5, title: 'MA20' });
+  const fsBbU = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2 });
+  const fsBbL = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2 });
+
+  // Copy data from existing series
+  try {
+    if (sCan) fsCan.setData(sCan.data ? sCan.data() : []);
+    if (sVol) fsVol.setData(sVol.data ? sVol.data() : []);
+    if (sMa5) fsMa5.setData(sMa5.data ? sMa5.data() : []);
+    if (sMa10) fsMa10.setData(sMa10.data ? sMa10.data() : []);
+    if (sMa20) fsMa20.setData(sMa20.data ? sMa20.data() : []);
+    if (sBbU) fsBbU.setData(sBbU.data ? sBbU.data() : []);
+    if (sBbL) fsBbL.setData(sBbL.data ? sBbL.data() : []);
+  } catch(e) { console.warn('[CT] FS chart data copy:', e); }
+
+  _fsChart.timeScale().fitContent();
+
+  // Handle resize in fullscreen
+  window.addEventListener('resize', _fsResize);
+}
+
+function _fsResize() {
+  if (!_fsChart || !_fsOverlay) return;
+  const body = _fsOverlay.querySelector('.chart-fs-body');
+  if (body) {
+    _fsChart.applyOptions({ width: body.clientWidth, height: body.clientHeight });
+  }
+}
+
+function zoomFsChart(action) {
+  if (!_fsChart) return;
+  var ts = _fsChart.timeScale();
+  if (action === 'reset') { ts.fitContent(); return; }
+  var range = ts.getVisibleLogicalRange();
+  if (!range) return;
+  var bars = range.to - range.from;
+  var center = (range.from + range.to) / 2;
+  var factor = action === 'in' ? 0.6 : 1.6;
+  var newBars = Math.max(10, Math.round(bars * factor));
+  var half = newBars / 2;
+  ts.setVisibleLogicalRange({ from: center - half, to: center + half });
+}
+
+function closeChartFullscreen() {
+  window.removeEventListener('resize', _fsResize);
+  if (_fsChart) { _fsChart.remove(); _fsChart = null; }
+  if (_fsOverlay) { _fsOverlay.remove(); _fsOverlay = null; }
+  document.body.style.overflow = '';
+}
+
+// ESC to close fullscreen
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && _fsOverlay) closeChartFullscreen(); });
+
+// ============================================================
 // BACKGROUND: Retry T86 institutional data (non-blocking)
 // ============================================================
 async function retryT86InBackground() {
