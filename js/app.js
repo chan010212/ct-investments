@@ -1012,10 +1012,10 @@ function mkTable(headers, rows) {
 let navHistoryDepth = 0;
 
 function switchTab(tabName, pushHistory) {
-  if (pushHistory === undefined) pushHistory = true;
+  if (pushHistory === undefined) pushHistory = false;
   const currentNav = document.querySelector('.nav-item.active');
   const currentTab = currentNav ? currentNav.dataset.tab : null;
-  if (currentTab === tabName && pushHistory) return;
+  if (currentTab === tabName && !pushHistory) return;
 
   if (pushHistory && currentTab) {
     history.pushState({ tab: tabName }, '', '');
@@ -3036,7 +3036,7 @@ function scrollToSection(id) {
 }
 
 function goAnalyze(code) {
-  switchTab('analysis');
+  switchTab('analysis', true);
   analyzeStock(code);
 }
 
