@@ -1755,15 +1755,35 @@ async function renderTaiexChart() {
 // ============================================================
 function renderInstSummary(data) {
   if (!data || data.stat !== 'OK' || !data.data) return;
-  let html = mkTable(['類別', '買進金額', '賣出金額', '買賣差額'], data.data.map(r => {
-    const diff = parseNum(r[3]);
-    return [
-      r[0],
-      fmtBig(parseNum(r[1])),
-      fmtBig(parseNum(r[2])),
-      `<span class="${diff > 0 ? 'up' : 'down'}" style="font-weight:700">${diff > 0 ? '+' : ''}${fmtBig(diff)}</span>`
-    ];
-  }));
+  let html;
+  if (window.innerWidth <= 768) {
+    html = '<div class="rank-card-list">';
+    data.data.forEach(r => {
+      const diff = parseNum(r[3]);
+      const cls = diff > 0 ? 'up' : diff < 0 ? 'down' : '';
+      html += `<div class="rank-card">
+        <div class="rank-card-head">
+          <span class="rank-card-code" style="color:var(--text);">${r[0]}</span>
+          <span class="rank-card-pct ${cls}" style="font-size:13px;">${diff > 0 ? '+' : ''}${fmtBig(diff)}</span>
+        </div>
+        <div class="rank-card-body">
+          <div><span class="dt-label">買進</span><span>${fmtBig(parseNum(r[1]))}</span></div>
+          <div><span class="dt-label">賣出</span><span>${fmtBig(parseNum(r[2]))}</span></div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  } else {
+    html = mkTable(['類別', '買進金額', '賣出金額', '買賣差額'], data.data.map(r => {
+      const diff = parseNum(r[3]);
+      return [
+        r[0],
+        fmtBig(parseNum(r[1])),
+        fmtBig(parseNum(r[2])),
+        `<span class="${diff > 0 ? 'up' : 'down'}" style="font-weight:700">${diff > 0 ? '+' : ''}${fmtBig(diff)}</span>`
+      ];
+    }));
+  }
   document.getElementById('inst-summary-overview').innerHTML = html;
   document.getElementById('inst-amount-table').innerHTML = html;
 }
@@ -3764,7 +3784,34 @@ async function renderUSStocks() {
     ];
   }).filter(Boolean);
 
-  box.innerHTML = mkTable(['代碼', '名稱', '股價', '漲跌', '漲跌%', '成交量'], rows);
+  if (window.innerWidth <= 768) {
+    let h = '<div class="rank-card-list">';
+    group.forEach(s => {
+      const q = qMap[s.symbol];
+      if (!q) return;
+      const price = q.regularMarketPrice || 0;
+      const chg = q.regularMarketChange || 0;
+      const pct = q.regularMarketChangePercent || 0;
+      const vol = q.regularMarketVolume || 0;
+      const isUp = chg >= 0;
+      h += `<div class="rank-card">
+        <div class="rank-card-head">
+          <span class="rank-card-code">${s.symbol}</span>
+          <span class="rank-card-name">${s.name}</span>
+          <span class="rank-card-pct ${isUp ? 'up' : 'down'}">${pct > 0 ? '+' : ''}${pct.toFixed(2)}%</span>
+        </div>
+        <div class="rank-card-body">
+          <div><span class="dt-label">股價</span><span>$${fmtNum(price, 2)}</span></div>
+          <div><span class="dt-label">漲跌</span><span class="${isUp ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)}</span></div>
+          <div><span class="dt-label">成交量</span><span>${fmtBig(vol)}</span></div>
+        </div>
+      </div>`;
+    });
+    h += '</div>';
+    box.innerHTML = h;
+  } else {
+    box.innerHTML = mkTable(['代碼', '名稱', '股價', '漲跌', '漲跌%', '成交量'], rows);
+  }
 }
 
 // ============================================================
@@ -6413,19 +6460,38 @@ async function loadInstStreakRanking() {
       el.innerHTML = '<div class="text-muted" style="padding:16px;text-align:center;">資料累積中，請於 2-3 週後查看<br><span style="font-size:11px;">資料範圍：' + (data.data_from || '--') + ' ~ ' + (data.data_to || '--') + ' (' + (data.trading_days || 0) + ' 個交易日)</span></div>';
       return;
     }
-    var rows = top.map(function(s) {
-      var dirLabel = s.direction === 'buy' ? '連買' : '連賣';
-      var cls = s.direction === 'buy' ? 'up' : 'down';
-      return [
-        '<span class="clickable" onclick="goAnalyze(\'' + s.code + '\')">' + s.code + '</span>',
-        s.name,
-        '<span class="' + cls + '" style="font-weight:700;">' + dirLabel + ' ' + s.streak + ' 天</span>',
-        '<span class="' + cls + '">' + fmtShares(Math.abs(s.total_net)) + '</span>',
-        '<span class="' + cls + '">' + fmtShares(Math.abs(s.latest_net)) + '</span>'
-      ];
-    });
-    el.innerHTML = mkTable(['代號', '名稱', '連續天數', '累計張數', '最新一日'], rows) +
-      '<div class="text-sm text-muted" style="margin-top:8px;">資料範圍：' + (data.data_from || '--') + ' ~ ' + (data.data_to || '--') + ' (' + (data.trading_days || 0) + ' 個交易日)</div>';
+    var suffix = '<div class="text-sm text-muted" style="margin-top:8px;">資料範圍：' + (data.data_from || '--') + ' ~ ' + (data.data_to || '--') + ' (' + (data.trading_days || 0) + ' 個交易日)</div>';
+    if (window.innerWidth <= 768) {
+      var h = '<div class="rank-card-list">';
+      top.forEach(function(s, i) {
+        var dirLabel = s.direction === 'buy' ? '連買' : '連賣';
+        var cls = s.direction === 'buy' ? 'up' : 'down';
+        h += '<div class="rank-card" onclick="goAnalyze(\'' + s.code + '\')">'
+          + '<div class="rank-card-head"><span class="rank-card-num">' + (i+1) + '</span>'
+          + '<span class="rank-card-code">' + s.code + '</span>'
+          + '<span class="rank-card-name">' + s.name + '</span>'
+          + '<span class="rank-card-pct ' + cls + '">' + dirLabel + ' ' + s.streak + ' 天</span></div>'
+          + '<div class="rank-card-body">'
+          + '<div><span class="dt-label">累計</span><span class="' + cls + '">' + fmtShares(Math.abs(s.total_net)) + '</span></div>'
+          + '<div><span class="dt-label">最新</span><span class="' + cls + '">' + fmtShares(Math.abs(s.latest_net)) + '</span></div>'
+          + '</div></div>';
+      });
+      h += '</div>';
+      el.innerHTML = h + suffix;
+    } else {
+      var rows = top.map(function(s) {
+        var dirLabel = s.direction === 'buy' ? '連買' : '連賣';
+        var cls = s.direction === 'buy' ? 'up' : 'down';
+        return [
+          '<span class="clickable" onclick="goAnalyze(\'' + s.code + '\')">' + s.code + '</span>',
+          s.name,
+          '<span class="' + cls + '" style="font-weight:700;">' + dirLabel + ' ' + s.streak + ' 天</span>',
+          '<span class="' + cls + '">' + fmtShares(Math.abs(s.total_net)) + '</span>',
+          '<span class="' + cls + '">' + fmtShares(Math.abs(s.latest_net)) + '</span>'
+        ];
+      });
+      el.innerHTML = mkTable(['代號', '名稱', '連續天數', '累計張數', '最新一日'], rows) + suffix;
+    }
   } catch (e) {
     el.innerHTML = '<div class="text-muted">載入失敗</div>';
   }
