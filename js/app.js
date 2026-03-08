@@ -3247,19 +3247,19 @@ function toggleChartFullscreen() {
   // Prevent body scroll
   document.body.style.overflow = 'hidden';
 
-  // Wait one frame so the DOM has settled and dimensions are correct
-  requestAnimationFrame(() => {
+  // Wait two frames so the DOM has fully settled (esp. after CSS transform)
+  requestAnimationFrame(() => { requestAnimationFrame(() => {
     const w = body.clientWidth;
     const h = body.clientHeight;
 
     const mob = isMobile;
     _fsChart = LightweightCharts.createChart(body, {
       width: w, height: h,
-      layout: { background: { color: '#060b18' }, textColor: '#8896b3', fontSize: mob ? 11 : 12, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
+      layout: { background: { color: '#060b18' }, textColor: '#8896b3', fontSize: mob ? 10 : 12, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
       grid: { vertLines: { color: 'rgba(0,240,255,0.05)' }, horzLines: { color: 'rgba(0,240,255,0.05)' } },
       crosshair: { mode: 0, vertLine: { color: 'rgba(0,240,255,0.3)', style: 2, labelBackgroundColor: '#1a2540' }, horzLine: { color: 'rgba(0,240,255,0.3)', style: 2, labelBackgroundColor: '#1a2540' } },
-      timeScale: { borderColor: 'rgba(0,240,255,0.1)', timeVisible: false, fixLeftEdge: true, fixRightEdge: true, rightOffset: 5 },
-      rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 }, minimumWidth: mob ? 55 : 70 },
+      timeScale: { borderColor: 'rgba(0,240,255,0.1)', timeVisible: false, fixLeftEdge: true, fixRightEdge: true, rightOffset: 3 },
+      rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', autoScale: true, scaleMargins: { top: 0.06, bottom: 0.06 }, minimumWidth: mob ? 48 : 70 },
       handleScroll: true, handleScale: true,
     });
 
@@ -3270,7 +3270,7 @@ function toggleChartFullscreen() {
       wickUpColor: '#ff5c7c', wickDownColor: '#33ee99',
     });
     const fsVol = _fsChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
-    _fsChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    _fsChart.priceScale('vol').applyOptions({ scaleMargins: { top: mob ? 0.85 : 0.82, bottom: 0 } });
     const fsMa5 = _fsChart.addLineSeries({ color: '#ffd036', lineWidth: 1.5, title: 'MA5' });
     const fsMa10 = _fsChart.addLineSeries({ color: '#00d4ff', lineWidth: 1.5, title: 'MA10' });
     const fsMa20 = _fsChart.addLineSeries({ color: '#b44dff', lineWidth: 1.5, title: 'MA20' });
@@ -3292,7 +3292,7 @@ function toggleChartFullscreen() {
 
     // Handle resize in fullscreen
     window.addEventListener('resize', _fsResize);
-  });
+  }); });
 }
 
 function _fsResize() {
@@ -3303,13 +3303,13 @@ function _fsResize() {
     _fsOverlay.style.height = window.innerWidth + 'px';
     _fsOverlay.style.left = window.innerWidth + 'px';
   }
-  requestAnimationFrame(() => {
+  requestAnimationFrame(() => { requestAnimationFrame(() => {
     if (!_fsChart || !_fsOverlay) return;
     const body = _fsOverlay.querySelector('.chart-fs-body');
     if (body) {
       _fsChart.applyOptions({ width: body.clientWidth, height: body.clientHeight });
     }
-  });
+  }); });
 }
 
 function zoomFsChart(action) {

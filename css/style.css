@@ -772,18 +772,38 @@
         transform-origin: top left;
         right: auto;
         bottom: auto;
-        /* use dvh to exclude mobile browser chrome; vh as fallback */
-        width: 100vh;
-        width: 100dvh;
-        height: 100vw;
-        height: 100dvw;
         top: 0;
-        left: 100vw;
-        left: 100dvw;
-        padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+        /* JS sets width/height/left dynamically via window.innerHeight/innerWidth */
+        box-sizing: border-box;
+        padding: 0;
       }
-      .chart-fs-header { padding: 6px 12px; }
-      .chart-fs-title { font-size: 14px; }
+      .chart-fullscreen-overlay.fs-landscape .chart-fs-header {
+        padding: 4px 10px;
+        min-height: 0;
+      }
+      .chart-fullscreen-overlay.fs-landscape .chart-fs-title {
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 50%;
+      }
+      .chart-fullscreen-overlay.fs-landscape .chart-fs-close {
+        width: 30px;
+        height: 30px;
+        font-size: 16px;
+        border-radius: 6px;
+      }
+      .chart-fullscreen-overlay.fs-landscape .chart-zoom-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+      }
+      .chart-fullscreen-overlay.fs-landscape .chart-fs-body {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
     }
 
     /* ===== WATCHLIST ITEM ===== */
