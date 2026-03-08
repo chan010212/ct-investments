@@ -3211,9 +3211,14 @@ function toggleChartFullscreen() {
 
   const title = document.createElement('span');
   title.className = 'chart-fs-title';
-  const code = document.getElementById('stock-code');
-  const name = document.getElementById('stock-title');
-  title.textContent = (code ? code.textContent : '') + ' ' + (name ? name.textContent : '') + ' — K 線 / 布林通道';
+  const codeEl = document.getElementById('stock-code');
+  const nameEl = document.getElementById('stock-title');
+  title.textContent = (codeEl ? codeEl.textContent : '') + ' ' + (nameEl ? nameEl.textContent : '');
+
+  // OHLCV tooltip area (updated on crosshair move)
+  const ohlcv = document.createElement('div');
+  ohlcv.className = 'chart-fs-ohlcv';
+  ohlcv.id = 'fs-ohlcv';
 
   const controls = document.createElement('div');
   controls.className = 'chart-fs-controls';
@@ -3234,6 +3239,7 @@ function toggleChartFullscreen() {
   controls.appendChild(closeBtn);
 
   header.appendChild(title);
+  header.appendChild(ohlcv);
   header.appendChild(controls);
 
   // Chart body
@@ -3247,6 +3253,9 @@ function toggleChartFullscreen() {
   // Prevent body scroll
   document.body.style.overflow = 'hidden';
 
+  // Prevent touch scroll leak on the overlay
+  _fsOverlay.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
   // Wait two frames so the DOM has fully settled (esp. after CSS transform)
   requestAnimationFrame(() => { requestAnimationFrame(() => {
     const w = body.clientWidth;
@@ -3256,10 +3265,14 @@ function toggleChartFullscreen() {
     _fsChart = LightweightCharts.createChart(body, {
       width: w, height: h,
       layout: { background: { color: '#060b18' }, textColor: '#8896b3', fontSize: mob ? 10 : 12, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
-      grid: { vertLines: { color: 'rgba(0,240,255,0.05)' }, horzLines: { color: 'rgba(0,240,255,0.05)' } },
-      crosshair: { mode: 0, vertLine: { color: 'rgba(0,240,255,0.3)', style: 2, labelBackgroundColor: '#1a2540' }, horzLine: { color: 'rgba(0,240,255,0.3)', style: 2, labelBackgroundColor: '#1a2540' } },
-      timeScale: { borderColor: 'rgba(0,240,255,0.1)', timeVisible: false, fixLeftEdge: true, fixRightEdge: true, rightOffset: 3 },
-      rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', autoScale: true, scaleMargins: { top: 0.06, bottom: 0.06 }, minimumWidth: mob ? 48 : 70 },
+      grid: { vertLines: { color: 'rgba(0,240,255,0.06)' }, horzLines: { color: 'rgba(0,240,255,0.06)' } },
+      crosshair: {
+        mode: mob ? 1 : 0,
+        vertLine: { color: 'rgba(0,240,255,0.35)', style: 2, width: 1, labelBackgroundColor: '#1a2540' },
+        horzLine: { color: 'rgba(0,240,255,0.35)', style: 2, width: 1, labelBackgroundColor: '#1a2540' },
+      },
+      timeScale: { borderColor: 'rgba(0,240,255,0.1)', timeVisible: false, fixLeftEdge: true, fixRightEdge: true, rightOffset: mob ? 2 : 5 },
+      rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 }, minimumWidth: mob ? 46 : 70 },
       handleScroll: true, handleScale: true,
     });
 
@@ -3269,18 +3282,36 @@ function toggleChartFullscreen() {
       borderUpColor: '#ff4070', borderDownColor: '#00ff88',
       wickUpColor: '#ff5c7c', wickDownColor: '#33ee99',
     });
+
+    // Volume with per-bar color matching candle direction
     const fsVol = _fsChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
     _fsChart.priceScale('vol').applyOptions({ scaleMargins: { top: mob ? 0.85 : 0.82, bottom: 0 } });
-    const fsMa5 = _fsChart.addLineSeries({ color: '#ffd036', lineWidth: 1.5, title: 'MA5' });
-    const fsMa10 = _fsChart.addLineSeries({ color: '#00d4ff', lineWidth: 1.5, title: 'MA10' });
-    const fsMa20 = _fsChart.addLineSeries({ color: '#b44dff', lineWidth: 1.5, title: 'MA20' });
+
+    const fsMa5 = _fsChart.addLineSeries({ color: '#ffd036', lineWidth: mob ? 1 : 1.5, title: 'MA5' });
+    const fsMa10 = _fsChart.addLineSeries({ color: '#00d4ff', lineWidth: mob ? 1 : 1.5, title: 'MA10' });
+    const fsMa20 = _fsChart.addLineSeries({ color: '#b44dff', lineWidth: mob ? 1 : 1.5, title: 'MA20' });
     const fsBbU = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2 });
     const fsBbL = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2 });
 
     // Copy data from existing series
+    let canData = [], volData = [];
     try {
-      if (sCan) fsCan.setData(sCan.data ? sCan.data() : []);
-      if (sVol) fsVol.setData(sVol.data ? sVol.data() : []);
+      canData = sCan && sCan.data ? sCan.data() : [];
+      volData = sVol && sVol.data ? sVol.data() : [];
+      if (canData.length) fsCan.setData(canData);
+      // Color volume bars to match candle direction
+      if (volData.length && canData.length) {
+        const canMap = {};
+        canData.forEach(c => { canMap[c.time] = c; });
+        const coloredVol = volData.map(v => {
+          const c = canMap[v.time];
+          const up = c ? c.close >= c.open : true;
+          return { ...v, color: up ? 'rgba(255,64,112,0.35)' : 'rgba(0,255,136,0.35)' };
+        });
+        fsVol.setData(coloredVol);
+      } else if (volData.length) {
+        fsVol.setData(volData);
+      }
       if (sMa5) fsMa5.setData(sMa5.data ? sMa5.data() : []);
       if (sMa10) fsMa10.setData(sMa10.data ? sMa10.data() : []);
       if (sMa20) fsMa20.setData(sMa20.data ? sMa20.data() : []);
@@ -3289,6 +3320,25 @@ function toggleChartFullscreen() {
     } catch(e) { console.warn('[CT] FS chart data copy:', e); }
 
     _fsChart.timeScale().fitContent();
+
+    // OHLCV crosshair tooltip
+    const ohlcvEl = document.getElementById('fs-ohlcv');
+    if (ohlcvEl && canData.length) {
+      _fsChart.subscribeCrosshairMove(param => {
+        if (!param || !param.time) { ohlcvEl.innerHTML = ''; return; }
+        const d = param.seriesData ? param.seriesData.get(fsCan) : null;
+        if (!d) { ohlcvEl.innerHTML = ''; return; }
+        const cls = d.close >= d.open ? 'up' : 'down';
+        const vd = param.seriesData.get(fsVol);
+        const vol = vd ? (vd.value / 1000).toFixed(0) : '-';
+        ohlcvEl.innerHTML =
+          '<span>O:<b class="' + cls + '">' + d.open + '</b></span>' +
+          '<span>H:<b class="' + cls + '">' + d.high + '</b></span>' +
+          '<span>L:<b class="' + cls + '">' + d.low + '</b></span>' +
+          '<span>C:<b class="' + cls + '">' + d.close + '</b></span>' +
+          '<span>V:<b>' + vol + 'K</b></span>';
+      });
+    }
 
     // Handle resize in fullscreen
     window.addEventListener('resize', _fsResize);
