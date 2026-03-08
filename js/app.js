@@ -3321,7 +3321,7 @@ function toggleChartFullscreen() {
 
     _fsChart.timeScale().fitContent();
 
-    // OHLCV crosshair tooltip
+    // OHLCV crosshair tooltip (header, updates on hover/drag)
     const ohlcvEl = document.getElementById('fs-ohlcv');
     if (ohlcvEl && canData.length) {
       _fsChart.subscribeCrosshairMove(param => {
@@ -3339,6 +3339,75 @@ function toggleChartFullscreen() {
           '<span>V:<b>' + vol + 'K</b></span>';
       });
     }
+
+    // Pinned floating tooltip card on click
+    let _fsTip = null;
+    const canMap = {};
+    canData.forEach(c => { canMap[c.time] = c; });
+
+    _fsChart.subscribeClick(param => {
+      // Clicked empty space → remove tooltip
+      if (!param || !param.time || !param.seriesData) {
+        if (_fsTip) { _fsTip.remove(); _fsTip = null; }
+        return;
+      }
+      const d = param.seriesData.get(fsCan);
+      if (!d) { if (_fsTip) { _fsTip.remove(); _fsTip = null; } return; }
+
+      const vd = param.seriesData.get(fsVol);
+      const vol = vd ? vd.value : 0;
+      const chg = d.open !== 0 ? ((d.close - d.open) / d.open * 100) : 0;
+      const isUp = d.close >= d.open;
+      const cls = isUp ? 'up' : 'down';
+      const arrow = isUp ? '\u25b2' : '\u25bc';
+
+      // Format date
+      let dateStr = '';
+      if (typeof d.time === 'object') {
+        dateStr = d.time.year + '/' + String(d.time.month).padStart(2,'0') + '/' + String(d.time.day).padStart(2,'0');
+      } else {
+        dateStr = String(d.time);
+      }
+
+      // Format volume
+      let volStr = '';
+      if (vol >= 1e8) volStr = (vol / 1e8).toFixed(1) + ' 億';
+      else if (vol >= 1e4) volStr = (vol / 1e4).toFixed(0) + ' 萬';
+      else if (vol >= 1000) volStr = (vol / 1000).toFixed(1) + 'K';
+      else volStr = String(vol);
+
+      const html =
+        '<div class="tt-date">' + dateStr + '</div>' +
+        '<div class="tt-row"><span class="tt-label">開</span><span class="tt-val">' + d.open + '</span></div>' +
+        '<div class="tt-row"><span class="tt-label">高</span><span class="tt-val ' + cls + '">' + d.high + '</span></div>' +
+        '<div class="tt-row"><span class="tt-label">低</span><span class="tt-val ' + cls + '">' + d.low + '</span></div>' +
+        '<div class="tt-row"><span class="tt-label">收</span><span class="tt-val ' + cls + '">' + d.close + '</span></div>' +
+        '<div class="tt-row"><span class="tt-label">量</span><span class="tt-val">' + volStr + '</span></div>' +
+        '<div class="tt-chg ' + cls + '">' + arrow + ' ' + chg.toFixed(2) + '%</div>' +
+        '<div class="tt-arrow"></div>';
+
+      if (!_fsTip) {
+        _fsTip = document.createElement('div');
+        _fsTip.className = 'chart-fs-tooltip';
+        body.appendChild(_fsTip);
+      }
+      _fsTip.innerHTML = html;
+
+      // Position: above the click point, clamped within chart bounds
+      const bw = body.clientWidth;
+      const bh = body.clientHeight;
+      const tw = _fsTip.offsetWidth || 170;
+      const th = _fsTip.offsetHeight || 120;
+      let tx = (param.point ? param.point.x : bw / 2) - tw / 2;
+      let ty = (param.point ? param.point.y : bh / 2) - th - 14;
+      // Clamp horizontal
+      if (tx < 4) tx = 4;
+      if (tx + tw > bw - 4) tx = bw - tw - 4;
+      // If not enough space above, show below
+      if (ty < 4) ty = (param.point ? param.point.y : bh / 2) + 14;
+      _fsTip.style.left = tx + 'px';
+      _fsTip.style.top = ty + 'px';
+    });
 
     // Handle resize in fullscreen
     window.addEventListener('resize', _fsResize);
@@ -3378,7 +3447,7 @@ function zoomFsChart(action) {
 
 function closeChartFullscreen() {
   window.removeEventListener('resize', _fsResize);
-  if (_fsChart) { _fsChart.remove(); _fsChart = null; }
+  if (_fsChart) { try { _fsChart.remove(); } catch(e) {} _fsChart = null; }
   if (_fsOverlay) { _fsOverlay.remove(); _fsOverlay = null; }
   document.body.style.overflow = '';
 }

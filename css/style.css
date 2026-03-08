@@ -782,6 +782,68 @@
       touch-action: none;
     }
 
+    /* Fullscreen chart floating tooltip card */
+    .chart-fs-tooltip {
+      position: absolute;
+      z-index: 10;
+      background: rgba(10, 18, 36, 0.95);
+      border: 1px solid var(--cyan);
+      border-radius: 8px;
+      padding: 10px 14px;
+      pointer-events: none;
+      min-width: 170px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 8px rgba(0,240,255,0.15);
+      animation: tooltipIn 0.15s ease-out;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text);
+    }
+    @keyframes tooltipIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .chart-fs-tooltip .tt-date {
+      color: var(--cyan);
+      font-weight: 600;
+      font-size: 12px;
+      margin-bottom: 4px;
+      border-bottom: 1px solid rgba(0,240,255,0.15);
+      padding-bottom: 4px;
+    }
+    .chart-fs-tooltip .tt-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .chart-fs-tooltip .tt-label { color: var(--text2); }
+    .chart-fs-tooltip .tt-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .chart-fs-tooltip .tt-chg {
+      font-weight: 700;
+      font-size: 14px;
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px solid rgba(0,240,255,0.15);
+      text-align: center;
+    }
+    .chart-fs-tooltip .tt-arrow {
+      position: absolute;
+      bottom: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0; height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 6px solid var(--cyan);
+    }
+
+    @media (max-width: 768px) {
+      .chart-fs-tooltip {
+        font-size: 11px;
+        padding: 7px 10px;
+        min-width: 140px;
+        border-radius: 6px;
+      }
+      .chart-fs-tooltip .tt-chg { font-size: 12px; }
+      .chart-fs-tooltip .tt-date { font-size: 10px; }
+    }
+
     /* Mobile fullscreen: force landscape */
     @media (max-width: 768px) {
       .chart-fullscreen-overlay.fs-landscape {
