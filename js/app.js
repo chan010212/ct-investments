@@ -3196,13 +3196,15 @@ function toggleChartFullscreen() {
   // Create overlay
   _fsOverlay = document.createElement('div');
   _fsOverlay.className = 'chart-fullscreen-overlay' + (isMobile ? ' fs-landscape' : '');
+
+  // On mobile: set explicit pixel dimensions from window (more reliable than CSS units inside transform)
   if (isMobile) {
-    // Use actual visible viewport (window.innerHeight excludes browser chrome)
     const vh = window.innerHeight;
     const vw = window.innerWidth;
     _fsOverlay.style.width = vh + 'px';
     _fsOverlay.style.height = vw + 'px';
     _fsOverlay.style.left = vw + 'px';
+    _fsOverlay.style.top = '0px';
   }
 
   // Header
@@ -3256,14 +3258,36 @@ function toggleChartFullscreen() {
   // Prevent touch scroll leak on the overlay
   _fsOverlay.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
-  // Wait two frames so the DOM has fully settled (esp. after CSS transform)
-  requestAnimationFrame(() => { requestAnimationFrame(() => {
-    const w = body.clientWidth;
-    const h = body.clientHeight;
+  // Use setTimeout for reliable layout settling (rAF can fire before transform layout finishes)
+  setTimeout(() => {
+    if (!_fsOverlay) return;
 
+    // Calculate chart dimensions explicitly instead of relying on clientWidth/Height in rotated container
+    let w, h;
     const mob = isMobile;
+    if (mob) {
+      const overlayW = window.innerHeight; // overlay width = vh (rotated)
+      const overlayH = window.innerWidth;  // overlay height = vw (rotated)
+      const headerH = header.offsetHeight || 32;
+      w = overlayW;
+      h = overlayH - headerH;
+      // Force body dimensions explicitly
+      body.style.width = w + 'px';
+      body.style.height = h + 'px';
+    } else {
+      w = body.clientWidth;
+      h = body.clientHeight;
+    }
+
+    if (w <= 0 || h <= 0) {
+      // Fallback: try reading from DOM
+      w = body.clientWidth || window.innerWidth;
+      h = body.clientHeight || window.innerHeight - 50;
+    }
+
     _fsChart = LightweightCharts.createChart(body, {
       width: w, height: h,
+      autoSize: false,
       layout: { background: { color: '#060b18' }, textColor: '#8896b3', fontSize: mob ? 10 : 12, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
       grid: { vertLines: { color: 'rgba(0,240,255,0.06)' }, horzLines: { color: 'rgba(0,240,255,0.06)' } },
       crosshair: {
@@ -3409,26 +3433,46 @@ function toggleChartFullscreen() {
       _fsTip.style.top = ty + 'px';
     });
 
+    // Force a second resize after chart creation to ensure canvas fills correctly
+    if (mob) {
+      setTimeout(() => {
+        if (_fsChart) _fsChart.applyOptions({ width: w, height: h });
+        if (_fsChart) _fsChart.timeScale().fitContent();
+      }, 100);
+    }
+
     // Handle resize in fullscreen
     window.addEventListener('resize', _fsResize);
-  }); });
+  }, 80);
 }
 
 function _fsResize() {
   if (!_fsChart || !_fsOverlay) return;
-  // Recalculate overlay size on mobile (browser chrome show/hide changes innerHeight)
-  if (_fsOverlay.classList.contains('fs-landscape')) {
-    _fsOverlay.style.width = window.innerHeight + 'px';
-    _fsOverlay.style.height = window.innerWidth + 'px';
-    _fsOverlay.style.left = window.innerWidth + 'px';
+  const isMob = _fsOverlay.classList.contains('fs-landscape');
+  if (isMob) {
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    _fsOverlay.style.width = vh + 'px';
+    _fsOverlay.style.height = vw + 'px';
+    _fsOverlay.style.left = vw + 'px';
   }
-  requestAnimationFrame(() => { requestAnimationFrame(() => {
+  setTimeout(() => {
     if (!_fsChart || !_fsOverlay) return;
     const body = _fsOverlay.querySelector('.chart-fs-body');
-    if (body) {
-      _fsChart.applyOptions({ width: body.clientWidth, height: body.clientHeight });
+    const header = _fsOverlay.querySelector('.chart-fs-header');
+    if (!body) return;
+    let w, h;
+    if (isMob) {
+      w = window.innerHeight;
+      h = window.innerWidth - (header ? header.offsetHeight : 32);
+      body.style.width = w + 'px';
+      body.style.height = h + 'px';
+    } else {
+      w = body.clientWidth;
+      h = body.clientHeight;
     }
-  }); });
+    _fsChart.applyOptions({ width: w, height: h });
+  }, 80);
 }
 
 function zoomFsChart(action) {

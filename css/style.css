@@ -780,6 +780,8 @@
       flex: 1;
       min-height: 0;
       touch-action: none;
+      position: relative;
+      overflow: hidden;
     }
 
     /* Fullscreen chart floating tooltip card */
