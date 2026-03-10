@@ -1746,8 +1746,9 @@ async function renderTaiexChart() {
     const closes = result.indicators?.quote?.[0]?.close || [];
     const prevClose = result.meta?.chartPreviousClose || 0;
     const data = [];
+    const tzOffset = 8 * 3600; // UTC+8 (台灣時間)
     for (let i = 0; i < ts.length; i++) {
-      if (closes[i] != null) data.push({ time: ts[i], value: closes[i] });
+      if (closes[i] != null) data.push({ time: ts[i] + tzOffset, value: closes[i] });
     }
     if (data.length === 0) return;
 
