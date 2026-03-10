@@ -1273,10 +1273,10 @@ function initCharts() {
   });
   chtMain.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-  const maOpts = { lastValueVisible: false, priceLineVisible: false };
-  sMa5  = chtMain.addLineSeries({ color: '#ffd036', lineWidth: isMobile ? 1 : 1.5, title: 'MA5', ...maOpts });
-  sMa10 = chtMain.addLineSeries({ color: '#00d4ff', lineWidth: isMobile ? 1 : 1.5, title: 'MA10', ...maOpts });
-  sMa20 = chtMain.addLineSeries({ color: '#b44dff', lineWidth: isMobile ? 1 : 1.5, title: 'MA20', ...maOpts });
+  const maOpts = { lastValueVisible: false, priceLineVisible: false, title: '' };
+  sMa5  = chtMain.addLineSeries({ color: '#ffd036', lineWidth: isMobile ? 1 : 1.5, ...maOpts });
+  sMa10 = chtMain.addLineSeries({ color: '#00d4ff', lineWidth: isMobile ? 1 : 1.5, ...maOpts });
+  sMa20 = chtMain.addLineSeries({ color: '#b44dff', lineWidth: isMobile ? 1 : 1.5, ...maOpts });
   sBbU  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2, ...maOpts });
   sBbL  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2, ...maOpts });
 
@@ -2582,6 +2582,15 @@ async function analyzeStock(code) {
     sBbU.setData(ld(bb.up));
     sBbL.setData(ld(bb.dn));
 
+    // Update MA values in toggle bar
+    const lastMA = (arr) => { for (let i = arr.length - 1; i >= 0; i--) { if (arr[i] != null) return arr[i].toFixed(2); } return ''; };
+    const ma5El = document.getElementById('ma5-val');
+    const ma10El = document.getElementById('ma10-val');
+    const ma20El = document.getElementById('ma20-val');
+    if (ma5El) ma5El.textContent = lastMA(ma5);
+    if (ma10El) ma10El.textContent = lastMA(ma10);
+    if (ma20El) ma20El.textContent = lastMA(ma20);
+
     // Show last ~60 trading days for better default view, user can scroll/zoom
     const showDays = Math.min(60, dates.length);
     const visFrom = dates[dates.length - showDays];
@@ -3360,10 +3369,10 @@ function toggleChartFullscreen() {
     const fsVol = _fsChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
     _fsChart.priceScale('vol').applyOptions({ scaleMargins: { top: mob ? 0.85 : 0.82, bottom: 0 } });
 
-    const fsMA = { lastValueVisible: false, priceLineVisible: false };
-    const fsMa5 = _fsChart.addLineSeries({ color: '#ffd036', lineWidth: mob ? 1 : 1.5, title: 'MA5', ...fsMA });
-    const fsMa10 = _fsChart.addLineSeries({ color: '#00d4ff', lineWidth: mob ? 1 : 1.5, title: 'MA10', ...fsMA });
-    const fsMa20 = _fsChart.addLineSeries({ color: '#b44dff', lineWidth: mob ? 1 : 1.5, title: 'MA20', ...fsMA });
+    const fsMA = { lastValueVisible: false, priceLineVisible: false, title: '' };
+    const fsMa5 = _fsChart.addLineSeries({ color: '#ffd036', lineWidth: mob ? 1 : 1.5, ...fsMA });
+    const fsMa10 = _fsChart.addLineSeries({ color: '#00d4ff', lineWidth: mob ? 1 : 1.5, ...fsMA });
+    const fsMa20 = _fsChart.addLineSeries({ color: '#b44dff', lineWidth: mob ? 1 : 1.5, ...fsMA });
     const fsBbU = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2, ...fsMA });
     const fsBbL = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2, ...fsMA });
 
