@@ -2764,21 +2764,21 @@ async function fetchStockNews(code, stockName) {
   const el = document.getElementById('stock-news');
   el.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
   try {
-    const keyword = encodeURIComponent(stockName || code);
-    const url = `https://api.cnyes.com/media/api/v1/newslist/category/tw_stock?page=1&limit=10&keyword=${keyword}`;
-    const data = await apiFetch(url);
-    const items = (data && data.items && data.items.data) ? data.items.data : [];
+    const params = new URLSearchParams({ code, name: stockName || '' });
+    const resp = await fetch(`/api/stock-news?${params}`);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    const items = data.items || [];
     if (items.length === 0) {
-      el.innerHTML = '<div class="text-muted">暫無相關新聞</div>';
+      const searchUrl = `https://www.cnyes.com/search/news?keyword=${encodeURIComponent(stockName || code)}`;
+      el.innerHTML = `<div class="text-muted">近兩週無相關新聞 — <a href="${searchUrl}" target="_blank" rel="noopener" style="color:var(--accent);">前往鉅亨網搜尋</a></div>`;
       return;
     }
     let html = '<div class="news-list">';
     items.forEach(n => {
       const title = n.title || '';
-      const ts = n.publishAt || 0;
-      const dt = ts ? new Date(ts * 1000) : null;
-      const timeStr = dt ? `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` : '';
-      const newsUrl = `https://news.cnyes.com/news/id/${n.newsId}`;
+      const timeStr = n.time || '';
+      const newsUrl = n.url || '#';
       const isImportant = IMPORTANT_KEYWORDS.some(kw => title.includes(kw));
       html += `<a href="${newsUrl}" target="_blank" rel="noopener" class="news-item${isImportant ? ' news-important' : ''}">
         ${isImportant ? '<span class="news-badge">重要</span>' : ''}

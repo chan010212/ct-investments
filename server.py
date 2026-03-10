@@ -307,6 +307,80 @@ def proxy_cache_set(url, data, content_type):
 
 
 # ============================================================
+# STOCK NEWS (個股新聞) — Cnyes market-code filtered
+# ============================================================
+_stock_news_cache = {}      # code → { items, ts }
+_stock_news_lock = threading.Lock()
+STOCK_NEWS_TTL = 300        # 5 minutes
+
+def _fetch_stock_news(code, name=''):
+    """Fetch news for a specific stock from Cnyes, filter by market code + title."""
+    now = int(time.time())
+    # Check cache
+    with _stock_news_lock:
+        cached = _stock_news_cache.get(code)
+        if cached and now - cached['ts'] < STOCK_NEWS_TTL:
+            return cached['items']
+
+    st = now - 86400 * 14  # 14 days lookback
+    results = []
+    seen = set()
+    categories = ['tw_stock_news', 'headline']
+    for cat in categories:
+        try:
+            for page in range(1, 8):  # up to 7 pages per category
+                url = (f'https://api.cnyes.com/media/api/v1/newslist/category/{cat}'
+                       f'?startAt={st}&endAt={now}&limit=30&page={page}')
+                d = _mr_fetch_json(url)
+                items = d.get('items', {}).get('data', [])
+                if not items:
+                    break
+                for it in items:
+                    nid = it.get('newsId', '')
+                    if nid in seen:
+                        continue
+                    seen.add(nid)
+                    title = it.get('title', '').strip()
+                    if not title:
+                        continue
+                    market_codes = [m.get('code', '') for m in it.get('market', [])]
+                    # Match by market code OR title contains stock code/name
+                    if code in market_codes or code in title or (name and name in title):
+                        pub = it.get('publishAt', 0)
+                        dt = datetime.fromtimestamp(pub) if pub else None
+                        nurl = f'https://news.cnyes.com/news/id/{nid}' if nid else ''
+                        results.append({
+                            'title': title,
+                            'time': dt.strftime('%m/%d %H:%M') if dt else '',
+                            'ts': pub,
+                            'url': nurl,
+                            'newsId': nid,
+                        })
+                # Stop early if we already have enough
+                if len(results) >= 15:
+                    break
+        except Exception as e:
+            print(f'[STOCK-NEWS] Error fetching {cat} for {code}: {e}')
+        if len(results) >= 15:
+            break
+
+    results.sort(key=lambda x: x.get('ts', 0), reverse=True)
+    results = results[:15]
+
+    # Cache
+    with _stock_news_lock:
+        _stock_news_cache[code] = {'items': results, 'ts': now}
+        # Evict old entries
+        if len(_stock_news_cache) > 100:
+            cutoff = now - STOCK_NEWS_TTL * 2
+            stale = [k for k, v in _stock_news_cache.items() if v['ts'] < cutoff]
+            for k in stale:
+                del _stock_news_cache[k]
+
+    return results
+
+
+# ============================================================
 # MORNING REPORT (晨訊) — cached daily market briefing
 # ============================================================
 _mr_cache = {}          # { date_str: dict }
@@ -1504,6 +1578,8 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             return
         elif self.path == '/api/morning-report':
             self.handle_morning_report()
+        elif self.path.startswith('/api/stock-news'):
+            self.handle_stock_news()
         elif self.path.startswith('/api/proxy?'):
             self.handle_proxy()
         elif self.path == '/api/me':
@@ -2588,6 +2664,18 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
             return
         threading.Thread(target=_mr_generate, daemon=True).start()
         self.send_json({'status': 'generating'})
+
+    def handle_stock_news(self):
+        """GET /api/stock-news?code=2330&name=台積電"""
+        qs = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(qs)
+        code = params.get('code', [''])[0].strip()
+        name = params.get('name', [''])[0].strip()
+        if not code:
+            self.send_json({'error': 'missing code'}, 400)
+            return
+        items = _fetch_stock_news(code, name)
+        self.send_json({'items': items})
 
     # --- Proxy ---
     # --- Fugle + FinMind API endpoints ---
