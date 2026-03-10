@@ -685,6 +685,42 @@
     .chart-main { height: 420px; }
     .chart-intraday { height: 220px; }
     .chart-sm { height: 160px; }
+    .chart-indicator { height: 130px; }
+    #taiex-chart { height: 220px; }
+
+    /* MA / Bollinger toggle bar */
+    .chart-toggle-bar {
+      display: flex;
+      gap: 10px;
+      padding: 6px 8px 2px;
+      flex-wrap: wrap;
+    }
+    .chart-toggle {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--text2);
+      cursor: pointer;
+      user-select: none;
+    }
+    .chart-toggle input[type="checkbox"] { display: none; }
+    .tog-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      transition: opacity 0.2s;
+    }
+    .chart-toggle input:not(:checked) + .tog-dot { opacity: 0.2; }
+
+    /* Indicator panel label (inside stacked chart card) */
+    .chart-stack-label {
+      font-size: 12px;
+      color: var(--text2);
+      padding: 8px 8px 2px;
+      font-weight: 600;
+    }
 
     .chart-zoom-controls {
       display: flex;
@@ -1542,6 +1578,7 @@
       .chart-main { height: 340px; }
       .chart-intraday { height: 200px; }
       .chart-sm { height: 160px; }
+      .chart-indicator { height: 120px; }
 
       /* Score ring */
       .score-ring { width: 70px; height: 70px; font-size: 22px; }
@@ -1713,6 +1750,7 @@
       .chart-main { height: 300px; }
       .chart-intraday { height: 180px; }
       .chart-sm { height: 145px; }
+      .chart-indicator { height: 110px; }
 
       /* Chip summary small phone */
       .chip-grid { gap: 6px; }

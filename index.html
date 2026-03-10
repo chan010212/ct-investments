@@ -138,7 +138,7 @@
       </div>
       <div class="card">
         <div class="card-title">&#x1F4C8; 加權指數走勢</div>
-        <div id="taiex-chart" class="chart-box" style="height:220px;"></div>
+        <div id="taiex-chart" class="chart-box"></div>
         <div class="text-sm text-muted" style="margin-top:4px;text-align:right;" id="taiex-status"></div>
       </div>
       <div class="grid-2">
@@ -332,21 +332,19 @@
               <button class="chart-zoom-btn chart-fs-btn" onclick="toggleChartFullscreen()" title="全螢幕">&#x26F6;</button>
             </div>
           </div>
+          <div id="chart-toggles" class="chart-toggle-bar">
+            <label class="chart-toggle"><input type="checkbox" id="tog-ma5" checked onchange="toggleChartSeries('ma5')"><span class="tog-dot" style="background:#ffd036;"></span>MA5</label>
+            <label class="chart-toggle"><input type="checkbox" id="tog-ma10" checked onchange="toggleChartSeries('ma10')"><span class="tog-dot" style="background:#00d4ff;"></span>MA10</label>
+            <label class="chart-toggle"><input type="checkbox" id="tog-ma20" checked onchange="toggleChartSeries('ma20')"><span class="tog-dot" style="background:#b44dff;"></span>MA20</label>
+            <label class="chart-toggle"><input type="checkbox" id="tog-bb" checked onchange="toggleChartSeries('bb')"><span class="tog-dot" style="background:rgba(255,208,54,0.6);"></span>布林</label>
+          </div>
           <div id="main-chart" class="chart-box chart-main"></div>
-        </div>
-        <div class="grid-2">
-          <div class="card">
-            <div class="card-title">RSI (14)</div>
-            <div id="rsi-chart" class="chart-box chart-sm"></div>
-          </div>
-          <div class="card">
-            <div class="card-title">KD 隨機指標</div>
-            <div id="kd-chart" class="chart-box chart-sm"></div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-title">MACD</div>
-          <div id="macd-chart" class="chart-box chart-sm"></div>
+          <div class="chart-stack-label">RSI (14)</div>
+          <div id="rsi-chart" class="chart-box chart-indicator"></div>
+          <div class="chart-stack-label">KD 隨機指標</div>
+          <div id="kd-chart" class="chart-box chart-indicator"></div>
+          <div class="chart-stack-label">MACD</div>
+          <div id="macd-chart" class="chart-box chart-indicator"></div>
         </div>
         <div class="grid-2">
           <div class="card">

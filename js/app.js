@@ -1273,30 +1273,71 @@ function initCharts() {
   });
   chtMain.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-  sMa5  = chtMain.addLineSeries({ color: '#ffd036', lineWidth: isMobile ? 1 : 1.5, title: 'MA5' });
-  sMa10 = chtMain.addLineSeries({ color: '#00d4ff', lineWidth: isMobile ? 1 : 1.5, title: 'MA10' });
-  sMa20 = chtMain.addLineSeries({ color: '#b44dff', lineWidth: isMobile ? 1 : 1.5, title: 'MA20' });
-  sBbU  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2 });
-  sBbL  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2 });
+  const maOpts = { lastValueVisible: false, priceLineVisible: false };
+  sMa5  = chtMain.addLineSeries({ color: '#ffd036', lineWidth: isMobile ? 1 : 1.5, title: 'MA5', ...maOpts });
+  sMa10 = chtMain.addLineSeries({ color: '#00d4ff', lineWidth: isMobile ? 1 : 1.5, title: 'MA10', ...maOpts });
+  sMa20 = chtMain.addLineSeries({ color: '#b44dff', lineWidth: isMobile ? 1 : 1.5, title: 'MA20', ...maOpts });
+  sBbU  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2, ...maOpts });
+  sBbL  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2, ...maOpts });
+
+  // --- Indicator sub-charts (stacked below main, hide time axis except MACD) ---
+  function indOpts(el, h) {
+    const o = opts(el, h);
+    o.timeScale.visible = false;  // hide time axis on RSI/KD (only MACD shows it)
+    o.rightPriceScale.minimumWidth = isMobile ? 55 : 65;
+    return o;
+  }
 
   const rc = document.getElementById('rsi-chart');
-  chtRsi = LightweightCharts.createChart(rc, opts(rc, rc.clientHeight || 160));
+  chtRsi = LightweightCharts.createChart(rc, indOpts(rc, rc.clientHeight || 130));
   chtRsi.priceScale('right').applyOptions({ autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 } });
   sRsi = chtRsi.addLineSeries({ color: '#ffd036', lineWidth: isMobile ? 1.5 : 2 });
 
   const kc = document.getElementById('kd-chart');
-  chtKd = LightweightCharts.createChart(kc, opts(kc, kc.clientHeight || 160));
+  chtKd = LightweightCharts.createChart(kc, indOpts(kc, kc.clientHeight || 130));
   chtKd.priceScale('right').applyOptions({ autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 } });
   sKK = chtKd.addLineSeries({ color: '#00d4ff', lineWidth: isMobile ? 1.5 : 2, title: 'K' });
   sDD = chtKd.addLineSeries({ color: '#ff3860', lineWidth: isMobile ? 1.5 : 2, title: 'D' });
 
   const mcc = document.getElementById('macd-chart');
-  chtMacd = LightweightCharts.createChart(mcc, opts(mcc, mcc.clientHeight || 160));
+  chtMacd = LightweightCharts.createChart(mcc, opts(mcc, mcc.clientHeight || 130));
   chtMacd.priceScale('right').applyOptions({ autoScale: true, scaleMargins: { top: 0.08, bottom: 0.08 } });
   sDif = chtMacd.addLineSeries({ color: '#00d4ff', lineWidth: isMobile ? 1.5 : 2, title: 'DIF' });
   sSig = chtMacd.addLineSeries({ color: '#ffd036', lineWidth: isMobile ? 1.5 : 2, title: 'Signal' });
   sHist = chtMacd.addHistogramSeries({ title: 'MACD' });
 
+  // --- Sync time axes across all charts (XQ/三竹 style) ---
+  _syncChartTimeScales();
+}
+
+// Synchronize time scales across K-line, RSI, KD, MACD charts
+let _isSyncing = false;
+function _syncChartTimeScales() {
+  const charts = [chtMain, chtRsi, chtKd, chtMacd];
+  charts.forEach((chart, idx) => {
+    if (!chart) return;
+    chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+      if (_isSyncing || !range) return;
+      _isSyncing = true;
+      try {
+        charts.forEach((other, j) => {
+          if (j !== idx && other) {
+            other.timeScale().setVisibleLogicalRange(range);
+          }
+        });
+      } finally { _isSyncing = false; }
+    });
+  });
+}
+
+// Toggle MA / Bollinger series visibility
+function toggleChartSeries(key) {
+  const seriesMap = { ma5: [sMa5], ma10: [sMa10], ma20: [sMa20], bb: [sBbU, sBbL] };
+  const targets = seriesMap[key];
+  if (!targets) return;
+  const cb = document.getElementById('tog-' + key);
+  const visible = cb ? cb.checked : true;
+  targets.forEach(s => { if (s) s.applyOptions({ visible }); });
 }
 
 // ============================================================
@@ -1710,25 +1751,30 @@ async function renderTaiexChart() {
     }
     if (data.length === 0) return;
 
-    if (chtTaiex) { chtTaiex.remove(); chtTaiex = null; }
-    const mob = window.innerWidth <= 768;
-    chtTaiex = LightweightCharts.createChart(el, {
-      width: el.clientWidth,
-      height: el.clientHeight || 220,
-      layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: mob ? 10 : 11 },
-      grid: { vertLines: { color: 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: 'rgba(0, 240, 255, 0.04)' } },
-      timeScale: { borderColor: 'rgba(0, 240, 255, 0.1)', timeVisible: true, secondsVisible: false },
-      rightPriceScale: { borderColor: 'rgba(0, 240, 255, 0.1)', autoScale: true, minimumWidth: mob ? 55 : 70 },
-      crosshair: { mode: mob ? 1 : 0 },
-    });
-
     const lastVal = data[data.length - 1].value;
     const isUp = lastVal >= prevClose;
     const lineColor = isUp ? '#ff3860' : '#00e87b';
     const topColor = isUp ? 'rgba(255,56,96,0.2)' : 'rgba(0,232,123,0.2)';
     const bottomColor = isUp ? 'rgba(255,56,96,0.02)' : 'rgba(0,232,123,0.02)';
 
-    sTaiexLine = chtTaiex.addAreaSeries({ lineColor, topColor, bottomColor, lineWidth: 2 });
+    // Reuse chart if it already exists; only recreate if needed
+    if (!chtTaiex) {
+      el.innerHTML = '';
+      const mob = window.innerWidth <= 768;
+      chtTaiex = LightweightCharts.createChart(el, {
+        autoSize: true,
+        layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: mob ? 10 : 11 },
+        grid: { vertLines: { color: 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: 'rgba(0, 240, 255, 0.04)' } },
+        timeScale: { borderColor: 'rgba(0, 240, 255, 0.1)', timeVisible: true, secondsVisible: false },
+        rightPriceScale: { borderColor: 'rgba(0, 240, 255, 0.1)', autoScale: true, minimumWidth: mob ? 55 : 70 },
+        crosshair: { mode: mob ? 1 : 0 },
+      });
+      sTaiexLine = chtTaiex.addAreaSeries({ lineColor, topColor, bottomColor, lineWidth: 2 });
+    } else {
+      // Update colors in case up/down changed
+      sTaiexLine.applyOptions({ lineColor, topColor, bottomColor });
+    }
+
     sTaiexLine.setData(data);
 
     // Add previous close reference line
@@ -3311,11 +3357,12 @@ function toggleChartFullscreen() {
     const fsVol = _fsChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
     _fsChart.priceScale('vol').applyOptions({ scaleMargins: { top: mob ? 0.85 : 0.82, bottom: 0 } });
 
-    const fsMa5 = _fsChart.addLineSeries({ color: '#ffd036', lineWidth: mob ? 1 : 1.5, title: 'MA5' });
-    const fsMa10 = _fsChart.addLineSeries({ color: '#00d4ff', lineWidth: mob ? 1 : 1.5, title: 'MA10' });
-    const fsMa20 = _fsChart.addLineSeries({ color: '#b44dff', lineWidth: mob ? 1 : 1.5, title: 'MA20' });
-    const fsBbU = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2 });
-    const fsBbL = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2 });
+    const fsMA = { lastValueVisible: false, priceLineVisible: false };
+    const fsMa5 = _fsChart.addLineSeries({ color: '#ffd036', lineWidth: mob ? 1 : 1.5, title: 'MA5', ...fsMA });
+    const fsMa10 = _fsChart.addLineSeries({ color: '#00d4ff', lineWidth: mob ? 1 : 1.5, title: 'MA10', ...fsMA });
+    const fsMa20 = _fsChart.addLineSeries({ color: '#b44dff', lineWidth: mob ? 1 : 1.5, title: 'MA20', ...fsMA });
+    const fsBbU = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2, ...fsMA });
+    const fsBbL = _fsChart.addLineSeries({ color: 'rgba(255,208,54,0.4)', lineWidth: 1, lineStyle: 2, ...fsMA });
 
     // Copy data from existing series
     let canData = [], volData = [];
