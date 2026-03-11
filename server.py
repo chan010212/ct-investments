@@ -24,7 +24,14 @@ import subprocess
 import binascii
 import secrets
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+# Taiwan timezone (UTC+8)
+_TW_TZ = timezone(timedelta(hours=8))
+
+def _tw_now():
+    """Get current time in Taiwan timezone (UTC+8), as naive datetime."""
+    return datetime.now(_TW_TZ).replace(tzinfo=None)
 
 PORT = int(os.environ.get('PORT', 8888))
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ct-investments-secret-key-change-in-production')
@@ -160,7 +167,7 @@ def _run_daily_healthcheck():
 
     # 3. TWSE 傳統 API（BFI82U 法人買賣超）
     try:
-        today = datetime.now().strftime('%Y%m%d')
+        today = _tw_now().strftime('%Y%m%d')
         data = _hc_fetch(f'https://www.twse.com.tw/fund/BFI82U?response=json&dayDate={today}')
         checks['twse_traditional'] = {'status': 'ok' if data.get('stat') == 'OK' else 'no_data',
                                       'stat': data.get('stat', 'unknown')}
@@ -198,7 +205,7 @@ def _run_daily_healthcheck():
     # 7. FinMind API
     if FINMIND_TOKEN:
         try:
-            yesterday = (datetime.now() - timedelta(days=3)).strftime('%Y-%m-%d')
+            yesterday = (_tw_now() - timedelta(days=3)).strftime('%Y-%m-%d')
             url = f'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=2330&start_date={yesterday}&token={FINMIND_TOKEN}'
             data = _hc_fetch(url)
             checks['finmind'] = {'status': 'ok', 'records': len(data.get('data', []))}
@@ -234,7 +241,7 @@ def _run_daily_healthcheck():
                  for c in checks.values())
     result = {
         'status': 'ok' if all_ok else 'warning',
-        'checked_at': datetime.now().isoformat(),
+        'checked_at': _tw_now().isoformat(),
         'checks': checks
     }
     global _healthcheck_result
@@ -254,9 +261,7 @@ def _healthcheck_scheduler():
     import calendar
     while True:
         try:
-            now = datetime.utcnow()
-            # Taiwan = UTC+8
-            tw_now = now + timedelta(hours=8)
+            tw_now = _tw_now()
             # Next 8:00 AM Taiwan time
             target = tw_now.replace(hour=8, minute=0, second=0, microsecond=0)
             if tw_now >= target:
@@ -388,7 +393,7 @@ _mr_lock = threading.Lock()
 _mr_generating = set()  # dates currently being generated
 
 def _mr_today():
-    return datetime.now().strftime('%Y%m%d')
+    return _tw_now().strftime('%Y%m%d')
 
 def _mr_pn(s):
     if not s: return 0
@@ -478,7 +483,7 @@ def _mr_get_markets():
 
 def _mr_get_twse():
     for i in range(5):
-        ds = (datetime.now() - timedelta(days=i)).strftime('%Y%m%d')
+        ds = (_tw_now() - timedelta(days=i)).strftime('%Y%m%d')
         try:
             d = _mr_fetch_json(f'https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK?date={ds}&response=json', True)
             if d.get('stat') == 'OK' and d.get('data'):
@@ -494,7 +499,7 @@ def _mr_get_inst():
     inst_stocks = []
     inst_date = ''
     for i in range(5):
-        ds = (datetime.now() - timedelta(days=i)).strftime('%Y%m%d')
+        ds = (_tw_now() - timedelta(days=i)).strftime('%Y%m%d')
         try:
             d = _mr_fetch_json(f'https://www.twse.com.tw/rwd/zh/fund/BFI82U?dayDate={ds}&type=day&response=json', True)
             if d.get('stat') == 'OK' and d.get('data'):
@@ -535,7 +540,7 @@ def _mr_get_news():
                 seen.add(t)
                 pub = it.get('publishAt', 0)
                 dt = datetime.fromtimestamp(pub) if pub else None
-                if dt and (datetime.now() - dt).total_seconds() > 86400: continue
+                if dt and (_tw_now() - dt).total_seconds() > 86400: continue
                 nid = it.get('newsId', '')
                 nurl = f'https://news.cnyes.com/news/id/{nid}' if nid else ''
                 out.append({'title': t, 'cat': lbl, 'time': dt.strftime('%H:%M') if dt else '', 'ts': pub, 'url': nurl})
@@ -664,7 +669,7 @@ def _mr_generate():
         viewpoint = _mr_build_viewpoint(markets, inst_market, twse, star)
         data = {
             'date': today,
-            'generated_at': datetime.now().isoformat(),
+            'generated_at': _tw_now().isoformat(),
             'sentiment': {'star': star, 'label': label, 'tags': tags},
             'viewpoint': viewpoint,
             'markets': markets,
@@ -747,7 +752,7 @@ def _load_taiex_history():
 def _run_backtest(db, strategy, params):
     """Run backtest on TAIEX history"""
     start_date = params.get('start_date', '2020-01-01')
-    end_date = params.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    end_date = params.get('end_date', _tw_now().strftime('%Y-%m-%d'))
     amount = float(params.get('amount', 100000))
 
     rows = db.execute(
@@ -891,7 +896,7 @@ _dividend_lock = threading.Lock()
 def _fetch_dividend_raw():
     """Fetch dividend schedule from TWSE/TPEX"""
     results = []
-    now = datetime.now()
+    now = _tw_now()
     # Fetch TWSE dividend schedule (t187ap21_L)
     for offset in range(3):
         month = now.month + offset
@@ -1245,7 +1250,7 @@ def _backfill_inst_daily():
         print('[BACKFILL] Starting FinMind inst_daily backfill...')
         filled = 0
         for i in range(1, 35):
-            d = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+            d = (_tw_now() - timedelta(days=i)).strftime('%Y-%m-%d')
             d_compact = d.replace('-', '')
             # Skip if already have data for this date
             cnt = db.execute('SELECT COUNT(*) FROM inst_daily WHERE trade_date = ?', (d_compact,)).fetchone()[0]
@@ -1558,7 +1563,7 @@ def newebpay_sha256(trade_info_hex):
 
 def generate_order_no():
     """Generate unique MerchantOrderNo (max 20 chars per NewebPay spec)."""
-    ts = datetime.now().strftime('%Y%m%d%H%M%S')
+    ts = _tw_now().strftime('%Y%m%d%H%M%S')
     rand = secrets.token_hex(3).upper()
     return f'CT{ts}{rand}'[:20]
 
@@ -1571,7 +1576,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/api/health':
-            resp = {'status': 'ok', 'time': datetime.now().isoformat()}
+            resp = {'status': 'ok', 'time': _tw_now().isoformat()}
             if _healthcheck_result:
                 resp['daily_check'] = _healthcheck_result
             self.send_json(resp)
@@ -1744,7 +1749,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                     if expires:
                         try:
                             exp_dt = datetime.fromisoformat(expires)
-                            if datetime.now() > exp_dt:
+                            if _tw_now() > exp_dt:
                                 db.execute('UPDATE users SET plan = ? WHERE id = ?', ('free', user['uid']))
                                 db.execute(
                                     'INSERT INTO plan_changes (user_id, old_plan, new_plan, reason) VALUES (?, ?, ?, ?)',
@@ -1886,7 +1891,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                 expires_at = row['plan_expires_at']
                 if current_plan in ('pro', 'proplus') and expires_at:
                     try:
-                        if datetime.now() > datetime.fromisoformat(expires_at):
+                        if _tw_now() > datetime.fromisoformat(expires_at):
                             db.execute('UPDATE users SET plan = ? WHERE id = ?', ('free', user['uid']))
                             db.commit()
                             current_plan = 'free'
@@ -2029,7 +2034,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
 
             elif path == '/api/admin/stats':
                 total_users = db.execute('SELECT COUNT(*) FROM users').fetchone()[0]
-                today = datetime.now().strftime('%Y-%m-%d')
+                today = _tw_now().strftime('%Y-%m-%d')
                 active_today = db.execute(
                     "SELECT COUNT(DISTINCT user_id) FROM user_actions WHERE created_at >= ?",
                     (today,)
@@ -2162,7 +2167,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
         code = (body.get('stock_code') or '').strip()
         name = body.get('stock_name', '')
         entry_price = body.get('entry_price')
-        entry_date = body.get('entry_date', datetime.now().strftime('%Y-%m-%d'))
+        entry_date = body.get('entry_date', _tw_now().strftime('%Y-%m-%d'))
         shares = body.get('shares', 1000)
         notes = body.get('notes', '')
         if not code or not entry_price:
@@ -2196,7 +2201,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             if 'exit_price' in body:
                 db.execute(
                     "UPDATE portfolios SET status = 'closed', exit_price = ?, exit_date = ? WHERE id = ?",
-                    (float(body['exit_price']), body.get('exit_date', datetime.now().strftime('%Y-%m-%d')), port_id)
+                    (float(body['exit_price']), body.get('exit_date', _tw_now().strftime('%Y-%m-%d')), port_id)
                 )
             if 'shares' in body:
                 db.execute('UPDATE portfolios SET shares = ? WHERE id = ?', (int(body['shares']), port_id))
@@ -2482,7 +2487,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             if status_code == 'SUCCESS':
-                now = datetime.now()
+                now = _tw_now()
                 if order['period'] == 'yearly':
                     expire_at = (now + timedelta(days=365)).isoformat()
                 else:

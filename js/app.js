@@ -930,7 +930,7 @@ async function fetchMisBatch(codes) {
       var chunk = chunks[ci];
       var exCh = chunk.map(function(code) {
         var m = getMarket(code);
-        return (m === 'tpex' ? 'otc_' : 'tse_') + code + '.tw';
+        return ((m === 'tpex' || m === 'emerging') ? 'otc_' : 'tse_') + code + '.tw';
       }).join('|');
       try {
         var url = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=' + encodeURIComponent(exCh) + '&json=1&delay=0&_=' + Date.now();
@@ -4069,7 +4069,7 @@ function initIntradayChart() {
 
 async function fetchIntradayChart(code) {
   const market = getMarket(code);
-  const suffix = market === 'tpex' ? '.TWO' : '.TW';
+  const suffix = (market === 'tpex' || market === 'emerging') ? '.TWO' : '.TW';
   const symbol = code + suffix;
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=5m&range=1d`;
@@ -4107,7 +4107,7 @@ async function fetchRealtimeQuote(code) {
     const [fugleRes, misRes] = await Promise.allSettled([
       fetchFugleQuote(code),
       (async function() {
-        const exCh = market === 'tpex' ? `otc_${code}.tw` : `tse_${code}.tw`;
+        const exCh = (market === 'tpex' || market === 'emerging') ? `otc_${code}.tw` : `tse_${code}.tw`;
         const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${exCh}`;
         const r = await fetch('/api/proxy?url=' + encodeURIComponent(url));
         if (!r.ok) return null;
@@ -4628,6 +4628,7 @@ async function doAutoRefresh(silent) {
       apiFetch(OPENAPI_TPEX_ALL),
       apiFetch(OPENAPI_TPEX_CLOSE),
       fetchFinMindInst(gDate),
+      apiFetch(OPENAPI_EMERGING),
     ]);
     const allStocks  = results[0].status === 'fulfilled' ? results[0].value : null;
     const tpexAll    = results[1].status === 'fulfilled' ? results[1].value : null;
@@ -4637,6 +4638,7 @@ async function doAutoRefresh(silent) {
     const openTpex   = results[5].status === 'fulfilled' ? results[5].value : null;
     const openTpexC  = results[6].status === 'fulfilled' ? results[6].value : null;
     const finMindInst = results[7].status === 'fulfilled' ? results[7].value : null;
+    const openEmerging = results[8].status === 'fulfilled' ? results[8].value : null;
     if (finMindInst && typeof finMindInst === 'object' && !finMindInst.error) {
       gFinMindInst = finMindInst;
     }
@@ -4684,6 +4686,16 @@ async function doAutoRefresh(silent) {
         const name = (item.CompanyName || '').trim();
         if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
           gStockDB[code] = { name, market: 'tpex' };
+        }
+      });
+    }
+    // Fill emerging stock gaps from OpenAPI (critical during trading hours)
+    if (Array.isArray(openEmerging)) {
+      openEmerging.forEach(item => {
+        const code = (item.SecuritiesCompanyCode || '').trim();
+        const name = (item.CompanyName || '').trim();
+        if (code && name && /^\d{4,6}$/.test(code) && !gStockDB[code]) {
+          gStockDB[code] = { name, market: 'emerging' };
         }
       });
     }
