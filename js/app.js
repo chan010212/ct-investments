@@ -2558,13 +2558,15 @@ async function analyzeStock(code) {
     document.getElementById('stock-warning-badge').innerHTML = warningTag(code);
 
     // Wait for real-time quote (started in parallel with history fetch)
-    try { await realtimePromise; } catch(e) {}
-    // Use MIS real-time price if available (overrides yesterday's close)
-    const misCache = gMisCache[code];
-    if (misCache && misCache.price > 0 && misCache.price !== lastC) {
-      lastC = misCache.price;
-      chg = misCache.chg;
-      pct = misCache.pct;
+    // fetchRealtimeQuote updates DOM directly + populates gMisCache
+    let rtResult = null;
+    try { rtResult = await realtimePromise; } catch(e) {}
+
+    // Use real-time price if available, otherwise fall back to historical close
+    if (rtResult && rtResult.price > 0) {
+      lastC = rtResult.price;
+      chg = rtResult.price - (rtResult.prevClose || prevC);
+      pct = rtResult.prevClose > 0 ? ((rtResult.price - rtResult.prevClose) / rtResult.prevClose * 100) : 0;
     }
 
     if (pct >= 9.5) {
@@ -4166,7 +4168,7 @@ async function fetchRealtimeQuote(code) {
     timeStr = misInfo.t || '';
   }
 
-  // Update header price
+  // Update header price + cache for analyzeStock to use
   if (lastPrice > 0 && prevClose > 0) {
     const chg = lastPrice - prevClose;
     const pct = (chg / prevClose * 100);
@@ -4180,6 +4182,12 @@ async function fetchRealtimeQuote(code) {
     }
     document.getElementById('stock-change').innerHTML =
       `<span class="${chg >= 0 ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`;
+    // Also update gMisCache so other code (analyzeStock, watchlist) can use it
+    gMisCache[code] = {
+      price: lastPrice, chg: chg, pct: pct,
+      vol: vol, high: high, low: low, open: open,
+      time: timeStr, name: misInfo ? (misInfo.n || '') : '',
+    };
   }
 
   // Order book (MIS only — Fugle free tier doesn't have order book)
@@ -4190,6 +4198,8 @@ async function fetchRealtimeQuote(code) {
     document.getElementById('realtime-info').innerHTML =
       `開盤 ${fmtNum(open,2)} | 最高 <span class="up">${fmtNum(high,2)}</span> | 最低 <span class="down">${fmtNum(low,2)}</span> | 量 ${fmtNum(vol,0)} 張 | ${timeStr}`;
   }
+
+  return { price: lastPrice, prevClose, chg: lastPrice - prevClose, pct: prevClose > 0 ? ((lastPrice - prevClose) / prevClose * 100) : 0 };
 }
 
 function renderOrderBook(info, prevClose) {
