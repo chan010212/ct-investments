@@ -2621,6 +2621,8 @@ async function analyzeStock(code) {
           c.timeScale().fitContent();
         }
       });
+      // Ensure most recent data is visible (scroll to right edge)
+      try { chtMain.timeScale().scrollToRealTime(); } catch(e) {}
     }
 
     sRsi.setData(ld(rsi));
@@ -3234,6 +3236,8 @@ function handleResize() {
       try { c.applyOptions({ width: c.chartElement().parentElement.clientWidth }); } catch(e) {}
     }
   });
+  // After resize, ensure K-line shows most recent data
+  try { if (chtMain) chtMain.timeScale().scrollToRealTime(); } catch(e) {}
 }
 window.addEventListener('resize', handleResize);
 window.addEventListener('orientationchange', () => setTimeout(handleResize, 150));
