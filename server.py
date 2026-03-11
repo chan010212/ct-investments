@@ -386,6 +386,93 @@ def _fetch_stock_news(code, name=''):
 
 
 # ============================================================
+# FUTURES TICK ACCUMULATOR — build intraday chart from polling
+# ============================================================
+_futures_ticks = []      # [{ "t": unix_ts, "p": price, "session": "day"|"night" }, ...]
+_futures_ticks_date = ''  # YYYYMMDD — reset when date changes
+_futures_lock = threading.Lock()
+
+def _futures_record_tick(session_data, session_type):
+    """Record a futures price tick for intraday chart."""
+    global _futures_ticks, _futures_ticks_date
+    if not session_data or not session_data.get('CLastPrice'):
+        return
+    today = _tw_now().strftime('%Y%m%d')
+    price = float(session_data['CLastPrice'])
+    ctime = session_data.get('CTime', '')  # HHMMSS
+    with _futures_lock:
+        if _futures_ticks_date != today:
+            _futures_ticks = []
+            _futures_ticks_date = today
+        # Build timestamp from date + CTime
+        ts = 0
+        if len(ctime) >= 6:
+            try:
+                h, m, s = int(ctime[:2]), int(ctime[2:4]), int(ctime[4:6])
+                dt = _tw_now().replace(hour=h, minute=m, second=s, microsecond=0)
+                import calendar
+                ts = int(calendar.timegm(dt.timetuple()))
+            except:
+                ts = int(time.time())
+        else:
+            ts = int(time.time())
+        # Avoid duplicate timestamps
+        if _futures_ticks and _futures_ticks[-1]['t'] == ts:
+            _futures_ticks[-1]['p'] = price
+        else:
+            _futures_ticks.append({'t': ts, 'p': price, 's': session_type})
+
+def _futures_get_ticks():
+    """Get accumulated ticks for today."""
+    with _futures_lock:
+        return list(_futures_ticks)
+
+# Background futures ticker — poll every 30 seconds during trading hours
+def _futures_poller():
+    """Background thread to accumulate futures ticks."""
+    while True:
+        try:
+            tw = _tw_now()
+            h, wd = tw.hour, tw.weekday()
+            # Day session: 08:45-13:45 (weekdays)
+            # Night session: 15:00-05:00 (next day)
+            is_day = wd < 5 and ((h == 8 and tw.minute >= 45) or (9 <= h < 13) or (h == 13 and tw.minute <= 45))
+            is_night = (wd < 5 and h >= 15) or (wd < 6 and h < 5)
+            if is_day or is_night:
+                try:
+                    req = urllib.request.Request(
+                        'https://mis.taifex.com.tw/futures/api/getQuoteList',
+                        data=json.dumps({"CID": "TXF", "WithGreeks": "N"}).encode(),
+                        headers={
+                            'Content-Type': 'application/json',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            'Origin': 'https://mis.taifex.com.tw',
+                            'Referer': 'https://mis.taifex.com.tw/futures/myQuote_no498.html',
+                        },
+                        method='POST',
+                    )
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+                    with urllib.request.urlopen(req, context=ctx, timeout=10) as resp:
+                        raw = json.loads(resp.read().decode())
+                    for q in raw.get('RtData', {}).get('QuoteList', []):
+                        sid = q.get('SymbolID', '')
+                        if sid.endswith('-M') and q.get('CLastPrice') and is_night:
+                            _futures_record_tick(q, 'night')
+                            break
+                        elif sid.endswith('-F') and q.get('CLastPrice') and is_day:
+                            _futures_record_tick(q, 'day')
+                            break
+                except Exception as e:
+                    pass
+                time.sleep(30)
+            else:
+                time.sleep(60)
+        except:
+            time.sleep(60)
+
+# ============================================================
 # MORNING REPORT (晨訊) — cached daily market briefing
 # ============================================================
 _mr_cache = {}          # { date_str: dict }
@@ -1587,6 +1674,8 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_stock_news()
         elif self.path == '/api/futures':
             self.handle_futures()
+        elif self.path == '/api/futures/chart':
+            self.send_json(_futures_get_ticks())
         elif self.path.startswith('/api/proxy?'):
             self.handle_proxy()
         elif self.path == '/api/me':
@@ -2798,6 +2887,11 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
             if not result:
                 self.send_json({'error': 'No futures data available', 'quotes_count': len(quotes)}, 502)
                 return
+            # Record tick for chart
+            if 'night' in result:
+                _futures_record_tick(result['night'], 'night')
+            elif 'day' in result:
+                _futures_record_tick(result['day'], 'day')
             proxy_cache_set('_taifex_txf', json.dumps(result), 'application/json')
             self.send_json(result)
         except Exception as e:
@@ -2963,6 +3057,7 @@ if __name__ == '__main__':
             threading.Thread(target=_backfill_inst_daily, daemon=True).start()
         # Start daily health check scheduler (8:00 AM Taiwan time, weekdays)
         threading.Thread(target=_healthcheck_scheduler, daemon=True).start()
+        threading.Thread(target=_futures_poller, daemon=True).start()
         server = ThreadingHTTPServer(('0.0.0.0', PORT), StockProxyHandler)
         print(f'CT Investments server started on port {PORT} (threaded)')
         print(f'  Database: {DB_PATH}')

@@ -1806,46 +1806,54 @@ async function renderTaiexChart() {
   initTaiexToggle();
 
   if (gTaiexMode === 'futures') {
-    // 台指期走勢 (from TAIFEX MIS)
+    // 台指期走勢 — chart from accumulated ticks + current quote
     try {
-      const r = await fetch('/api/futures');
-      if (!r.ok) throw new Error('API error');
-      const d = await r.json();
-      // Prefer night session, fallback to day, then spot
-      const session = d.night || d.day || d.spot;
+      const [futRes, chartRes] = await Promise.allSettled([
+        fetch('/api/futures').then(r => r.ok ? r.json() : null),
+        fetch('/api/futures/chart').then(r => r.ok ? r.json() : []),
+      ]);
+      const d = futRes.status === 'fulfilled' ? futRes.value : null;
+      const ticks = chartRes.status === 'fulfilled' ? chartRes.value : [];
+      const session = d && (d.night || d.day || d.spot);
       if (!session || !session.CLastPrice) throw new Error('No data');
-      // Build intraday chart from TAIFEX — use Yahoo Finance for TX futures chart
-      const symbol = '%5ETWII'; // fallback: use TWII as base
-      // Try fetching futures intraday from Yahoo (TW futures don't have a good Yahoo symbol)
-      // Instead, show current quote info with the spot chart as reference
-      // Better: fetch actual futures tick data from TAIFEX
+
       const lastPrice = parseFloat(session.CLastPrice);
       const refPrice = parseFloat(session.CRefPrice) || 0;
-      const high = parseFloat(session.CHighPrice) || lastPrice;
-      const low = parseFloat(session.CLowPrice) || lastPrice;
-      const open = parseFloat(session.COpenPrice) || lastPrice;
       const sessionLabel = d.night ? '夜盤' : d.day ? '日盤' : '收盤';
       const isUp = lastPrice >= refPrice;
       const chg = lastPrice - refPrice;
       const pct = refPrice > 0 ? (chg / refPrice * 100) : 0;
 
-      // Show quote card instead of chart (TAIFEX doesn't provide free intraday tick data)
-      if (chtTaiex) { chtTaiex.remove(); chtTaiex = null; sTaiexLine = null; }
-      el.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:180px;gap:12px;">
-        <div style="font-size:11px;color:var(--text2);">${session.DispCName} (${sessionLabel}) <span style="opacity:0.6;">${(session.CTime||'').replace(/(\d{2})(\d{2})(\d{2})/, '$1:$2:$3')}</span></div>
-        <div style="font-size:36px;font-weight:700;" class="${isUp ? 'up' : 'down'}">${fmtNum(lastPrice, 0)}</div>
-        <div style="font-size:16px;" class="${isUp ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 0)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</div>
-        <div style="display:flex;gap:24px;font-size:13px;color:var(--text2);margin-top:4px;">
-          <span>開 <span style="color:var(--text1);">${fmtNum(open, 0)}</span></span>
-          <span>高 <span class="up">${fmtNum(high, 0)}</span></span>
-          <span>低 <span class="down">${fmtNum(low, 0)}</span></span>
-          <span>量 <span style="color:var(--text1);">${fmtNum(parseInt(session.CTotalVolume) || 0, 0)}</span></span>
-        </div>
-        <div style="font-size:11px;color:var(--text2);margin-top:4px;">參考價 ${fmtNum(refPrice, 0)}</div>
-      </div>`;
+      // Build chart data from ticks
+      const tzOffset = 8 * 3600;
+      const chartData = ticks.map(t => ({ time: t.t + tzOffset, value: t.p }));
+
+      if (chartData.length >= 2) {
+        // Show line chart
+        _renderTaiexData(chartData, refPrice);
+      } else {
+        // Not enough ticks yet — show quote card
+        if (chtTaiex) { chtTaiex.remove(); chtTaiex = null; sTaiexLine = null; }
+        el.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:180px;gap:12px;">
+          <div style="font-size:11px;color:var(--text2);">${session.DispCName} (${sessionLabel}) <span style="opacity:0.6;">${(session.CTime||'').replace(/(\d{2})(\d{2})(\d{2})/, '$1:$2:$3')}</span></div>
+          <div style="font-size:36px;font-weight:700;" class="${isUp ? 'up' : 'down'}">${fmtNum(lastPrice, 0)}</div>
+          <div style="font-size:16px;" class="${isUp ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 0)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</div>
+          <div style="display:flex;gap:24px;font-size:13px;color:var(--text2);margin-top:4px;">
+            <span>開 <span style="color:var(--text1);">${fmtNum(parseFloat(session.COpenPrice)||0, 0)}</span></span>
+            <span>高 <span class="up">${fmtNum(parseFloat(session.CHighPrice)||0, 0)}</span></span>
+            <span>低 <span class="down">${fmtNum(parseFloat(session.CLowPrice)||0, 0)}</span></span>
+            <span>量 <span style="color:var(--text1);">${fmtNum(parseInt(session.CTotalVolume)||0, 0)}</span></span>
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;">走勢圖累積中（每 30 秒更新一筆）</div>
+        </div>`;
+      }
+      // Status bar
       const statusEl = document.getElementById('taiex-status');
-      if (statusEl) statusEl.innerHTML = '';
+      if (statusEl) {
+        statusEl.innerHTML = `<span class="${isUp ? 'up' : 'down'}" style="font-weight:600;">${sessionLabel} ${fmtNum(lastPrice, 0)} (${chg > 0 ? '+' : ''}${fmtNum(chg, 0)}, ${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span> <span style="color:var(--text2);font-size:10px;">開${fmtNum(parseFloat(session.COpenPrice)||0,0)} 高${fmtNum(parseFloat(session.CHighPrice)||0,0)} 低${fmtNum(parseFloat(session.CLowPrice)||0,0)} 量${fmtNum(parseInt(session.CTotalVolume)||0,0)}</span>`;
+      }
     } catch (e) {
+      if (chtTaiex) { chtTaiex.remove(); chtTaiex = null; sTaiexLine = null; }
       el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:180px;color:var(--text2);">台指期資料暫時無法取得</div>';
     }
     return;
