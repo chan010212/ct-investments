@@ -1806,64 +1806,40 @@ async function renderTaiexChart() {
   initTaiexToggle();
 
   if (gTaiexMode === 'futures') {
-    // 台指期近月即時線圖 — TradingView Widget
-    if (chtTaiex) { chtTaiex.remove(); chtTaiex = null; sTaiexLine = null; }
-    // Skip if widget already loaded (avoid re-creating on auto-refresh)
-    if (!el.querySelector('.tradingview-widget-container')) {
-      el.innerHTML = '';
-      const tvContainer = document.createElement('div');
-      tvContainer.className = 'tradingview-widget-container';
-      tvContainer.style.cssText = 'width:100%;height:300px;';
-      const tvWidgetDiv = document.createElement('div');
-      tvWidgetDiv.className = 'tradingview-widget-container__widget';
-      tvContainer.appendChild(tvWidgetDiv);
-      const tvScript = document.createElement('script');
-      tvScript.type = 'text/javascript';
-      tvScript.src = 'https://s.tradingview.com/external-embedding/embed-widget-symbol-overview.js';
-      tvScript.async = true;
-      tvScript.innerHTML = JSON.stringify({
-        symbols: [["台指期近月", "TAIFEX:TX1!|1D"]],
-        chartOnly: false,
-        width: "100%",
-        height: "100%",
-        locale: "zh_TW",
-        colorTheme: "dark",
-        autosize: true,
-        showVolume: false,
-        isTransparent: true,
-        plotLineColorGrowing: "rgba(76, 175, 80, 1)",
-        plotLineColorFalling: "rgba(244, 67, 54, 1)",
-        gridLineColor: "rgba(255, 255, 255, 0.06)",
-        scaleFontColor: "rgba(255, 255, 255, 0.5)",
-        belowLineFillColorGrowing: "rgba(76, 175, 80, 0.12)",
-        belowLineFillColorFalling: "rgba(244, 67, 54, 0.12)",
-        belowLineFillColorGrowingBottom: "rgba(76, 175, 80, 0)",
-        belowLineFillColorFallingBottom: "rgba(244, 67, 54, 0)",
-        symbolActiveColor: "rgba(76, 175, 80, 0.12)",
-      });
-      tvContainer.appendChild(tvScript);
-      el.appendChild(tvContainer);
-    }
-    // Update status bar from TAIFEX API
+    // 台指期近一即時走勢 — Cnyes 1-min intraday + TAIFEX quote
     try {
-      const futRes = await fetch('/api/futures');
-      if (futRes.ok) {
-        const d = await futRes.json();
-        const session = d && (d.night || d.day || d.spot);
-        if (session && session.CLastPrice) {
-          const lastPrice = parseFloat(session.CLastPrice);
-          const refPrice = parseFloat(session.CRefPrice) || 0;
-          const sessionLabel = d.night ? '夜盤' : d.day ? '日盤' : '收盤';
-          const isUp = lastPrice >= refPrice;
-          const chg = lastPrice - refPrice;
-          const pct = refPrice > 0 ? (chg / refPrice * 100) : 0;
-          const statusEl = document.getElementById('taiex-status');
-          if (statusEl) {
-            statusEl.innerHTML = `<span class="${isUp ? 'up' : 'down'}" style="font-weight:600;">${sessionLabel} ${fmtNum(lastPrice, 0)} (${chg > 0 ? '+' : ''}${fmtNum(chg, 0)}, ${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span> <span style="color:var(--text2);font-size:10px;">開${fmtNum(parseFloat(session.COpenPrice)||0,0)} 高${fmtNum(parseFloat(session.CHighPrice)||0,0)} 低${fmtNum(parseFloat(session.CLowPrice)||0,0)} 量${fmtNum(parseInt(session.CTotalVolume)||0,0)}</span>`;
-          }
+      const [intradayRes, futRes] = await Promise.allSettled([
+        fetch('/api/futures/intraday').then(r => r.ok ? r.json() : null),
+        fetch('/api/futures').then(r => r.ok ? r.json() : null),
+      ]);
+      const intraday = intradayRes.status === 'fulfilled' ? intradayRes.value : null;
+      const fut = futRes.status === 'fulfilled' ? futRes.value : null;
+      const session = fut && (fut.night || fut.day || fut.spot);
+      const refPrice = session ? (parseFloat(session.CRefPrice) || 0) : 0;
+      const points = intraday && intraday.points ? intraday.points : [];
+      if (points.length >= 2) {
+        const tzOffset = 8 * 3600;
+        const chartData = points.map(p => ({ time: p.t + tzOffset, value: p.c }));
+        _renderTaiexData(chartData, refPrice);
+      } else {
+        throw new Error('No chart data');
+      }
+      // Status bar
+      if (session && session.CLastPrice) {
+        const lastPrice = parseFloat(session.CLastPrice);
+        const sessionLabel = fut.night ? '夜盤' : fut.day ? '日盤' : '收盤';
+        const isUp = lastPrice >= refPrice;
+        const chg = lastPrice - refPrice;
+        const pct = refPrice > 0 ? (chg / refPrice * 100) : 0;
+        const statusEl = document.getElementById('taiex-status');
+        if (statusEl) {
+          statusEl.innerHTML = `<span class="${isUp ? 'up' : 'down'}" style="font-weight:600;">${sessionLabel} ${fmtNum(lastPrice, 0)} (${chg > 0 ? '+' : ''}${fmtNum(chg, 0)}, ${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span> <span style="color:var(--text2);font-size:10px;">開${fmtNum(parseFloat(session.COpenPrice)||0,0)} 高${fmtNum(parseFloat(session.CHighPrice)||0,0)} 低${fmtNum(parseFloat(session.CLowPrice)||0,0)} 量${fmtNum(parseInt(session.CTotalVolume)||0,0)}</span>`;
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      if (chtTaiex) { chtTaiex.remove(); chtTaiex = null; sTaiexLine = null; }
+      el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:180px;color:var(--text2);">台指期資料暫時無法取得</div>';
+    }
     return;
   }
 

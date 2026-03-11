@@ -1676,6 +1676,8 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_futures()
         elif self.path == '/api/futures/chart':
             self.send_json(_futures_get_ticks())
+        elif self.path == '/api/futures/intraday':
+            self.handle_futures_intraday()
         elif self.path.startswith('/api/proxy?'):
             self.handle_proxy()
         elif self.path == '/api/me':
@@ -2900,6 +2902,84 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
             traceback.print_exc()
             sys.stdout.flush()
             self.send_json({'error': f'{type(e).__name__}: {e}'}, 502)
+
+    def handle_futures_intraday(self):
+        """Fetch 1-min intraday chart for near-month TAIEX futures from Cnyes."""
+        try:
+            import calendar as _cal
+            now_tw = _tw_now()
+            year, month = now_tw.year, now_tw.month
+            # Find 3rd Wednesday of current month (settlement day)
+            cal = _cal.monthcalendar(year, month)
+            wed_count = 0
+            third_wed = None
+            for week in cal:
+                if week[2] != 0:  # Wednesday = index 2
+                    wed_count += 1
+                    if wed_count == 3:
+                        third_wed = week[2]
+                        break
+            # After settlement → near-month is next month
+            if third_wed and now_tw.day > third_wed:
+                if month == 12:
+                    year += 1
+                    month = 1
+                else:
+                    month += 1
+            yy = year % 100
+            symbol = f"TWF:TXF:{yy:02d}{month:02d}"
+            # Time range: yesterday 15:00 TWN → now
+            yesterday_15 = datetime(now_tw.year, now_tw.month, now_tw.day, 15, 0, 0, tzinfo=_TW_TZ) - timedelta(days=1)
+            now_aware = datetime.now(_TW_TZ)
+            from_ts = int(yesterday_15.timestamp())
+            to_ts = int(now_aware.timestamp())
+            # Check cache (uses PROXY_CACHE_TTL ~120s)
+            cache_key = f'_cnyes_futures_{symbol}'
+            cached = proxy_cache_get(cache_key)
+            if cached:
+                self.send_json(json.loads(cached['data']))
+                return
+            url = f"https://ws.api.cnyes.com/ws/api/v1/charting/history?resolution=1&symbol={urllib.parse.quote(symbol, safe='')}&from={from_ts}&to={to_ts}"
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Origin': 'https://www.cnyes.com',
+                'Referer': 'https://www.cnyes.com/',
+            })
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(req, context=ctx, timeout=15) as resp:
+                body = resp.read().decode()
+            raw = json.loads(body)
+            if raw.get('statusCode') != 200:
+                self.send_json({'error': raw.get('message', 'Cnyes API error')}, 502)
+                return
+            data = raw.get('data', {})
+            t_list = data.get('t', [])
+            c_list = data.get('c', [])
+            o_list = data.get('o', [])
+            h_list = data.get('h', [])
+            l_list = data.get('l', [])
+            v_list = data.get('v', [])
+            # Build chart points (Cnyes returns newest-first, reverse for ascending)
+            points = []
+            for i in range(len(t_list)):
+                points.append({
+                    't': t_list[i],
+                    'c': c_list[i] if i < len(c_list) else 0,
+                    'o': o_list[i] if i < len(o_list) else 0,
+                    'h': h_list[i] if i < len(h_list) else 0,
+                    'l': l_list[i] if i < len(l_list) else 0,
+                    'v': int(v_list[i]) if i < len(v_list) else 0,
+                })
+            points.sort(key=lambda x: x['t'])
+            result = {'symbol': symbol, 'points': points}
+            proxy_cache_set(cache_key, json.dumps(result), 'application/json')
+            self.send_json(result)
+        except Exception as e:
+            print(f'[FUTURES_INTRADAY] Error: {e}')
+            sys.stdout.flush()
+            self.send_json({'error': str(e)}, 502)
 
     def handle_proxy(self):
         try:
