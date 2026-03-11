@@ -1811,8 +1811,8 @@ async function renderTaiexChart() {
       const r = await fetch('/api/futures');
       if (!r.ok) throw new Error('API error');
       const d = await r.json();
-      // Prefer night session, fallback to day
-      const session = d.night || d.day;
+      // Prefer night session, fallback to day, then spot
+      const session = d.night || d.day || d.spot;
       if (!session || !session.CLastPrice) throw new Error('No data');
       // Build intraday chart from TAIFEX — use Yahoo Finance for TX futures chart
       const symbol = '%5ETWII'; // fallback: use TWII as base
@@ -1824,7 +1824,7 @@ async function renderTaiexChart() {
       const high = parseFloat(session.CHighPrice) || lastPrice;
       const low = parseFloat(session.CLowPrice) || lastPrice;
       const open = parseFloat(session.COpenPrice) || lastPrice;
-      const sessionLabel = d.night ? '夜盤' : '日盤';
+      const sessionLabel = d.night ? '夜盤' : d.day ? '日盤' : '收盤';
       const isUp = lastPrice >= refPrice;
       const chg = lastPrice - refPrice;
       const pct = refPrice > 0 ? (chg / refPrice * 100) : 0;
@@ -4574,7 +4574,7 @@ async function loadTicker() {
     let html = '';
     function addItems() {
       // 台指期 (night session preferred, fallback to day)
-      const txf = futures && (futures.night || futures.day);
+      const txf = futures && (futures.night || futures.day || futures.spot);
       if (txf && txf.CLastPrice) {
         const price = parseFloat(txf.CLastPrice);
         const diff = parseFloat(txf.CDiff) || 0;
@@ -4582,7 +4582,7 @@ async function loadTicker() {
         const isUp = diff >= 0;
         const cls = isUp ? 'up' : 'down';
         const arrow = isUp ? '&#x25B2;' : '&#x25BC;';
-        const label = futures.night ? '台指期夜盤' : '台指期';
+        const label = futures.night ? '台指期夜盤' : futures.day ? '台指期' : '加權';
         html += `<span class="ticker-item">
           <span class="ti-name">${label}</span>
           <span class="ti-price ${cls}">${fmtNum(price, 0)}</span>
