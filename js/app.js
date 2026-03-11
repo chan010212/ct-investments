@@ -1730,10 +1730,128 @@ var _lastSectorData = null;
 // ============================================================
 let chtTaiex = null;
 let sTaiexLine = null;
+let gTaiexMode = 'taiex'; // 'taiex' or 'futures'
+
+function initTaiexToggle() {
+  const box = document.getElementById('taiex-toggle');
+  if (!box || box.children.length > 0) return;
+  const btnStyle = 'padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all .2s;';
+  const activeStyle = 'background:var(--cyan);color:#0a1628;border-color:var(--cyan);font-weight:600;';
+  box.innerHTML = `<button id="taiex-btn-taiex" style="${btnStyle}${activeStyle}" onclick="switchTaiexMode('taiex')">加權</button><button id="taiex-btn-futures" style="${btnStyle}" onclick="switchTaiexMode('futures')">台指期</button>`;
+}
+
+function switchTaiexMode(mode) {
+  gTaiexMode = mode;
+  // Update button styles
+  const btnT = document.getElementById('taiex-btn-taiex');
+  const btnF = document.getElementById('taiex-btn-futures');
+  const active = 'background:var(--cyan);color:#0a1628;border-color:var(--cyan);font-weight:600;';
+  const inactive = 'background:transparent;color:var(--text2);border-color:var(--border);font-weight:400;';
+  if (btnT) btnT.style.cssText = 'padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;transition:all .2s;' + (mode === 'taiex' ? active : inactive);
+  if (btnF) btnF.style.cssText = 'padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;transition:all .2s;' + (mode === 'futures' ? active : inactive);
+  // Update title
+  const titleEl = document.getElementById('taiex-title');
+  if (titleEl) titleEl.textContent = mode === 'taiex' ? '加權指數走勢' : '台指期走勢';
+  // Reset chart for redraw
+  if (chtTaiex) { chtTaiex.remove(); chtTaiex = null; sTaiexLine = null; }
+  document.getElementById('taiex-chart').innerHTML = '';
+  renderTaiexChart();
+}
+
+function _createTaiexChart(el) {
+  const mob = window.innerWidth <= 768;
+  chtTaiex = LightweightCharts.createChart(el, {
+    autoSize: true,
+    layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: mob ? 10 : 11 },
+    grid: { vertLines: { color: 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: 'rgba(0, 240, 255, 0.04)' } },
+    timeScale: { borderColor: 'rgba(0, 240, 255, 0.1)', timeVisible: true, secondsVisible: false, fixLeftEdge: true, fixRightEdge: true },
+    rightPriceScale: { borderColor: 'rgba(0, 240, 255, 0.1)', autoScale: true, minimumWidth: mob ? 55 : 70 },
+    crosshair: { mode: mob ? 1 : 0 },
+    handleScroll: false,
+    handleScale: false,
+  });
+}
+
+function _renderTaiexData(data, prevClose) {
+  if (data.length === 0) return;
+  const el = document.getElementById('taiex-chart');
+  const lastVal = data[data.length - 1].value;
+  const isUp = lastVal >= prevClose;
+  const lineColor = isUp ? '#ff3860' : '#00e87b';
+  const topColor = isUp ? 'rgba(255,56,96,0.2)' : 'rgba(0,232,123,0.2)';
+  const bottomColor = isUp ? 'rgba(255,56,96,0.02)' : 'rgba(0,232,123,0.02)';
+  if (!chtTaiex) {
+    el.innerHTML = '';
+    _createTaiexChart(el);
+    sTaiexLine = chtTaiex.addAreaSeries({ lineColor, topColor, bottomColor, lineWidth: 2 });
+  } else {
+    sTaiexLine.applyOptions({ lineColor, topColor, bottomColor });
+  }
+  sTaiexLine.setData(data);
+  if (prevClose > 0) {
+    sTaiexLine.createPriceLine({ price: prevClose, color: 'rgba(255,208,54,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '昨收' });
+  }
+  chtTaiex.timeScale().fitContent();
+  const chg = lastVal - prevClose;
+  const pct = prevClose > 0 ? (chg / prevClose * 100) : 0;
+  const statusEl = document.getElementById('taiex-status');
+  if (statusEl) {
+    statusEl.innerHTML = `<span class="${isUp ? 'up' : 'down'}" style="font-weight:600;">${fmtNum(lastVal, 0)} (${chg > 0 ? '+' : ''}${fmtNum(chg, 0)}, ${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`;
+  }
+}
 
 async function renderTaiexChart() {
   const el = document.getElementById('taiex-chart');
   if (!el || el.clientWidth === 0) return;
+  initTaiexToggle();
+
+  if (gTaiexMode === 'futures') {
+    // 台指期走勢 (from TAIFEX MIS)
+    try {
+      const r = await fetch('/api/futures');
+      if (!r.ok) throw new Error('API error');
+      const d = await r.json();
+      // Prefer night session, fallback to day
+      const session = d.night || d.day;
+      if (!session || !session.CLastPrice) throw new Error('No data');
+      // Build intraday chart from TAIFEX — use Yahoo Finance for TX futures chart
+      const symbol = '%5ETWII'; // fallback: use TWII as base
+      // Try fetching futures intraday from Yahoo (TW futures don't have a good Yahoo symbol)
+      // Instead, show current quote info with the spot chart as reference
+      // Better: fetch actual futures tick data from TAIFEX
+      const lastPrice = parseFloat(session.CLastPrice);
+      const refPrice = parseFloat(session.CRefPrice) || 0;
+      const high = parseFloat(session.CHighPrice) || lastPrice;
+      const low = parseFloat(session.CLowPrice) || lastPrice;
+      const open = parseFloat(session.COpenPrice) || lastPrice;
+      const sessionLabel = d.night ? '夜盤' : '日盤';
+      const isUp = lastPrice >= refPrice;
+      const chg = lastPrice - refPrice;
+      const pct = refPrice > 0 ? (chg / refPrice * 100) : 0;
+
+      // Show quote card instead of chart (TAIFEX doesn't provide free intraday tick data)
+      if (chtTaiex) { chtTaiex.remove(); chtTaiex = null; sTaiexLine = null; }
+      el.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;min-height:180px;gap:12px;">
+        <div style="font-size:11px;color:var(--text2);">${session.DispCName} (${sessionLabel}) <span style="opacity:0.6;">${(session.CTime||'').replace(/(\d{2})(\d{2})(\d{2})/, '$1:$2:$3')}</span></div>
+        <div style="font-size:36px;font-weight:700;" class="${isUp ? 'up' : 'down'}">${fmtNum(lastPrice, 0)}</div>
+        <div style="font-size:16px;" class="${isUp ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 0)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</div>
+        <div style="display:flex;gap:24px;font-size:13px;color:var(--text2);margin-top:4px;">
+          <span>開 <span style="color:var(--text1);">${fmtNum(open, 0)}</span></span>
+          <span>高 <span class="up">${fmtNum(high, 0)}</span></span>
+          <span>低 <span class="down">${fmtNum(low, 0)}</span></span>
+          <span>量 <span style="color:var(--text1);">${fmtNum(parseInt(session.CTotalVolume) || 0, 0)}</span></span>
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px;">參考價 ${fmtNum(refPrice, 0)}</div>
+      </div>`;
+      const statusEl = document.getElementById('taiex-status');
+      if (statusEl) statusEl.innerHTML = '';
+    } catch (e) {
+      el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:180px;color:var(--text2);">台指期資料暫時無法取得</div>';
+    }
+    return;
+  }
+
+  // 加權指數走勢 (Yahoo Finance)
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/^TWII?interval=5m&range=1d`;
     const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
@@ -1746,53 +1864,11 @@ async function renderTaiexChart() {
     const closes = result.indicators?.quote?.[0]?.close || [];
     const prevClose = result.meta?.chartPreviousClose || 0;
     const data = [];
-    const tzOffset = 8 * 3600; // UTC+8 (台灣時間)
+    const tzOffset = 8 * 3600;
     for (let i = 0; i < ts.length; i++) {
       if (closes[i] != null) data.push({ time: ts[i] + tzOffset, value: closes[i] });
     }
-    if (data.length === 0) return;
-
-    const lastVal = data[data.length - 1].value;
-    const isUp = lastVal >= prevClose;
-    const lineColor = isUp ? '#ff3860' : '#00e87b';
-    const topColor = isUp ? 'rgba(255,56,96,0.2)' : 'rgba(0,232,123,0.2)';
-    const bottomColor = isUp ? 'rgba(255,56,96,0.02)' : 'rgba(0,232,123,0.02)';
-
-    // Reuse chart if it already exists; only recreate if needed
-    if (!chtTaiex) {
-      el.innerHTML = '';
-      const mob = window.innerWidth <= 768;
-      chtTaiex = LightweightCharts.createChart(el, {
-        autoSize: true,
-        layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: mob ? 10 : 11 },
-        grid: { vertLines: { color: 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: 'rgba(0, 240, 255, 0.04)' } },
-        timeScale: { borderColor: 'rgba(0, 240, 255, 0.1)', timeVisible: true, secondsVisible: false, fixLeftEdge: true, fixRightEdge: true },
-        rightPriceScale: { borderColor: 'rgba(0, 240, 255, 0.1)', autoScale: true, minimumWidth: mob ? 55 : 70 },
-        crosshair: { mode: mob ? 1 : 0 },
-        handleScroll: false,
-        handleScale: false,
-      });
-      sTaiexLine = chtTaiex.addAreaSeries({ lineColor, topColor, bottomColor, lineWidth: 2 });
-    } else {
-      // Update colors in case up/down changed
-      sTaiexLine.applyOptions({ lineColor, topColor, bottomColor });
-    }
-
-    sTaiexLine.setData(data);
-
-    // Add previous close reference line
-    if (prevClose > 0) {
-      sTaiexLine.createPriceLine({ price: prevClose, color: 'rgba(255,208,54,0.5)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '昨收' });
-    }
-
-    chtTaiex.timeScale().fitContent();
-
-    const chg = lastVal - prevClose;
-    const pct = prevClose > 0 ? (chg / prevClose * 100) : 0;
-    const statusEl = document.getElementById('taiex-status');
-    if (statusEl) {
-      statusEl.innerHTML = `<span class="${isUp ? 'up' : 'down'}" style="font-weight:600;">${fmtNum(lastVal, 2)} (${chg > 0 ? '+' : ''}${fmtNum(chg, 2)}, ${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>`;
-    }
+    _renderTaiexData(data, prevClose);
   } catch (e) {
     const statusEl = document.getElementById('taiex-status');
     if (statusEl) statusEl.textContent = '加權走勢暫時無法取得';
