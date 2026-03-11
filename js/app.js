@@ -1316,15 +1316,20 @@ function _syncChartTimeScales() {
   const charts = [chtMain, chtRsi, chtKd, chtMacd];
   charts.forEach((chart, idx) => {
     if (!chart) return;
-    chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-      if (_isSyncing || !range) return;
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+      if (_isSyncing) return;
       _isSyncing = true;
       try {
-        charts.forEach((other, j) => {
-          if (j !== idx && other) {
-            other.timeScale().setVisibleLogicalRange(range);
-          }
-        });
+        // Use time-based range to keep dates aligned across charts
+        // (logical ranges differ because sub-charts have fewer data points)
+        const timeRange = chart.timeScale().getVisibleRange();
+        if (timeRange) {
+          charts.forEach((other, j) => {
+            if (j !== idx && other) {
+              try { other.timeScale().setVisibleRange(timeRange); } catch(e) {}
+            }
+          });
+        }
       } finally { _isSyncing = false; }
     });
   });
@@ -2681,10 +2686,12 @@ async function analyzeStock(code) {
     const barTo = dates.length - 1;
 
     function fitAllCharts() {
+      const fromDate = dates[barFrom];
+      const toDate = dates[barTo];
       [chtMain, chtRsi, chtKd, chtMacd].forEach(c => {
         if (!c) return;
         try {
-          c.timeScale().setVisibleLogicalRange({ from: barFrom, to: barTo });
+          c.timeScale().setVisibleRange({ from: fromDate, to: toDate });
         } catch(e) {
           try { c.timeScale().scrollToRealTime(); } catch(e2) {}
         }
