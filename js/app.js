@@ -2685,20 +2685,18 @@ async function analyzeStock(code) {
 
     // Show last ~60 trading days for better default view, user can scroll/zoom
     const showDays = Math.min(60, dates.length);
-    const visFrom = dates[dates.length - showDays];
-    const visTo = dates[dates.length - 1];
+    const barFrom = dates.length - showDays;
+    const barTo = dates.length - 1;
 
     function fitAllCharts() {
       [chtMain, chtRsi, chtKd, chtMacd].forEach(c => {
         if (!c) return;
         try {
-          c.timeScale().setVisibleRange({ from: visFrom, to: visTo });
+          c.timeScale().setVisibleLogicalRange({ from: barFrom, to: barTo });
         } catch(e) {
-          c.timeScale().fitContent();
+          try { c.timeScale().scrollToRealTime(); } catch(e2) {}
         }
       });
-      // Ensure most recent data is visible (scroll to right edge)
-      try { chtMain.timeScale().scrollToRealTime(); } catch(e) {}
     }
 
     sRsi.setData(ld(rsi));
@@ -4178,9 +4176,10 @@ async function fetchIntradayChart(code) {
     const ts = result.timestamp;
     const closes = result.indicators?.quote?.[0]?.close || [];
     const data = [];
+    const tzOffset = 8 * 3600; // UTC+8 (台灣時間)
     for (let i = 0; i < ts.length; i++) {
       if (closes[i] != null) {
-        data.push({ time: ts[i], value: closes[i] });
+        data.push({ time: ts[i] + tzOffset, value: closes[i] });
       }
     }
     if (data.length > 0 && sIntraLine) {
