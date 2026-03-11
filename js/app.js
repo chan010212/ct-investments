@@ -4485,15 +4485,37 @@ const TICKER_INDICES = [
 
 async function loadTicker() {
   try {
-    const symbols = TICKER_INDICES.map(i => i.symbol);
-    const quotes = await fetchYahooQuotes(symbols);
-    if (quotes.length === 0) return;
+    const [quotes, futuresRes] = await Promise.allSettled([
+      fetchYahooQuotes(TICKER_INDICES.map(i => i.symbol)),
+      fetch('/api/futures').then(r => r.ok ? r.json() : null),
+    ]);
+    const yahooQuotes = quotes.status === 'fulfilled' ? quotes.value : [];
+    const futures = futuresRes.status === 'fulfilled' ? futuresRes.value : null;
+    if (yahooQuotes.length === 0 && !futures) return;
 
     const qMap = {};
-    quotes.forEach(q => { qMap[q.symbol] = q; });
+    yahooQuotes.forEach(q => { qMap[q.symbol] = q; });
 
     let html = '';
     function addItems() {
+      // 台指期 (night session preferred, fallback to day)
+      const txf = futures && (futures.night || futures.day);
+      if (txf && txf.CLastPrice) {
+        const price = parseFloat(txf.CLastPrice);
+        const diff = parseFloat(txf.CDiff) || 0;
+        const pct = parseFloat(txf.CDiffRate) || 0;
+        const isUp = diff >= 0;
+        const cls = isUp ? 'up' : 'down';
+        const arrow = isUp ? '&#x25B2;' : '&#x25BC;';
+        const label = futures.night ? '台指期夜盤' : '台指期';
+        html += `<span class="ticker-item">
+          <span class="ti-name">${label}</span>
+          <span class="ti-price ${cls}">${fmtNum(price, 0)}</span>
+          <span class="${cls}" style="font-size:11px;">${arrow} ${pct > 0 ? '+' : ''}${pct.toFixed(2)}%</span>
+          <span class="ti-sep">&#x25CF;</span>
+        </span>`;
+      }
+
       TICKER_INDICES.forEach(idx => {
         const q = qMap[idx.symbol];
         if (!q) return;

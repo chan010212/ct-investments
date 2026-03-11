@@ -1585,6 +1585,8 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_morning_report()
         elif self.path.startswith('/api/stock-news'):
             self.handle_stock_news()
+        elif self.path == '/api/futures':
+            self.handle_futures()
         elif self.path.startswith('/api/proxy?'):
             self.handle_proxy()
         elif self.path == '/api/me':
@@ -2750,6 +2752,40 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
             self.send_json({'error': err}, 502)
             return
         self.send_json(rows)
+
+    def handle_futures(self):
+        """Proxy TAIFEX futures quote (台指期 day+night session)."""
+        try:
+            cached = proxy_cache_get('_taifex_txf')
+            if cached:
+                self.send_json(json.loads(cached[0]))
+                return
+            req = urllib.request.Request(
+                'https://mis.taifex.com.tw/futures/api/getQuoteList',
+                data=json.dumps({"CID": "TXF", "WithGreeks": "N"}).encode(),
+                headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'},
+                method='POST',
+            )
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(req, context=ctx, timeout=8) as resp:
+                raw = json.loads(resp.read().decode())
+            quotes = raw.get('RtData', {}).get('QuoteList', [])
+            # Find near-month day(-F) and night(-M) sessions
+            result = {}
+            for q in quotes:
+                sid = q.get('SymbolID', '')
+                if sid.endswith('-F') and 'day' not in result and q.get('CLastPrice'):
+                    result['day'] = q
+                elif sid.endswith('-M') and 'night' not in result and q.get('CLastPrice'):
+                    result['night'] = q
+                elif sid == 'TXF-S' and q.get('CLastPrice'):
+                    result['spot'] = q
+            proxy_cache_set('_taifex_txf', json.dumps(result), 'application/json')
+            self.send_json(result)
+        except Exception as e:
+            self.send_json({'error': str(e)}, 502)
 
     def handle_proxy(self):
         try:
