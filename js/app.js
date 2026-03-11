@@ -2446,6 +2446,9 @@ async function analyzeStock(code) {
     let rawRows = [], stockName = '', isYahoo = false;
     const isEmerging = market === 'emerging';
 
+    // Start fetching real-time quote in parallel with history (so it's ready when we render)
+    const realtimePromise = fetchRealtimeQuote(code);
+
     if (market === 'emerging') {
       // Emerging market stock — use Yahoo Finance
       const r = await fetchYahooHistory(code);
@@ -2539,9 +2542,9 @@ async function analyzeStock(code) {
     }
 
     const n = C.length;
-    const lastC = C[n - 1], prevC = n > 1 ? C[n - 2] : lastC;
-    const chg = lastC - prevC;
-    const pct = prevC > 0 ? (chg / prevC * 100) : 0;
+    let lastC = C[n - 1], prevC = n > 1 ? C[n - 2] : lastC;
+    let chg = lastC - prevC;
+    let pct = prevC > 0 ? (chg / prevC * 100) : 0;
 
     // Header
     if (!stockName && gStockDB[code]) stockName = gStockDB[code].name;
@@ -2553,6 +2556,17 @@ async function analyzeStock(code) {
         : '<span class="tag-market tag-tpex">上櫃</span>';
     document.getElementById('stock-market-tag').innerHTML = mTag;
     document.getElementById('stock-warning-badge').innerHTML = warningTag(code);
+
+    // Wait for real-time quote (started in parallel with history fetch)
+    try { await realtimePromise; } catch(e) {}
+    // Use MIS real-time price if available (overrides yesterday's close)
+    const misCache = gMisCache[code];
+    if (misCache && misCache.price > 0 && misCache.price !== lastC) {
+      lastC = misCache.price;
+      chg = misCache.chg;
+      pct = misCache.pct;
+    }
+
     if (pct >= 9.5) {
       document.getElementById('stock-price').className = 'limit-price limit-price-up';
     } else if (pct <= -9.5) {
