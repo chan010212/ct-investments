@@ -386,6 +386,200 @@ def _fetch_stock_news(code, name=''):
 
 
 # ============================================================
+# EVENTS — 重大事件（法說會、除息、頭條）
+# ============================================================
+_events_cache = {}             # 'market' -> { data, ts }
+_stock_events_cache = {}       # code -> { events, ts }
+_events_lock = threading.Lock()
+EVENTS_CACHE_TTL = 1800        # 30 min for market-wide
+STOCK_EVENTS_CACHE_TTL = 600   # 10 min for per-stock
+
+# Major US stocks to track dividends
+_MAJOR_US_SYMBOLS = ['TSM', 'NVDA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA']
+
+def _fetch_market_events():
+    """Aggregate market-wide events from Cnyes + Yahoo."""
+    now = time.time()
+    with _events_lock:
+        cached = _events_cache.get('market')
+        if cached and (now - cached['ts']) < EVENTS_CACHE_TTL:
+            return cached['data']
+
+    events = []
+
+    # Source 1: Cnyes search "法說會"
+    try:
+        url = 'https://api.cnyes.com/media/api/v1/search?q=' + urllib.parse.quote('法說會') + '&limit=20'
+        data = _mr_fetch_json(url, True)
+        items = data.get('items', {}).get('data', [])
+        for item in items:
+            title = item.get('title', '')
+            # Remove HTML tags
+            import re as _re
+            title = _re.sub(r'<[^>]+>', '', title)
+            pub_ts = item.get('publishAt', 0)
+            dt = datetime.fromtimestamp(pub_ts, tz=timezone(timedelta(hours=8)))
+            # Extract company name from 〈XXX法說〉
+            m = _re.search(r'[〈<](\S+?)法說[〉>]', title)
+            company = m.group(1) if m else ''
+            events.append({
+                'type': '法說會',
+                'title': title[:80],
+                'date': dt.strftime('%Y-%m-%d'),
+                'time': dt.strftime('%m/%d %H:%M'),
+                'ts': pub_ts,
+                'company': company,
+                'source': 'cnyes',
+                'url': f'https://news.cnyes.com/news/id/{item.get("newsId", "")}',
+            })
+    except Exception as e:
+        print(f'[EVENTS] Cnyes search error: {e}')
+
+    # Source 2: Cnyes headline (filter for important keywords)
+    try:
+        url = 'https://api.cnyes.com/media/api/v1/newslist/category/headline?limit=15'
+        data = _mr_fetch_json(url, True)
+        items = data.get('items', {}).get('data', [])
+        import re as _re
+        keywords = ['法說', '除息', '除權', '股東會', '財報', '併購', '減資', '增資', 'NVIDIA', 'TSMC', 'Apple', 'Tesla']
+        for item in items:
+            title = _re.sub(r'<[^>]+>', '', item.get('title', ''))
+            pub_ts = item.get('publishAt', 0)
+            dt = datetime.fromtimestamp(pub_ts, tz=timezone(timedelta(hours=8)))
+            is_major = any(kw in title for kw in keywords)
+            events.append({
+                'type': '重大消息' if is_major else '頭條',
+                'title': title[:80],
+                'date': dt.strftime('%Y-%m-%d'),
+                'time': dt.strftime('%m/%d %H:%M'),
+                'ts': pub_ts,
+                'source': 'cnyes',
+                'url': f'https://news.cnyes.com/news/id/{item.get("newsId", "")}',
+            })
+    except Exception as e:
+        print(f'[EVENTS] Cnyes headline error: {e}')
+
+    # Source 3: Yahoo v8 dividend events for major US stocks
+    for sym in _MAJOR_US_SYMBOLS:
+        try:
+            url = f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=3mo&events=div'
+            data = _mr_fetch_json(url, True)
+            result = data.get('chart', {}).get('result', [{}])[0]
+            meta = result.get('meta', {})
+            name = meta.get('shortName', sym)[:20]
+            divs = result.get('events', {}).get('dividends', {})
+            for ts_str, info in divs.items():
+                dt = datetime.fromtimestamp(int(ts_str), tz=timezone(timedelta(hours=8)))
+                amt = info.get('amount', 0)
+                events.append({
+                    'type': '除息',
+                    'title': f'{name} 除息 ${amt:.4f}',
+                    'date': dt.strftime('%Y-%m-%d'),
+                    'time': dt.strftime('%m/%d'),
+                    'ts': int(ts_str),
+                    'symbol': sym,
+                    'source': 'yahoo',
+                })
+        except Exception:
+            pass
+
+    # Sort by ts desc, dedupe by title
+    events.sort(key=lambda x: x.get('ts', 0), reverse=True)
+    seen = set()
+    unique = []
+    for e in events:
+        key = e['title'][:40]
+        if key not in seen:
+            seen.add(key)
+            unique.append(e)
+    result = unique[:40]
+
+    with _events_lock:
+        _events_cache['market'] = {'data': result, 'ts': now}
+
+    return result
+
+
+def _fetch_stock_events(code):
+    """Fetch per-stock events (法說會 + 除息) for K-line markers."""
+    now = time.time()
+    with _events_lock:
+        cached = _stock_events_cache.get(code)
+        if cached and (now - cached['ts']) < STOCK_EVENTS_CACHE_TTL:
+            return cached['events']
+
+    events = []
+    import re as _re
+
+    # Source 1: Cnyes search for stock-specific conference/earnings news
+    for query in [f'{code} 法說', f'{code} 除息']:
+        try:
+            url = 'https://api.cnyes.com/media/api/v1/search?q=' + urllib.parse.quote(query) + '&limit=10'
+            data = _mr_fetch_json(url, True)
+            items = data.get('items', {}).get('data', [])
+            for item in items:
+                title = _re.sub(r'<[^>]+>', '', item.get('title', ''))
+                # Must contain the stock code in title for relevance
+                if code not in title:
+                    continue
+                pub_ts = item.get('publishAt', 0)
+                dt = datetime.fromtimestamp(pub_ts, tz=timezone(timedelta(hours=8)))
+                ev_type = '法說會' if '法說' in query else '除息日'
+                events.append({
+                    'type': ev_type,
+                    'title': title[:80],
+                    'date': dt.strftime('%Y-%m-%d'),
+                    'ts': pub_ts,
+                    'url': f'https://news.cnyes.com/news/id/{item.get("newsId", "")}',
+                })
+        except Exception:
+            pass
+
+    # Source 2: Yahoo v8 dividend events for this stock
+    for suffix in ['.TW', '.TWO']:
+        try:
+            url = f'https://query1.finance.yahoo.com/v8/finance/chart/{code}{suffix}?interval=1d&range=1y&events=div'
+            data = _mr_fetch_json(url, True)
+            result = data.get('chart', {}).get('result', [{}])[0]
+            divs = result.get('events', {}).get('dividends', {})
+            for ts_str, info in divs.items():
+                dt = datetime.fromtimestamp(int(ts_str), tz=timezone(timedelta(hours=8)))
+                amt = info.get('amount', 0)
+                events.append({
+                    'type': '除息日',
+                    'title': f'除息 {amt:.2f} 元',
+                    'date': dt.strftime('%Y-%m-%d'),
+                    'ts': int(ts_str),
+                    'amount': round(amt, 2),
+                })
+            if divs:
+                break  # Got data, no need to try .TWO
+        except Exception:
+            pass
+
+    # Dedupe by date+type
+    seen = set()
+    unique = []
+    for e in events:
+        key = e['date'] + e['type']
+        if key not in seen:
+            seen.add(key)
+            unique.append(e)
+    unique.sort(key=lambda x: x.get('ts', 0), reverse=True)
+
+    with _events_lock:
+        _stock_events_cache[code] = {'events': unique, 'ts': now}
+        # Evict old
+        if len(_stock_events_cache) > 200:
+            cutoff = now - STOCK_EVENTS_CACHE_TTL * 3
+            stale = [k for k, v in _stock_events_cache.items() if v['ts'] < cutoff]
+            for k in stale:
+                del _stock_events_cache[k]
+
+    return unique
+
+
+# ============================================================
 # FUTURES TICK ACCUMULATOR — build intraday chart from polling
 # ============================================================
 _futures_ticks = []      # [{ "t": unix_ts, "p": price, "session": "day"|"night" }, ...]
@@ -1702,6 +1896,10 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_portfolio()
         elif self.path.startswith('/api/dividends'):
             self.handle_dividends()
+        elif self.path == '/api/events':
+            self.handle_events()
+        elif self.path.startswith('/api/stock-events/'):
+            self.handle_stock_events()
         elif self.path.startswith('/api/fugle/quote/'):
             self.handle_fugle_quote()
         elif self.path.startswith('/api/fugle/batch'):
@@ -2806,6 +3004,28 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
         codes = [c.strip() for c in codes_str.split(',') if c.strip()]
         data = _fugle_batch(codes)
         self.send_json(data)
+
+    def handle_events(self):
+        """GET /api/events — market-wide major events"""
+        try:
+            events = _fetch_market_events()
+            self.send_json({'events': events})
+        except Exception as e:
+            print(f'[EVENTS] handle_events error: {e}')
+            self.send_json({'events': [], 'error': str(e)})
+
+    def handle_stock_events(self):
+        """GET /api/stock-events/{code} — per-stock events for K-line markers"""
+        code = self.path.split('/api/stock-events/')[-1].split('?')[0].strip()
+        if not code or not code[0].isdigit():
+            self.send_json({'error': 'Invalid stock code'}, 400)
+            return
+        try:
+            events = _fetch_stock_events(code)
+            self.send_json({'events': events})
+        except Exception as e:
+            print(f'[EVENTS] handle_stock_events error: {e}')
+            self.send_json({'events': [], 'error': str(e)})
 
     def handle_finmind_inst(self):
         """GET /api/finmind/inst?date=2026-03-04"""

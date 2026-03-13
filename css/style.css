@@ -941,6 +941,70 @@
       }
     }
 
+    /* ===== K-LINE EVENT MARKER TOOLTIP ===== */
+    .kline-event-tooltip {
+      position: absolute;
+      z-index: 10;
+      background: rgba(10, 18, 36, 0.96);
+      border: 1px solid var(--purple);
+      border-radius: 8px;
+      padding: 10px 14px;
+      padding-right: 28px;
+      min-width: 200px;
+      max-width: 320px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 8px rgba(180,77,255,0.2);
+      animation: tooltipIn 0.15s ease-out;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text);
+      pointer-events: auto;
+    }
+    .kline-event-tip-close {
+      position: absolute; top: 4px; right: 8px;
+      cursor: pointer; font-size: 18px; color: var(--text2);
+      line-height: 1; z-index: 1;
+    }
+    .kline-event-tip-close:hover { color: var(--red); }
+    .kline-event-row {
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(180,77,255,0.1);
+    }
+    .kline-event-row:last-child { border-bottom: none; }
+    .kline-event-type { font-weight: 600; color: var(--purple); margin-right: 6px; }
+    .kline-event-amt { color: var(--yellow); font-weight: 600; }
+    .kline-event-title { font-size: 12px; color: var(--text2); margin-top: 2px; line-height: 1.4; }
+    .kline-event-link { font-size: 11px; color: var(--cyan); text-decoration: none; }
+    .kline-event-link:hover { text-decoration: underline; }
+    @media (max-width: 768px) {
+      .kline-event-tooltip { font-size: 11px; padding: 7px 10px; min-width: 160px; max-width: 260px; }
+    }
+
+    /* ===== OVERVIEW EVENTS TIMELINE ===== */
+    .events-timeline { display: flex; flex-direction: column; gap: 2px; }
+    .event-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 14px; border-radius: 8px;
+      text-decoration: none; color: var(--text);
+      transition: background 0.2s;
+      border-left: 3px solid transparent;
+    }
+    .event-item:hover { background: rgba(0,240,255,0.05); }
+    .event-item.event-conf { border-left-color: var(--purple); }
+    .event-item.event-div { border-left-color: var(--yellow); }
+    .event-item.event-news { border-left-color: var(--cyan); }
+    .event-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+    .event-body { flex: 1; min-width: 0; }
+    .event-title { font-size: 13px; line-height: 1.4; display: block; overflow: hidden; text-overflow: ellipsis; }
+    .event-meta { flex-shrink: 0; text-align: right; min-width: 56px; }
+    .event-date { font-size: 11px; color: var(--text2); display: block; }
+    .event-type-tag {
+      font-size: 10px; padding: 1px 5px; border-radius: 4px;
+      display: inline-block; margin-top: 2px;
+    }
+    .event-item.event-conf .event-type-tag { background: rgba(180,77,255,0.15); color: var(--purple); }
+    .event-item.event-div .event-type-tag { background: rgba(255,208,54,0.15); color: var(--yellow); }
+    .event-item.event-news .event-type-tag { background: rgba(0,240,255,0.1); color: var(--cyan); }
+
     /* ===== WATCHLIST ITEM ===== */
     .wl-item {
       display: flex;

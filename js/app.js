@@ -1308,6 +1308,7 @@ function initCharts() {
 
   // --- Sync time axes across all charts (XQ/三竹 style) ---
   _syncChartTimeScales();
+  initKlineEventTooltip();
 }
 
 // Synchronize time scales + crosshair across K-line, RSI, KD, MACD charts
@@ -1329,6 +1330,9 @@ function _syncChartTimeScales() {
     if (!chart) return;
     // Scroll/zoom sync
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+      // Dismiss event tooltip on scroll/zoom
+      var etip = document.getElementById('kline-event-tip');
+      if (etip) etip.remove();
       if (_isSyncing) return;
       _isSyncing = true;
       try {
@@ -1913,6 +1917,42 @@ async function renderTaiexChart() {
   } catch (e) {
     const statusEl = document.getElementById('taiex-status');
     if (statusEl) statusEl.textContent = '加權走勢暫時無法取得';
+  }
+}
+
+// ============================================================
+// OVERVIEW: 重大事件
+// ============================================================
+async function loadOverviewEvents() {
+  var el = document.getElementById('overview-events');
+  if (!el) return;
+  try {
+    var resp = await fetch('/api/events');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var data = await resp.json();
+    var events = (data.events || []).slice(0, 20);
+    if (events.length === 0) {
+      el.innerHTML = '<div class="text-muted" style="text-align:center;padding:16px;">目前無重大事件</div>';
+      return;
+    }
+    var html = '<div class="events-timeline">';
+    events.forEach(function(ev) {
+      var isConf = ev.type === '法說會';
+      var isDiv = ev.type === '除息' || ev.type === '除息日';
+      var cls = isConf ? 'event-conf' : isDiv ? 'event-div' : 'event-news';
+      var icon = isConf ? '\uD83C\uDFA4' : isDiv ? '\uD83D\uDCB0' : '\uD83D\uDCCC';
+      var title = ev.title || '';
+      var url = ev.url || '#';
+      html += '<a href="' + url + '" target="_blank" rel="noopener" class="event-item ' + cls + '">' +
+        '<span class="event-icon">' + icon + '</span>' +
+        '<span class="event-body"><span class="event-title">' + title + '</span></span>' +
+        '<span class="event-meta"><span class="event-date">' + (ev.time || ev.date || '') + '</span>' +
+        '<span class="event-type-tag">' + ev.type + '</span></span></a>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = '<div class="text-muted" style="text-align:center;padding:16px;">事件載入失敗</div>';
   }
 }
 
@@ -2834,6 +2874,7 @@ async function analyzeStock(code) {
     fetchStockMargin(code);
     fetchStockDividend(code);
     fetchStockNews(code, stockName);
+    fetchStockEvents(code, dates);
 
     // Start real-time updates + intraday chart
     startRealtimeUpdates(code);
@@ -3151,6 +3192,117 @@ async function fetchStockMargin(code) {
   } catch (e) {
     el.innerHTML = '<div class="text-muted">融資融券載入失敗</div>';
   }
+}
+
+// ============================================================
+// FETCH: Stock Events — K-line markers (法說會, 除息日)
+// ============================================================
+var _stockEventsByDate = {};
+
+async function fetchStockEvents(code, chartDates) {
+  _stockEventsByDate = {};
+  try {
+    var resp = await fetch('/api/stock-events/' + encodeURIComponent(code));
+    if (!resp.ok) return;
+    var data = await resp.json();
+    var events = data.events || [];
+    if (events.length === 0 || !sCan) return;
+
+    // Build date set for quick lookup
+    var dateSet = {};
+    if (chartDates) chartDates.forEach(function(d) { dateSet[d] = true; });
+
+    var markers = [];
+    var isMob = window.innerWidth <= 768;
+    events.forEach(function(ev) {
+      var d = ev.date;
+      if (!dateSet[d]) return;
+
+      if (ev.type === '法說會') {
+        markers.push({
+          time: d,
+          position: 'belowBar',
+          color: '#b44dff',
+          shape: 'arrowUp',
+          text: isMob ? '\u6CD5' : '\u6CD5\u8AAC',  // 法 or 法說
+        });
+      } else if (ev.type === '除息日' || ev.type === '除息') {
+        markers.push({
+          time: d,
+          position: 'aboveBar',
+          color: '#ffd036',
+          shape: 'circle',
+          text: ev.amount ? (isMob ? '$' + ev.amount : '\u9664\u606F $' + ev.amount) : (isMob ? '\u9664' : '\u9664\u606F'),
+        });
+      }
+
+      // Store for tooltip
+      if (!_stockEventsByDate[d]) _stockEventsByDate[d] = [];
+      _stockEventsByDate[d].push(ev);
+    });
+
+    // LightweightCharts requires markers sorted by time ascending
+    markers.sort(function(a, b) { return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+    sCan.setMarkers(markers);
+  } catch(e) {
+    console.warn('[CT] fetchStockEvents error:', e);
+  }
+}
+
+// K-line chart click handler — show event tooltip
+var _klineEventTipActive = false;
+
+function initKlineEventTooltip() {
+  if (!chtMain || _klineEventTipActive) return;
+  _klineEventTipActive = true;
+
+  chtMain.subscribeClick(function(param) {
+    // Dismiss existing tooltip
+    var existing = document.getElementById('kline-event-tip');
+    if (existing) existing.remove();
+
+    if (!param || !param.time) return;
+
+    // Format date key
+    var dateKey = '';
+    if (typeof param.time === 'object') {
+      dateKey = param.time.year + '-' + String(param.time.month).padStart(2, '0') + '-' + String(param.time.day).padStart(2, '0');
+    } else {
+      dateKey = String(param.time);
+    }
+
+    var evts = _stockEventsByDate[dateKey];
+    if (!evts || evts.length === 0) return;
+
+    // Build tooltip HTML
+    var html = '<div class="kline-event-tip-close" onclick="this.parentElement.remove()">\u2715</div>';
+    html += '<div class="tt-date">' + dateKey + '</div>';
+    evts.forEach(function(ev) {
+      html += '<div class="kline-event-row">';
+      html += '<span class="kline-event-type">' + ev.type + '</span>';
+      if (ev.amount) html += '<span class="kline-event-amt">' + ev.amount + ' \u5143</span>';
+      if (ev.title) html += '<div class="kline-event-title">' + ev.title + '</div>';
+      if (ev.url) html += '<a href="' + ev.url + '" target="_blank" rel="noopener" class="kline-event-link">\u8A73\u60C5 \u2192</a>';
+      html += '</div>';
+    });
+
+    var tip = document.createElement('div');
+    tip.id = 'kline-event-tip';
+    tip.className = 'kline-event-tooltip';
+    tip.innerHTML = html;
+
+    // Position near click point
+    var chartEl = document.getElementById('main-chart');
+    chartEl.style.position = 'relative';
+    chartEl.appendChild(tip);
+    var tx = (param.point ? param.point.x : 100) - tip.offsetWidth / 2;
+    var ty = (param.point ? param.point.y : 100) - tip.offsetHeight - 14;
+    if (tx < 4) tx = 4;
+    if (tx + tip.offsetWidth > chartEl.clientWidth - 4) tx = chartEl.clientWidth - tip.offsetWidth - 4;
+    if (ty < 4) ty = (param.point ? param.point.y : 100) + 14;
+    tip.style.left = tx + 'px';
+    tip.style.top = ty + 'px';
+  });
 }
 
 // ============================================================
@@ -3878,6 +4030,7 @@ async function init() {
 
     // Render overview first (shown to user immediately)
     renderOverview();
+    loadOverviewEvents();
     if (instSummary) {
       renderInstSummary(instSummary);
     } else {
