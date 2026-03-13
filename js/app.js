@@ -1310,18 +1310,28 @@ function initCharts() {
   _syncChartTimeScales();
 }
 
-// Synchronize time scales across K-line, RSI, KD, MACD charts
+// Synchronize time scales + crosshair across K-line, RSI, KD, MACD charts
 let _isSyncing = false;
+let _isCrosshairSyncing = false;
+// Primary series for each chart (used for crosshair sync)
+let _chartPrimarySeries = {};
+
 function _syncChartTimeScales() {
   const charts = [chtMain, chtRsi, chtKd, chtMacd];
+  // Map chart to its primary series for setCrosshairPosition
+  _chartPrimarySeries = {};
+  if (chtMain && sCan) _chartPrimarySeries[0] = sCan;
+  if (chtRsi && sRsi) _chartPrimarySeries[1] = sRsi;
+  if (chtKd && sKK) _chartPrimarySeries[2] = sKK;
+  if (chtMacd && sDif) _chartPrimarySeries[3] = sDif;
+
   charts.forEach((chart, idx) => {
     if (!chart) return;
+    // Scroll/zoom sync
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       if (_isSyncing) return;
       _isSyncing = true;
       try {
-        // Use time-based range to keep dates aligned across charts
-        // (logical ranges differ because sub-charts have fewer data points)
         const timeRange = chart.timeScale().getVisibleRange();
         if (timeRange) {
           charts.forEach((other, j) => {
@@ -1331,6 +1341,31 @@ function _syncChartTimeScales() {
           });
         }
       } finally { _isSyncing = false; }
+    });
+    // Crosshair sync — when hovering one chart, show crosshair on all others at same time
+    chart.subscribeCrosshairMove(param => {
+      if (_isCrosshairSyncing) return;
+      _isCrosshairSyncing = true;
+      charts.forEach((other, j) => {
+        if (j === idx || !other) return;
+        if (!param || param.time === undefined) {
+          try { other.clearCrosshairPosition(); } catch(e) {}
+        } else {
+          const series = _chartPrimarySeries[j];
+          if (series) {
+            try {
+              // Get data at logical index from TARGET series for correct horizontal line
+              var logIdx = param.logical !== undefined ? Math.round(param.logical) : -1;
+              var targetData = logIdx >= 0 ? series.dataByIndex(logIdx) : null;
+              var val = targetData ? (targetData.value !== undefined ? targetData.value : targetData.close || 0) : 0;
+              other.setCrosshairPosition(val, param.time, series);
+            } catch(e) {
+              try { other.clearCrosshairPosition(); } catch(e2) {}
+            }
+          }
+        }
+      });
+      _isCrosshairSyncing = false;
     });
   });
 }
@@ -1782,15 +1817,24 @@ function _renderTaiexData(data, prevClose) {
   const el = document.getElementById('taiex-chart');
   const lastVal = data[data.length - 1].value;
   const isUp = lastVal >= prevClose;
-  const lineColor = isUp ? '#ff3860' : '#00e87b';
-  const topColor = isUp ? 'rgba(255,56,96,0.2)' : 'rgba(0,232,123,0.2)';
-  const bottomColor = isUp ? 'rgba(255,56,96,0.02)' : 'rgba(0,232,123,0.02)';
+  const basePrice = prevClose > 0 ? prevClose : data[0].value;
   if (!chtTaiex) {
     el.innerHTML = '';
     _createTaiexChart(el);
-    sTaiexLine = chtTaiex.addAreaSeries({ lineColor, topColor, bottomColor, lineWidth: 2 });
+    sTaiexLine = chtTaiex.addBaselineSeries({
+      baseValue: { type: 'price', price: basePrice },
+      topLineColor: '#ff3860',
+      topFillColor1: 'rgba(255,56,96,0.25)',
+      topFillColor2: 'rgba(255,56,96,0.02)',
+      bottomLineColor: '#00e87b',
+      bottomFillColor1: 'rgba(0,232,123,0.02)',
+      bottomFillColor2: 'rgba(0,232,123,0.25)',
+      lineWidth: 2,
+    });
   } else {
-    sTaiexLine.applyOptions({ lineColor, topColor, bottomColor });
+    sTaiexLine.applyOptions({
+      baseValue: { type: 'price', price: basePrice },
+    });
   }
   sTaiexLine.setData(data);
   if (prevClose > 0) {
@@ -2707,6 +2751,13 @@ async function analyzeStock(code) {
     sSig.setData(dates.map((d, i) => ({ time: d, value: macd.sig[i] })));
     sHist.setData(dates.map((d, i) => ({ time: d, value: macd.hist[i], color: macd.hist[i] >= 0 ? 'rgba(255,56,96,0.5)' : 'rgba(0,232,123,0.5)' })));
 
+    // Update crosshair sync series mapping after data is loaded
+    _chartPrimarySeries = {};
+    if (chtMain && sCan) _chartPrimarySeries[0] = sCan;
+    if (chtRsi && sRsi) _chartPrimarySeries[1] = sRsi;
+    if (chtKd && sKK) _chartPrimarySeries[2] = sKK;
+    if (chtMacd && sDif) _chartPrimarySeries[3] = sDif;
+
     fitAllCharts();
 
     // Signals
@@ -3051,11 +3102,22 @@ async function fetchStockMargin(code) {
     const marginUtil = mLimitNum > 0 ? (mBalNum / mLimitNum * 100).toFixed(1) : '--';
     const shortRatio = mBalNum > 0 ? (sBalNum / mBalNum * 100).toFixed(1) : '--';
 
+    const mLimitStr = fmtNum(mLimitNum);
+    const sLimitNum = parseNum(found[13]);
+    const sLimitStr = fmtNum(sLimitNum);
+    const shortUtil = sLimitNum > 0 ? (sBalNum / sLimitNum * 100).toFixed(1) : '--';
+
     el.innerHTML = `
       <div class="stat-grid" style="margin-bottom:12px;">
         <div class="stat-box">
-          <div class="label">融資使用率</div>
-          <div class="value" style="color:var(--cyan);font-size:20px;">${marginUtil}%</div>
+          <div class="label">融資餘額（張）</div>
+          <div class="value" style="color:var(--red);font-size:18px;">${mBal}</div>
+          <div class="text-sm text-muted">使用率 <span style="color:var(--cyan);font-weight:600;">${marginUtil}%</span></div>
+        </div>
+        <div class="stat-box">
+          <div class="label">融券餘額（張）</div>
+          <div class="value" style="color:var(--green);font-size:18px;">${sBal}</div>
+          <div class="text-sm text-muted">使用率 <span style="color:var(--cyan);font-weight:600;">${shortUtil}%</span></div>
         </div>
         <div class="stat-box">
           <div class="label">券資比</div>
@@ -3072,7 +3134,7 @@ async function fetchStockMargin(code) {
           <div class="stat-grid">
             <div class="stat-box"><div class="label">買進</div><div class="value">${mBuy}</div></div>
             <div class="stat-box"><div class="label">賣出</div><div class="value">${mSell}</div></div>
-            <div class="stat-box"><div class="label">餘額</div><div class="value">${mBal}</div></div>
+            <div class="stat-box"><div class="label">限額</div><div class="value">${mLimitStr}</div></div>
           </div>
           <div class="text-sm ${mChg>=0?'up':'down'}" style="margin-top:4px;">增減：${mChg>0?'+':''}${fmtNum(mChg)}</div>
         </div>
@@ -3081,7 +3143,7 @@ async function fetchStockMargin(code) {
           <div class="stat-grid">
             <div class="stat-box"><div class="label">買進</div><div class="value">${sBuy}</div></div>
             <div class="stat-box"><div class="label">賣出</div><div class="value">${sSell}</div></div>
-            <div class="stat-box"><div class="label">餘額</div><div class="value">${sBal}</div></div>
+            <div class="stat-box"><div class="label">限額</div><div class="value">${sLimitStr}</div></div>
           </div>
           <div class="text-sm ${sChg>=0?'up':'down'}" style="margin-top:4px;">增減：${sChg>0?'+':''}${fmtNum(sChg)}</div>
         </div>
@@ -3348,14 +3410,16 @@ function toggleChartFullscreen() {
   _fsOverlay = document.createElement('div');
   _fsOverlay.className = 'chart-fullscreen-overlay' + (isMobile ? ' fs-landscape' : '');
 
-  // On mobile: set explicit pixel dimensions from window (more reliable than CSS units inside transform)
+  // On mobile: use visual viewport for reliable dimensions (avoids address bar / notch issues)
   if (isMobile) {
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
+    const vv = window.visualViewport || { width: window.innerWidth, height: window.innerHeight };
+    const vw = Math.round(vv.width);
+    const vh = Math.round(vv.height);
     _fsOverlay.style.width = vh + 'px';
     _fsOverlay.style.height = vw + 'px';
     _fsOverlay.style.left = vw + 'px';
     _fsOverlay.style.top = '0px';
+    _fsOverlay.style.overflow = 'hidden';
   }
 
   // Header
@@ -3417,14 +3481,17 @@ function toggleChartFullscreen() {
     let w, h;
     const mob = isMobile;
     if (mob) {
-      const overlayW = window.innerHeight; // overlay width = vh (rotated)
-      const overlayH = window.innerWidth;  // overlay height = vw (rotated)
+      const vv = window.visualViewport || { width: window.innerWidth, height: window.innerHeight };
+      const overlayW = Math.round(vv.height); // overlay width = vh (rotated)
+      const overlayH = Math.round(vv.width);  // overlay height = vw (rotated)
       const headerH = header.offsetHeight || 32;
       w = overlayW;
       h = overlayH - headerH;
-      // Force body dimensions explicitly
+      // Force body dimensions explicitly — prevent overflow
       body.style.width = w + 'px';
       body.style.height = h + 'px';
+      body.style.maxWidth = w + 'px';
+      body.style.maxHeight = h + 'px';
     } else {
       w = body.clientWidth;
       h = body.clientHeight;
@@ -3588,13 +3655,22 @@ function toggleChartFullscreen() {
     // Force a second resize after chart creation to ensure canvas fills correctly
     if (mob) {
       setTimeout(() => {
-        if (_fsChart) _fsChart.applyOptions({ width: w, height: h });
-        if (_fsChart) _fsChart.timeScale().fitContent();
-      }, 100);
+        if (!_fsChart) return;
+        const vv = window.visualViewport || { width: window.innerWidth, height: window.innerHeight };
+        const rw = Math.round(vv.height);
+        const rh = Math.round(vv.width) - (header.offsetHeight || 32);
+        body.style.width = rw + 'px';
+        body.style.height = rh + 'px';
+        body.style.maxWidth = rw + 'px';
+        body.style.maxHeight = rh + 'px';
+        _fsChart.applyOptions({ width: rw, height: rh });
+        _fsChart.timeScale().fitContent();
+      }, 150);
     }
 
     // Handle resize in fullscreen
     window.addEventListener('resize', _fsResize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', _fsResize);
   }, 80);
 }
 
@@ -3602,8 +3678,9 @@ function _fsResize() {
   if (!_fsChart || !_fsOverlay) return;
   const isMob = _fsOverlay.classList.contains('fs-landscape');
   if (isMob) {
-    const vh = window.innerHeight;
-    const vw = window.innerWidth;
+    const vv = window.visualViewport || { width: window.innerWidth, height: window.innerHeight };
+    const vw = Math.round(vv.width);
+    const vh = Math.round(vv.height);
     _fsOverlay.style.width = vh + 'px';
     _fsOverlay.style.height = vw + 'px';
     _fsOverlay.style.left = vw + 'px';
@@ -3615,10 +3692,13 @@ function _fsResize() {
     if (!body) return;
     let w, h;
     if (isMob) {
-      w = window.innerHeight;
-      h = window.innerWidth - (header ? header.offsetHeight : 32);
+      const vv = window.visualViewport || { width: window.innerWidth, height: window.innerHeight };
+      w = Math.round(vv.height);
+      h = Math.round(vv.width) - (header ? header.offsetHeight : 32);
       body.style.width = w + 'px';
       body.style.height = h + 'px';
+      body.style.maxWidth = w + 'px';
+      body.style.maxHeight = h + 'px';
     } else {
       w = body.clientWidth;
       h = body.clientHeight;
@@ -3643,6 +3723,7 @@ function zoomFsChart(action) {
 
 function closeChartFullscreen() {
   window.removeEventListener('resize', _fsResize);
+  if (window.visualViewport) window.visualViewport.removeEventListener('resize', _fsResize);
   if (_fsChart) { try { _fsChart.remove(); } catch(e) {} _fsChart = null; }
   if (_fsOverlay) { _fsOverlay.remove(); _fsOverlay = null; }
   document.body.style.overflow = '';
