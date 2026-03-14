@@ -7172,16 +7172,21 @@ function initViewMode() {
 function applyViewMode(mode) {
   const toggle = document.getElementById('mode-toggle');
   const label = document.getElementById('mode-label-text');
-  if (!toggle || !label) return;
+  const fab = document.getElementById('mobile-mode-fab');
+  const fabIcon = document.getElementById('mobile-mode-icon');
 
   if (mode === 'simple') {
     document.body.classList.add('simple-mode');
-    toggle.classList.remove('pro');
-    label.textContent = '簡易模式';
+    if (toggle) toggle.classList.remove('pro');
+    if (label) label.textContent = '簡易模式';
+    if (fab) { fab.classList.remove('pro'); }
+    if (fabIcon) fabIcon.textContent = '🌱';
   } else {
     document.body.classList.remove('simple-mode');
-    toggle.classList.add('pro');
-    label.textContent = '專業模式';
+    if (toggle) toggle.classList.add('pro');
+    if (label) label.textContent = '專業模式';
+    if (fab) { fab.classList.add('pro'); }
+    if (fabIcon) fabIcon.textContent = '📊';
   }
   localStorage.setItem('ct-view-mode', mode);
 }

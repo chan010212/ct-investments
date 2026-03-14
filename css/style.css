@@ -1579,6 +1579,7 @@
       .status-bar { display: none; }
       .sidebar-footer { display: none; }
       #user-section { display: none; }
+      .mode-toggle { display: none; }
       .mobile-user-btn { display: flex; }
 
       /* Main */
@@ -3128,10 +3129,38 @@
       display: none !important;
     }
 
+    /* Mobile floating mode button — hidden on desktop */
+    .mobile-mode-fab {
+      display: none;
+    }
     @media (max-width: 768px) {
       .mode-toggle {
         padding: 8px 16px;
       }
+      .mobile-mode-fab {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        bottom: 72px;
+        right: 14px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: rgba(8, 16, 38, 0.92);
+        border: 1px solid var(--cyan);
+        box-shadow: 0 0 12px rgba(0, 240, 255, 0.25);
+        color: var(--cyan);
+        font-size: 18px;
+        cursor: pointer;
+        z-index: 999;
+        transition: all 0.3s;
+      }
+      .mobile-mode-fab.pro {
+        border-color: var(--purple);
+        box-shadow: 0 0 12px rgba(180, 77, 255, 0.25);
+      }
+      .mobile-mode-fab.pro #mobile-mode-icon { filter: hue-rotate(240deg); }
     }
 
     /* ===== 新手學院 ===== */

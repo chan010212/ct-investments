@@ -20,7 +20,7 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%23060b18'/><text x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='system-ui' font-size='28' font-weight='800' fill='%2300f0ff'>CT</text></svg>">
   <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
-  <link rel="stylesheet" href="/css/style.css?v=28">
+  <link rel="stylesheet" href="/css/style.css?v=29">
 </head>
 <body>
 <!-- Futuristic Background Effects -->
@@ -36,6 +36,13 @@
       <h1>CT Investments</h1>
       <div class="sub">謙堂資本</div>
       <div class="co-tag">CO., LTD</div>
+    </div>
+    <!-- Mode toggle -->
+    <div class="mode-toggle" id="mode-toggle" onclick="toggleViewMode()">
+      <div class="mode-switch"></div>
+      <div class="mode-label">
+        <div class="mode-label-text" id="mode-label-text">簡易模式</div>
+      </div>
     </div>
     <div class="nav">
       <div class="nav-item active" data-tab="overview">
@@ -90,13 +97,6 @@
         </svg><span>帳號</span>
       </div>
     </div>
-    <!-- Mode toggle -->
-    <div class="mode-toggle" id="mode-toggle" onclick="toggleViewMode()">
-      <div class="mode-switch"></div>
-      <div class="mode-label">
-        <div class="mode-label-text" id="mode-label-text">簡易模式</div>
-      </div>
-    </div>
     <!-- User bar (logged in) / Login button -->
     <div id="user-section">
       <div class="user-bar" style="padding:12px 18px;">
@@ -112,6 +112,11 @@
       <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()" title="手動刷新">&#x21bb;</button>
     </div>
   </aside>
+
+  <!-- Mobile mode toggle (floating) -->
+  <button class="mobile-mode-fab" id="mobile-mode-fab" onclick="toggleViewMode()">
+    <span id="mobile-mode-icon">📊</span>
+  </button>
 
   <!-- MAIN CONTENT -->
   <main class="main">
@@ -963,7 +968,7 @@
   </div>
 </div>
 
-<script src="/js/app.js?v=28"></script>
+<script src="/js/app.js?v=29"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').then(reg => {
