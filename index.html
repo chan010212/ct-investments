@@ -20,7 +20,7 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%23060b18'/><text x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='system-ui' font-size='28' font-weight='800' fill='%2300f0ff'>CT</text></svg>">
   <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
-  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/style.css?v=28">
 </head>
 <body>
 <!-- Futuristic Background Effects -->
@@ -40,6 +40,9 @@
     <div class="nav">
       <div class="nav-item active" data-tab="overview">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 16l4-4 3 3 5-6"/></svg><span>總覽</span>
+      </div>
+      <div class="nav-item nav-academy-item" data-tab="academy">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>學院</span>
       </div>
       <div class="nav-item" data-tab="institutional">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-4h6v4M9 9h1M14 9h1M9 13h1M14 13h1"/></svg><span>法人</span>
@@ -87,6 +90,13 @@
         </svg><span>帳號</span>
       </div>
     </div>
+    <!-- Mode toggle -->
+    <div class="mode-toggle" id="mode-toggle" onclick="toggleViewMode()">
+      <div class="mode-switch"></div>
+      <div class="mode-label">
+        <div class="mode-label-text" id="mode-label-text">簡易模式</div>
+      </div>
+    </div>
     <!-- User bar (logged in) / Login button -->
     <div id="user-section">
       <div class="user-bar" style="padding:12px 18px;">
@@ -121,6 +131,61 @@
       <span>返回</span>
     </div>
 
+    <!-- ==================== 新手學院 (simple mode only) ==================== -->
+    <div id="panel-academy" class="panel">
+      <!-- 勳章牆 -->
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>&#x1F3C6; 我的勳章</span>
+          <span class="acad-progress" id="acad-progress">0 / 8 課程完成</span>
+        </div>
+        <div class="text-sm text-muted mb-16">通過測驗解鎖勳章，展現你的學習成果！</div>
+        <div class="badge-wall" id="badge-wall"></div>
+      </div>
+
+      <!-- 能力測驗 -->
+      <div class="card">
+        <div class="card-title">&#x1F4DD; 能力測驗</div>
+        <div class="text-sm text-muted mb-16">每階段 5 題，答對 4 題以上即通過，解鎖對應勳章。</div>
+        <div class="quiz-levels" id="quiz-levels"></div>
+      </div>
+
+      <!-- 課程目錄 -->
+      <div class="card">
+        <div class="card-title">&#x1F4DA; 圖表教學</div>
+        <div class="text-sm text-muted mb-16">從零開始學台股，每篇 1-2 分鐘，搭配互動圖表。</div>
+        <div class="acad-grid" id="acad-grid"></div>
+      </div>
+
+      <!-- Quiz overlay -->
+      <div class="quiz-overlay" id="quiz-overlay" style="display:none;">
+        <div class="quiz-card">
+          <div class="quiz-header">
+            <button class="acad-back-btn" onclick="closeQuiz()">&#x2190; 返回</button>
+            <span class="quiz-progress-text" id="quiz-progress-text"></span>
+          </div>
+          <div class="quiz-progress-bar"><div class="quiz-progress-fill" id="quiz-progress-fill"></div></div>
+          <div id="quiz-content"></div>
+        </div>
+      </div>
+
+      <!-- Lesson detail overlay -->
+      <div class="acad-lesson-overlay" id="acad-lesson-overlay" style="display:none;">
+        <div class="acad-lesson-card">
+          <div class="acad-lesson-header">
+            <button class="acad-back-btn" onclick="closeLesson()">&#x2190; 返回目錄</button>
+            <span class="acad-lesson-badge" id="acad-lesson-badge"></span>
+          </div>
+          <h2 class="acad-lesson-title" id="acad-lesson-title"></h2>
+          <div class="acad-lesson-subtitle" id="acad-lesson-subtitle"></div>
+          <div class="acad-lesson-body" id="acad-lesson-body"></div>
+          <div class="acad-lesson-chart" id="acad-lesson-chart"></div>
+          <div class="acad-lesson-notes" id="acad-lesson-notes"></div>
+          <button class="btn btn-primary acad-done-btn" id="acad-done-btn" onclick="markLessonDone()">&#x2714; 我學會了</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== 市場總覽 ==================== -->
     <div id="panel-overview" class="panel active">
       <div class="card">
@@ -133,7 +198,7 @@
         </div>
         <div id="market-date" class="text-sm text-muted mb-16"></div>
         <div class="stat-grid" id="market-stats">
-          <div class="loading-box"><div class="spinner"></div><div>正在載入市場資料...</div></div>
+          <div class="skeleton-stat-grid"><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div></div>
         </div>
       </div>
       <div class="card">
@@ -147,53 +212,53 @@
       <div class="grid-2">
         <div class="card">
           <div class="card-title">&#x1F4C8; 漲跌家數統計</div>
-          <div id="advance-decline"><div class="loading-box"><div class="spinner"></div></div></div>
+          <div id="advance-decline"><div class="skeleton-table"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line skeleton-line-medium"></div></div></div>
         </div>
         <div class="card">
           <div class="card-title">&#x1F4B9; 今日成交概況</div>
-          <div id="market-turnover"><div class="loading-box"><div class="spinner"></div></div></div>
+          <div id="market-turnover"><div class="skeleton-table"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line skeleton-line-medium"></div></div></div>
         </div>
       </div>
 
-      <div class="card">
+      <div class="card simple-hide">
         <div class="card-title">&#x1F3ED; 產業漲跌排行</div>
         <div class="text-sm text-muted mb-12">依今日指數漲跌幅排序，反映各產業強弱</div>
-        <div id="sector-ranking"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div id="sector-ranking"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
 
-      <div class="card">
+      <div class="card simple-hide">
         <div class="card-title">&#x1F5FA; 產業熱力圖</div>
         <div class="text-sm text-muted mb-12">面積代表產業權重，顏色代表漲跌幅（紅漲綠跌）</div>
         <div id="sector-heatmap" style="position:relative;width:100%;height:320px;border-radius:8px;overflow:hidden;background:var(--bg);"></div>
       </div>
 
-      <div class="grid-2">
+      <div class="grid-2 simple-hide">
         <div class="card">
           <div class="card-title" style="color:var(--red);">&#9650; 漲幅排行 TOP 15</div>
-          <div class="table-wrap" id="top-gainers"><div class="loading-box"><div class="spinner"></div></div></div>
+          <div class="table-wrap" id="top-gainers"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
         </div>
         <div class="card">
           <div class="card-title" style="color:var(--green);">&#9660; 跌幅排行 TOP 15</div>
-          <div class="table-wrap" id="top-losers"><div class="loading-box"><div class="spinner"></div></div></div>
+          <div class="table-wrap" id="top-losers"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
         </div>
       </div>
-      <div class="card">
+      <div class="card simple-hide">
         <div class="card-title">&#x1F4CA; 成交量排行 TOP 15</div>
         <div class="text-sm text-muted mb-12">依今日成交量（股）排序，反映市場資金聚焦方向</div>
-        <div class="table-wrap" id="top-volume"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div class="table-wrap" id="top-volume"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
       <div class="card">
-        <div class="card-title">&#x1F3E6; 三大法人今日動態</div>
-        <div id="inst-summary-overview"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div class="card-title">&#x1F3E6; 三大法人今日動態<span class="ct-tip" data-tip="三大法人"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">外資、投信、自營商，是市場上最有影響力的三類大戶。他們的買賣動向常被視為市場風向指標。</span></span></div>
+        <div id="inst-summary-overview"><div class="skeleton-stat-grid"><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div></div></div>
       </div>
 
       <div class="card">
         <div class="card-title">&#x1F4C5; 重大事件</div>
-        <div class="text-sm text-muted mb-12">近期法說會、除權息、市場要聞</div>
-        <div id="overview-events"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div class="text-sm text-muted mb-12">近期法說會、除權息<span class="ct-tip" data-tip="除權息"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">公司發放股利給股東時，股價會相應調整。除權是發放股票股利，除息是發放現金股利。</span></span>、市場要聞</div>
+        <div id="overview-events"><div class="skeleton-table"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line skeleton-line-medium"></div></div></div>
       </div>
 
-      <div class="card">
+      <div class="card simple-hide">
         <div class="card-title">&#x1F4CA; 大盤歷史回測 <span class="plan-badge plan-badge-proplus">Pro+</span></div>
         <div class="text-sm text-muted mb-12">模擬不同投資策略在加權指數上的歷史績效</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
@@ -230,12 +295,12 @@
     <!-- ==================== 三大法人 ==================== -->
     <div id="panel-institutional" class="panel">
       <div class="card">
-        <div class="card-title">&#x1F3E6; 三大法人買賣金額統計</div>
-        <div id="inst-amount-table"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div class="card-title">&#x1F3E6; 三大法人買賣金額統計<span class="ct-tip" data-tip="三大法人"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">外資、投信、自營商，是市場上最有影響力的三類大戶。他們的買賣動向常被視為市場風向指標。</span></span></div>
+        <div id="inst-amount-table"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
 
       <div class="card">
-        <div class="card-title">&#x1F4CA; 連續買賣超排行 <span class="plan-badge plan-badge-pro">PRO</span></div>
+        <div class="card-title">&#x1F4CA; 連續買賣超排行<span class="ct-tip" data-tip="買賣超"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">買超 = 買的比賣的多，代表看好；賣超 = 賣的比買的多，代表看淡。連續買超代表持續看好。</span></span> <span class="plan-badge plan-badge-pro">PRO</span></div>
         <div class="text-sm text-muted mb-12">法人連續多日買超/賣超個股排行，資料自系統部署日起累積</div>
         <div class="tab-bar" id="streak-tabs">
           <button class="tab-btn streak-tab-btn active" data-type="foreign" data-dir="buy" onclick="onStreakTabClick(this)">外資連買</button>
@@ -243,7 +308,7 @@
           <button class="tab-btn streak-tab-btn" data-type="trust" data-dir="buy" onclick="onStreakTabClick(this)">投信連買</button>
           <button class="tab-btn streak-tab-btn" data-type="trust" data-dir="sell" onclick="onStreakTabClick(this)">投信連賣</button>
         </div>
-        <div class="table-wrap" id="inst-streak-ranking"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div class="table-wrap" id="inst-streak-ranking"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
 
       <div class="card">
@@ -295,7 +360,7 @@
       </div>
 
       <div id="analysis-loading" style="display:none;">
-        <div class="card"><div class="loading-box"><div class="spinner"></div><div>載入股票資料中，請稍候...</div></div></div>
+        <div class="card"><div class="skeleton-stat-grid" style="margin-bottom:16px;"><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div></div><div class="skeleton skeleton-block"></div><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
 
       <div id="analysis-content" style="display:none;">
@@ -326,14 +391,14 @@
             <div class="text-sm text-muted" style="margin-top:6px;text-align:right;" id="intraday-status">非交易時段</div>
           </div>
           <div class="card">
-            <div class="card-title">&#x1F4D6; 五檔報價</div>
+            <div class="card-title">&#x1F4D6; 五檔報價<span class="ct-tip" data-tip="五檔報價"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">目前等著買和等著賣的前 5 個價位和數量。可以看出市場在哪個價位有較多的買賣意願。</span></span></div>
             <div id="orderbook"></div>
             <div id="realtime-info" class="text-sm text-muted" style="margin-top:8px;"></div>
           </div>
         </div>
         <div class="card" style="position:relative;">
           <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-            <span>&#x1F4C8; K 線圖 / 均線 / 布林通道</span>
+            <span>&#x1F4C8; K 線圖 / 均線<span class="ct-tip" data-tip="均線"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">均線是過去 N 天收盤價的平均值。MA5=5日均線、MA20=月線、MA60=季線。股價站上均線通常偏多。</span></span> / 布林通道<span class="ct-tip" data-tip="布林通道"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">布林通道顯示股價的正常波動範圍。碰到上緣可能偏高、碰到下緣可能偏低，突破通道代表走勢可能加速。</span></span></span>
             <div class="chart-zoom-controls">
               <button class="chart-zoom-btn" onclick="zoomChart('in')" title="放大">+</button>
               <button class="chart-zoom-btn" onclick="zoomChart('reset')" title="重置">&#x25CE;</button>
@@ -348,11 +413,11 @@
             <label class="chart-toggle"><input type="checkbox" id="tog-bb" checked onchange="toggleChartSeries('bb')"><span class="tog-dot" style="background:rgba(255,208,54,0.6);"></span>布林</label>
           </div>
           <div id="main-chart" class="chart-box chart-main"></div>
-          <div class="chart-stack-label">RSI (14)</div>
+          <div class="chart-stack-label">RSI (14)<span class="ct-tip" data-tip="RSI"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">相對強弱指標，衡量漲跌力道。RSI > 70 代表偏貴（超買），RSI < 30 代表偏便宜（超賣）。</span></span></div>
           <div id="rsi-chart" class="chart-box chart-indicator"></div>
-          <div class="chart-stack-label">KD 隨機指標</div>
+          <div class="chart-stack-label">KD 隨機指標<span class="ct-tip" data-tip="KD"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">判斷股價是否過熱或過冷的指標。K > 80 過熱（超買）、K < 20 過冷（超賣）。K 線上穿 D 線為黃金交叉（看漲）。</span></span></div>
           <div id="kd-chart" class="chart-box chart-indicator"></div>
-          <div class="chart-stack-label">MACD</div>
+          <div class="chart-stack-label">MACD<span class="ct-tip" data-tip="MACD"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">趨勢動能指標。金叉（MACD 線上穿信號線）看漲，死叉（下穿）看跌。柱狀體由負轉正代表動能轉強。</span></span></div>
           <div id="macd-chart" class="chart-box chart-indicator"></div>
         </div>
         <div class="grid-2">
@@ -380,7 +445,7 @@
         </div>
 
         <div class="card">
-          <div class="card-title">&#x1F4B3; 融資融券</div>
+          <div class="card-title">&#x1F4B3; 融資融券<span class="ct-tip" data-tip="融資融券"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">融資 = 借錢買股票，代表散戶看漲；融券 = 借股票來賣，代表有人看跌。券資比高代表看空力道較強。</span></span></div>
           <div id="stock-margin"><div class="text-muted">載入中...</div></div>
         </div>
 
@@ -417,12 +482,12 @@
     <!-- ==================== 當沖熱門 ==================== -->
     <div id="panel-daytrade" class="panel">
       <div class="card">
-        <div class="card-title">&#x26A1; 當日沖銷市場統計</div>
-        <div class="stat-grid" id="dt-stats"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div class="card-title">&#x26A1; 當日沖銷市場統計<span class="ct-tip" data-tip="當沖"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">當沖 = 同一天買進又賣出（或先賣後買），不留過夜。當沖比率高代表短線投機氣氛濃厚。</span></span></div>
+        <div class="stat-grid" id="dt-stats"><div class="skeleton-stat-grid"><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div></div></div>
       </div>
       <div class="card">
         <div class="card-title">&#x26A1; 當沖交易量 TOP 30</div>
-        <div class="table-wrap" id="dt-rank"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div class="table-wrap" id="dt-rank"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
     </div>
 
@@ -432,7 +497,7 @@
         <div class="card-title">&#x1F525; 台灣熱門題材族群</div>
         <div class="text-sm text-muted mb-16">追蹤市場熱門概念股族群。點擊代號可進入詳細分析。</div>
         <div class="tab-bar" id="sector-tabs"></div>
-        <div class="table-wrap" id="sector-stocks"><div class="loading-box"><div class="spinner"></div><div>載入題材資料...</div></div></div>
+        <div class="table-wrap" id="sector-stocks"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
     </div>
 
@@ -441,12 +506,12 @@
       <div class="card">
         <div class="card-title">&#x1F30D; 國際重要指數</div>
         <div class="text-sm text-muted mb-16">即時追蹤全球重要指數與美股焦點（資料來源：Yahoo Finance）</div>
-        <div id="global-indices"><div class="loading-box"><div class="spinner"></div><div>載入國際市場資料...</div></div></div>
+        <div id="global-indices"><div class="skeleton-stat-grid"><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div></div></div>
       </div>
       <div class="card">
         <div class="card-title">&#x1F1FA;&#x1F1F8; 美股焦點個股</div>
         <div class="tab-bar" id="us-sector-tabs"></div>
-        <div id="us-stocks"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div id="us-stocks"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
     </div>
 
@@ -459,7 +524,7 @@
         </div>
         <div class="text-sm text-muted mb-12">每日市場摘要，資料源：TWSE、Yahoo Finance、鉅亨網。僅供參考，不構成投資建議。</div>
         <div id="briefing-container">
-          <div class="loading-box"><div class="spinner"></div><div>載入晨訊...</div></div>
+          <div class="skeleton-table" style="gap:12px;"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-block" style="height:120px;"></div><div class="skeleton skeleton-line skeleton-line-medium"></div></div>
         </div>
       </div>
     </div>
@@ -471,7 +536,7 @@
         <div class="text-sm text-muted mb-16">
           根據三大法人動向、成交量能、價格動能等指標綜合評分（含上市+上櫃）。僅供參考，不構成投資建議。點擊代號可進入詳細分析。
         </div>
-        <div class="table-wrap" id="ai-rank"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div class="table-wrap" id="ai-rank"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
     </div>
 
@@ -583,7 +648,7 @@
         <button class="btn btn-primary" onclick="runCompare()">開始比較</button>
       </div>
       <div id="compare-loading" style="display:none;">
-        <div class="card"><div class="loading-box"><div class="spinner"></div><div>載入比較資料...</div></div></div>
+        <div class="card"><div class="skeleton skeleton-block"></div><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
       <div id="compare-chart-card" class="card" style="display:none;">
         <div class="card-title">&#x1F4C8; 走勢疊圖（%）</div>
@@ -635,7 +700,7 @@
 
       <div class="card" id="alerts-section" style="display:none;">
         <div class="card-title">&#x1F514; 我的到價提醒 <span class="plan-badge plan-badge-pro">PRO</span></div>
-        <div id="alerts-container"><div class="loading-box"><div class="spinner"></div></div></div>
+        <div id="alerts-container"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
     </div>
 
@@ -651,7 +716,7 @@
         </div>
         <div class="text-sm text-muted mb-12">由謙堂資本研究團隊發布，僅供參考，不構成投資建議。</div>
         <div id="opinion-container">
-          <div class="loading-box"><div class="spinner"></div></div>
+          <div class="skeleton-table" style="gap:12px;"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-block" style="height:80px;"></div><div class="skeleton skeleton-line skeleton-line-medium"></div></div>
         </div>
       </div>
     </div>
@@ -665,7 +730,7 @@
           管理後台 — 數據總覽
         </div>
         <div class="stat-grid" id="admin-stats">
-          <div class="loading-box"><div class="spinner"></div><div>載入中...</div></div>
+          <div class="skeleton-stat-grid"><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div><div class="skeleton skeleton-stat"></div></div>
         </div>
       </div>
 
@@ -716,7 +781,7 @@
 
         <div class="card-title" style="margin-top:8px;">目前有效名單</div>
         <div class="table-wrap" id="admin-picks-list">
-          <div class="loading-box"><div class="spinner"></div></div>
+          <div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div>
         </div>
       </div>
 
@@ -727,7 +792,7 @@
           會員列表
         </div>
         <div class="table-wrap" id="admin-users-list">
-          <div class="loading-box"><div class="spinner"></div></div>
+          <div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div>
         </div>
       </div>
 
@@ -738,7 +803,7 @@
           使用者行為紀錄（最近 200 筆）
         </div>
         <div class="table-wrap" id="admin-actions-list" style="max-height:400px;">
-          <div class="loading-box"><div class="spinner"></div></div>
+          <div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div>
         </div>
       </div>
 
@@ -749,7 +814,7 @@
           熱門關注排行（會員關注統計）
         </div>
         <div id="admin-popular-stocks">
-          <div class="loading-box"><div class="spinner"></div></div>
+          <div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div>
         </div>
       </div>
     </div>
@@ -898,7 +963,7 @@
   </div>
 </div>
 
-<script src="/js/app.js"></script>
+<script src="/js/app.js?v=28"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').then(reg => {

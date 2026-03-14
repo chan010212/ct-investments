@@ -3299,6 +3299,9 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
         if self.path == '/sw.js':
             self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
             self.send_header('Service-Worker-Allowed', '/')
+        # Force no-cache for static files during development/testing
+        if self.path.endswith(('.html', '.css', '.js')) and self.path != '/sw.js':
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
         super().end_headers()
 
     def log_message(self, fmt, *args):
