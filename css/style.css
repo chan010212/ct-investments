@@ -3763,24 +3763,33 @@
       /* Quiz levels */
       .quiz-levels { grid-template-columns: 1fr; gap: 10px; }
       .quiz-level-card { padding: 14px 16px; }
+      .quiz-level-desc { font-size: 12px; }
 
       /* Quiz overlay */
-      .quiz-card { padding: 16px 14px 40px; }
-      .quiz-question { font-size: 16px; line-height: 1.5; }
-      .quiz-option { padding: 12px 14px; font-size: 13px; }
-      .quiz-option-letter { width: 26px; height: 26px; font-size: 12px; }
+      .quiz-overlay { padding: 0 0 env(safe-area-inset-bottom, 60px); }
+      .quiz-card { padding: 16px 14px 80px; }
+      .quiz-header { flex-wrap: wrap; gap: 8px; }
+      .quiz-question { font-size: 16px; line-height: 1.6; word-break: break-word; }
+      .quiz-options { gap: 10px; }
+      .quiz-option { padding: 14px 14px; font-size: 14px; gap: 12px; min-height: 48px; line-height: 1.5; word-break: break-word; }
+      .quiz-option-letter { width: 32px; height: 32px; font-size: 13px; flex-shrink: 0; }
+      .quiz-explain { font-size: 13px; padding: 12px 14px; line-height: 1.6; word-break: break-word; }
+      .quiz-next-btn { padding: 14px; font-size: 15px; min-height: 48px; }
+      .quiz-progress-bar { margin-bottom: 20px; }
 
       /* Quiz result */
       .quiz-result { padding: 20px 0; }
       .quiz-result-icon { font-size: 48px; }
       .quiz-result-title { font-size: 20px; }
       .quiz-result-score { font-size: 32px; }
+      .quiz-result-msg { font-size: 13px; line-height: 1.6; word-break: break-word; }
       .quiz-result-btns { flex-direction: column; align-items: center; gap: 10px; }
-      .quiz-result-btns .btn { min-width: 0; width: 100%; max-width: 280px; }
+      .quiz-result-btns .btn { min-width: 0; width: 100%; max-width: 280px; min-height: 48px; }
       .quiz-result-badge { font-size: 14px; padding: 10px 18px; }
 
       /* Lesson overlay */
-      .acad-lesson-card { padding: 16px 14px 40px; }
+      .acad-lesson-overlay { padding: 0 0 env(safe-area-inset-bottom, 60px); }
+      .acad-lesson-card { padding: 16px 14px 80px; }
       .acad-lesson-title { font-size: 20px; }
       .acad-lesson-subtitle { font-size: 13px; }
       .acad-lesson-body { font-size: 14px; }
@@ -3815,9 +3824,13 @@
       .acad-lesson-card { padding: 12px 10px 36px; }
       .acad-lesson-chart { height: 190px; }
 
-      .quiz-card { padding: 12px 10px 36px; }
-      .quiz-question { font-size: 15px; }
-      .quiz-option { padding: 10px 12px; font-size: 12px; }
+      .quiz-card { padding: 12px 10px 80px; }
+      .quiz-question { font-size: 15px; line-height: 1.6; }
+      .quiz-options { gap: 8px; }
+      .quiz-option { padding: 12px 12px; font-size: 13px; gap: 10px; min-height: 44px; }
+      .quiz-option-letter { width: 28px; height: 28px; font-size: 12px; }
+      .quiz-explain { font-size: 12px; padding: 10px 12px; }
+      .quiz-next-btn { min-height: 44px; }
     }
 
     /* ===== #11 VISUAL HIERARCHY ===== */

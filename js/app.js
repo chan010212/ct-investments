@@ -7904,6 +7904,7 @@ function openLesson(idx) {
 
   overlay.style.display = 'block';
   overlay.scrollTop = 0;
+  lockBodyScroll();
 
   // Render chart after overlay is visible
   setTimeout(() => renderAcadChart(l.chart), 100);
@@ -7911,6 +7912,7 @@ function openLesson(idx) {
 
 function closeLesson() {
   document.getElementById('acad-lesson-overlay').style.display = 'none';
+  unlockBodyScroll();
   if (_acadChart) { _acadChart.remove(); _acadChart = null; }
   _acadCurrentLesson = null;
 }
@@ -8315,11 +8317,13 @@ function startQuiz(levelId) {
   if (!level) return;
   _quizState = { levelId, qIdx: 0, score: 0, answers: [] };
   document.getElementById('quiz-overlay').style.display = 'block';
+  lockBodyScroll();
   renderQuizQuestion();
 }
 
 function closeQuiz() {
   document.getElementById('quiz-overlay').style.display = 'none';
+  unlockBodyScroll();
   _quizState = null;
 }
 
