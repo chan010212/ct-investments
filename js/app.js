@@ -104,6 +104,19 @@ function toTpexDate(yyyymmdd) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Body scroll lock for modals (prevents background scrolling on mobile)
+let _scrollY = 0;
+function lockBodyScroll() {
+  _scrollY = window.scrollY;
+  document.body.classList.add('modal-open');
+  document.body.style.top = `-${_scrollY}px`;
+}
+function unlockBodyScroll() {
+  document.body.classList.remove('modal-open');
+  document.body.style.top = '';
+  window.scrollTo(0, _scrollY);
+}
+
 // ============================================================
 // iOS PWA: prevent whole-page drag/bounce
 // ============================================================
@@ -1248,6 +1261,7 @@ function initCharts() {
     return {
       width: el.clientWidth,
       height: h,
+      devicePixelRatio: window.devicePixelRatio || 1,
       layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: isMobile ? 10 : 11, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
       grid: { vertLines: { color: isMobile ? 'rgba(0, 240, 255, 0.06)' : 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: isMobile ? 'rgba(0, 240, 255, 0.06)' : 'rgba(0, 240, 255, 0.04)' } },
       crosshair: { mode: isMobile ? 1 : 0, vertLine: { color: 'rgba(0, 240, 255, 0.3)', style: 2, labelBackgroundColor: '#1a2540' }, horzLine: { color: 'rgba(0, 240, 255, 0.3)', style: 2, labelBackgroundColor: '#1a2540' } },
@@ -1812,6 +1826,7 @@ function _createTaiexChart(el) {
   const mob = window.innerWidth <= 768;
   chtTaiex = LightweightCharts.createChart(el, {
     autoSize: true,
+    devicePixelRatio: window.devicePixelRatio || 1,
     layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: mob ? 10 : 11 },
     grid: { vertLines: { color: 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: 'rgba(0, 240, 255, 0.04)' } },
     timeScale: { borderColor: 'rgba(0, 240, 255, 0.1)', timeVisible: true, secondsVisible: false, fixLeftEdge: true, fixRightEdge: true },
@@ -3526,7 +3541,12 @@ function rmWatchlist(code) {
 function handleResize() {
   [chtMain, chtRsi, chtKd, chtMacd, chtIntraday, chtTaiex].forEach(c => {
     if (c && c.chartElement) {
-      try { c.applyOptions({ width: c.chartElement().parentElement.clientWidth }); } catch(e) {}
+      try {
+        const p = c.chartElement().parentElement;
+        const o = { width: p.clientWidth };
+        if (p.clientHeight > 0) o.height = p.clientHeight;
+        c.applyOptions(o);
+      } catch(e) {}
     }
   });
   // After resize, ensure K-line shows most recent data
@@ -3664,6 +3684,7 @@ function toggleChartFullscreen() {
     _fsChart = LightweightCharts.createChart(body, {
       width: w, height: h,
       autoSize: false,
+      devicePixelRatio: window.devicePixelRatio || 1,
       layout: { background: { color: '#060b18' }, textColor: '#8896b3', fontSize: mob ? 10 : 12, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
       grid: { vertLines: { color: 'rgba(0,240,255,0.06)' }, horzLines: { color: 'rgba(0,240,255,0.06)' } },
       crosshair: {
@@ -4386,6 +4407,7 @@ function initIntradayChart() {
   chtIntraday = LightweightCharts.createChart(el, {
     width: el.clientWidth,
     height: el.clientHeight || 220,
+    devicePixelRatio: window.devicePixelRatio || 1,
     layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: mob ? 10 : 11, fontFamily: "'SF Pro Display', -apple-system, sans-serif" },
     grid: { vertLines: { color: mob ? 'rgba(0, 240, 255, 0.06)' : 'rgba(0, 240, 255, 0.04)' }, horzLines: { color: mob ? 'rgba(0, 240, 255, 0.06)' : 'rgba(0, 240, 255, 0.04)' } },
     timeScale: { borderColor: 'rgba(0, 240, 255, 0.1)', timeVisible: true, secondsVisible: false },
@@ -4885,6 +4907,7 @@ function openSearch() {
   searchInput.value = '';
   searchResults.innerHTML = '';
   gsIdx = -1;
+  lockBodyScroll();
   setTimeout(() => searchInput.focus(), 50);
 }
 
@@ -4892,6 +4915,7 @@ function closeSearch() {
   searchOverlay.classList.remove('show');
   searchInput.value = '';
   gsIdx = -1;
+  unlockBodyScroll();
 }
 
 searchOverlay.addEventListener('click', e => {
@@ -5156,6 +5180,7 @@ function showUpgradeModal(requiredPlan) {
   var overlay = document.getElementById('pricing-overlay');
   if (!overlay) return;
   overlay.classList.add('show');
+  lockBodyScroll();
   // Highlight the required plan card
   document.querySelectorAll('.plan-card').forEach(function(c) { c.style.opacity = ''; });
   updatePricingButtons();
@@ -5164,6 +5189,7 @@ function showUpgradeModal(requiredPlan) {
 function closePricingModal() {
   var overlay = document.getElementById('pricing-overlay');
   if (overlay) overlay.classList.remove('show');
+  unlockBodyScroll();
 }
 
 function updatePricingButtons() {
@@ -5287,6 +5313,7 @@ function openAuthModal() {
   gAuthMode = 'login';
   updateAuthUI();
   document.getElementById('auth-overlay').classList.add('show');
+  lockBodyScroll();
   document.getElementById('auth-error').textContent = '';
   document.getElementById('auth-email').value = '';
   document.getElementById('auth-password').value = '';
@@ -5296,6 +5323,7 @@ function openAuthModal() {
 
 function closeAuthModal() {
   document.getElementById('auth-overlay').classList.remove('show');
+  unlockBodyScroll();
 }
 
 function toggleAuthMode() {
@@ -6428,6 +6456,7 @@ async function runBacktest() {
       chtBacktest = LightweightCharts.createChart(chartEl, {
         width: chartEl.clientWidth,
         height: 250,
+        devicePixelRatio: window.devicePixelRatio || 1,
         layout: { background: { color: '#0c1632' }, textColor: '#6b7a99' },
         grid: { vertLines: { color: 'rgba(0,240,255,0.04)' }, horzLines: { color: 'rgba(0,240,255,0.04)' } },
         rightPriceScale: { borderVisible: false },
@@ -6655,6 +6684,7 @@ async function runCompare() {
       chtCompare = LightweightCharts.createChart(chartEl, {
         width: chartEl.clientWidth,
         height: 300,
+        devicePixelRatio: window.devicePixelRatio || 1,
         layout: { background: { color: '#0c1632' }, textColor: '#6b7a99' },
         grid: { vertLines: { color: 'rgba(0,240,255,0.04)' }, horzLines: { color: 'rgba(0,240,255,0.04)' } },
         rightPriceScale: { borderVisible: false },
@@ -6707,11 +6737,13 @@ function openPortfolioModal() {
   document.getElementById('port-notes').value = '';
   document.getElementById('port-error').textContent = '';
   document.getElementById('portfolio-overlay').classList.add('show');
+  lockBodyScroll();
   setTimeout(function() { document.getElementById('port-code').focus(); }, 100);
 }
 
 function closePortfolioModal() {
   document.getElementById('portfolio-overlay').classList.remove('show');
+  unlockBodyScroll();
 }
 
 document.addEventListener('click', function(e) {
@@ -6860,6 +6892,7 @@ function openAlertModal() {
   document.getElementById('alert-price').value = '';
   document.getElementById('alert-error').textContent = '';
   document.getElementById('alert-overlay').classList.add('show');
+  lockBodyScroll();
   // Pre-fill with current price if available
   var mis = gMisCache[code];
   if (mis && mis.price) document.getElementById('alert-price').value = mis.price;
@@ -6868,6 +6901,7 @@ function openAlertModal() {
 
 function closeAlertModal() {
   document.getElementById('alert-overlay').classList.remove('show');
+  unlockBodyScroll();
 }
 
 document.addEventListener('click', function(e) {
@@ -7412,12 +7446,14 @@ function openLegalOverlay(section) {
   var overlay = document.getElementById('legal-overlay');
   if (!overlay) return;
   overlay.style.display = 'flex';
+  lockBodyScroll();
   renderLegalTabs(section);
   renderLegalContent(section);
 }
 function closeLegalOverlay() {
   var overlay = document.getElementById('legal-overlay');
   if (overlay) overlay.style.display = 'none';
+  unlockBodyScroll();
 }
 function renderLegalTabs(activeSection) {
   var tabsEl = document.getElementById('legal-tabs');
@@ -7454,6 +7490,7 @@ function initOnboarding() {
   gOnboardStep = 0;
   renderOnboardingStep();
   document.getElementById('onboarding-overlay').style.display = 'flex';
+  lockBodyScroll();
 }
 function renderOnboardingStep() {
   var step = ONBOARDING_STEPS[gOnboardStep];
@@ -7485,6 +7522,7 @@ function skipOnboarding() { closeOnboarding(); }
 function closeOnboarding() {
   localStorage.setItem('ct-onboarding-done', '1');
   document.getElementById('onboarding-overlay').style.display = 'none';
+  unlockBodyScroll();
 }
 
 // Init onboarding after short delay
@@ -7898,6 +7936,7 @@ function renderAcadChart(type) {
   const chart = LightweightCharts.createChart(container, {
     width: container.clientWidth,
     height: container.clientHeight,
+    devicePixelRatio: window.devicePixelRatio || 1,
     layout: { background: { color: '#0a1128' }, textColor: '#8a9bc0', fontSize: 11 },
     grid: { vertLines: { color: 'rgba(0,240,255,0.05)' }, horzLines: { color: 'rgba(0,240,255,0.05)' } },
     crosshair: { mode: 0 },
@@ -8076,7 +8115,9 @@ function renderAcadChart(type) {
 
   // Resize on window resize
   const ro = new ResizeObserver(() => {
-    chart.applyOptions({ width: container.clientWidth });
+    const o = { width: container.clientWidth };
+    if (container.clientHeight > 0) o.height = container.clientHeight;
+    chart.applyOptions(o);
   });
   ro.observe(container);
 }
