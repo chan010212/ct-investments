@@ -105,16 +105,13 @@ function toTpexDate(yyyymmdd) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // Body scroll lock for modals (prevents background scrolling on mobile)
-let _scrollY = 0;
 function lockBodyScroll() {
-  _scrollY = window.scrollY;
+  document.documentElement.classList.add('modal-open');
   document.body.classList.add('modal-open');
-  document.body.style.top = `-${_scrollY}px`;
 }
 function unlockBodyScroll() {
+  document.documentElement.classList.remove('modal-open');
   document.body.classList.remove('modal-open');
-  document.body.style.top = '';
-  window.scrollTo(0, _scrollY);
 }
 
 // ============================================================

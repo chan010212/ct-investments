@@ -1,6 +1,6 @@
     /* ===== RESET & BASE ===== */
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body.modal-open { overflow: hidden !important; position: fixed; width: 100%; }
+    html.modal-open, body.modal-open { overflow: hidden !important; height: 100%; }
 
     :root {
       --bg: #060b18;
