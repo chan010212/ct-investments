@@ -1559,7 +1559,8 @@
         border-left: none;
         border-top: 2px solid transparent;
         white-space: nowrap;
-        min-width: 50px;
+        min-width: 56px;
+        min-height: 48px;
         flex-shrink: 0;
         text-align: center;
         justify-content: center;
@@ -1591,7 +1592,7 @@
 
       .panel {
         padding: 10px;
-        padding-bottom: 16px;
+        padding-bottom: 20px;
       }
 
       /* Cards */
@@ -1661,8 +1662,8 @@
       .ticker-item .ti-name { font-size: 13px; }
 
       /* Search modal */
-      .search-modal { width: 95vw; border-radius: 12px; }
-      .search-modal input { padding: 14px 16px; font-size: 15px; }
+      .search-modal { width: 95vw; max-width: calc(100vw - 24px); border-radius: 12px; }
+      .search-modal input { padding: 14px 16px; font-size: 16px; }
 
       /* Analysis quick nav on mobile */
       .analysis-nav {
@@ -1762,11 +1763,34 @@
       .br-inst-val { width: 70px; font-size: 13px; }
 
       /* Watchlist delete button visible on touch */
-      .stock-card .sc-del { opacity: 0.6; }
+      .stock-card .sc-del { opacity: 0.6; width: 36px; height: 36px; font-size: 16px; }
 
       /* Touch target fixes */
       .tab-btn { min-height: 44px; }
       .chart-zoom-btn { width: 40px; height: 40px; }
+      .chart-fs-close { width: 44px; height: 44px; font-size: 22px; }
+
+      /* Stock name overflow */
+      .stock-card .sc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+
+      /* Scrollbar thinner on mobile */
+      ::-webkit-scrollbar { width: 3px; height: 3px; }
+
+      /* Input fields prevent iOS auto-zoom */
+      input, select, textarea { font-size: 16px; }
+
+      /* Auth modal mobile */
+      .auth-modal { padding: 24px 18px; max-width: calc(100vw - 32px); }
+      .auth-modal .auth-field input { font-size: 16px; padding: 12px 14px; }
+      .auth-modal .auth-btn { min-height: 44px; }
+
+      /* Compare inputs mobile */
+      #compare-inputs .input { width: calc(50% - 8px) !important; flex: 1 1 calc(50% - 8px); min-width: 0; }
+
+      /* Fullscreen chart safe area */
+      .chart-fullscreen-overlay { padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0); }
+      .chart-fs-header { padding: 8px 12px; }
+      .chart-fs-ohlcv { font-size: 10px; gap: 4px; flex-wrap: wrap; }
     }
 
     /* --- PHONE SMALL --- */
@@ -1780,7 +1804,7 @@
 
       .nav-svg { width: 18px; height: 18px; }
 
-      .panel { padding: 8px; padding-bottom: 12px; }
+      .panel { padding: 8px; padding-bottom: 16px; }
 
       .card { padding: 12px; margin-bottom: 10px; }
       .card-title { font-size: 16px; margin-bottom: 10px; }
@@ -1868,6 +1892,9 @@
 
       /* Watchlist sort tabs smaller */
       .tab-btn { padding: 7px 12px; font-size: 12px; min-height: 40px; }
+
+      /* Compare inputs stacked on small phone */
+      #compare-inputs .input { width: 100% !important; flex: 1 1 100%; }
 
       /* Briefing small phone */
       .br-sentiment { padding: 12px 10px; }
@@ -3067,10 +3094,10 @@
       .ct-tip-popup {
         position: fixed;
         bottom: auto;
-        top: auto;
+        top: 50%;
         left: 16px !important;
         right: 16px;
-        transform: none;
+        transform: translateY(-50%);
         max-width: none;
         width: calc(100vw - 32px);
         z-index: 10000;
