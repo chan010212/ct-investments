@@ -2820,6 +2820,15 @@
       flex-shrink: 0;
     }
 
+    .plan-card-trial {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--green);
+      margin-bottom: 8px;
+      letter-spacing: 0.3px;
+    }
+
     .plan-card-btn {
       display: block;
       width: 100%;
