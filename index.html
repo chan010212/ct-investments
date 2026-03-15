@@ -20,7 +20,7 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%23060b18'/><text x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='system-ui' font-size='28' font-weight='800' fill='%2300f0ff'>CT</text></svg>">
   <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
-  <link rel="stylesheet" href="/css/style.css?v=31">
+  <link rel="stylesheet" href="/css/style.css?v=32">
 </head>
 <body>
 <!-- Futuristic Background Effects -->
@@ -87,6 +87,9 @@
           <path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
         </svg><span>觀點</span>
       </div>
+      <div class="nav-item nav-upgrade-item" id="nav-upgrade" onclick="showUpgradeModal()">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><span>升級 Pro</span>
+      </div>
       <div class="nav-item nav-admin" data-tab="admin" style="display:none;">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>管理</span>
       </div>
@@ -104,6 +107,11 @@
       </div>
     </div>
     <div class="sidebar-footer">
+      <div class="footer-legal">
+        <a onclick="openLegalOverlay('disclaimer')">免責聲明</a><span>|</span>
+        <a onclick="openLegalOverlay('privacy')">隱私權政策</a><span>|</span>
+        <a onclick="openLegalOverlay('terms')">服務條款</a>
+      </div>
       <div class="disclaimer">CT Investments CO., LTD</div>
     </div>
     <div class="status-bar">
@@ -193,6 +201,36 @@
 
     <!-- ==================== 市場總覽 ==================== -->
     <div id="panel-overview" class="panel active">
+
+      <!-- #12 Hero Banner (non-logged-in) -->
+      <div class="hero-banner" id="hero-banner" style="display:none;">
+        <button class="hero-dismiss" onclick="dismissHero()">&times;</button>
+        <h2 class="hero-title">讓 AI 幫你看盤</h2>
+        <p class="hero-subtitle">輸入股票代號，立即取得專業分析</p>
+        <div class="hero-search">
+          <input type="text" class="hero-search-input" id="hero-search-input" placeholder="輸入代號或名稱，例如 2330 台積電" autocomplete="off">
+          <button class="btn btn-primary" onclick="heroSearch()">立即開始</button>
+        </div>
+      </div>
+
+      <!-- #5 AI 今日看盤重點 -->
+      <div class="card ai-summary-card" id="ai-market-summary-card" style="display:none;">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>&#x1F916; AI 今日看盤重點</span>
+          <span class="text-sm text-muted" id="ai-summary-time"></span>
+        </div>
+        <div id="ai-market-summary-content" class="ai-summary-text"></div>
+      </div>
+
+      <!-- #8 關注清單快覽 -->
+      <div class="card watchlist-overview-card" id="wl-overview-card" style="display:none;">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>&#x2B50; 我的關注</span>
+          <a class="wl-view-all" onclick="switchTab('watchlist',true)">查看全部 &rarr;</a>
+        </div>
+        <div id="wl-overview-content"></div>
+      </div>
+
       <div class="card">
         <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
           <span><span class="icon">&#x1F4CA;</span> 市場總覽</span>
@@ -840,7 +878,10 @@
 <div class="auth-modal-overlay" id="auth-overlay">
   <div class="auth-modal" style="position:relative;">
     <button class="auth-close" onclick="closeAuthModal()">&#x2715;</button>
-    <h2 id="auth-title">登入</h2>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-mode="login" onclick="setAuthMode('login')">登入</button>
+      <button class="auth-tab" data-mode="register" onclick="setAuthMode('register')">註冊</button>
+    </div>
     <div class="auth-sub">CT Investments 謙堂資本</div>
     <div id="auth-name-field" class="auth-field" style="display:none;">
       <label>顯示名稱</label>
@@ -854,12 +895,13 @@
       <label>密碼</label>
       <input type="password" id="auth-password" placeholder="至少 6 個字元">
     </div>
+    <div id="auth-confirm-field" class="auth-field" style="display:none;">
+      <label>確認密碼</label>
+      <input type="password" id="auth-confirm-password" placeholder="再次輸入密碼">
+    </div>
+    <div class="auth-forgot" id="auth-forgot"><a onclick="alert('請聯繫 chan010212@gmail.com 重設密碼')">忘記密碼?</a></div>
     <div class="auth-error" id="auth-error"></div>
     <button class="auth-btn" id="auth-submit" onclick="submitAuth()">登入</button>
-    <div class="auth-switch">
-      <span id="auth-switch-text">還沒有帳號？</span>
-      <a id="auth-switch-link" onclick="toggleAuthMode()">立即註冊</a>
-    </div>
   </div>
 </div>
 
@@ -970,7 +1012,26 @@
   </div>
 </div>
 
-<script src="/js/app.js?v=31"></script>
+<!-- LEGAL OVERLAY -->
+<div class="legal-overlay" id="legal-overlay" style="display:none;">
+  <div class="legal-modal">
+    <button class="legal-close" onclick="closeLegalOverlay()">&times;</button>
+    <div class="legal-tabs" id="legal-tabs"></div>
+    <div class="legal-content" id="legal-content"></div>
+  </div>
+</div>
+
+<!-- ONBOARDING OVERLAY -->
+<div class="onboarding-overlay" id="onboarding-overlay" style="display:none;">
+  <div class="onboarding-card">
+    <button class="onboarding-skip" onclick="skipOnboarding()">略過</button>
+    <div class="onboarding-step" id="onboarding-step"></div>
+    <div class="onboarding-dots" id="onboarding-dots"></div>
+    <button class="btn btn-primary onboarding-next" id="onboarding-next" onclick="nextOnboardingStep()">下一步</button>
+  </div>
+</div>
+
+<script src="/js/app.js?v=32"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').then(reg => {

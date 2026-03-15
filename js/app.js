@@ -7200,6 +7200,336 @@ function toggleViewMode() {
 initViewMode();
 
 // ============================================================
+// #9 — Auth Tabs (Login/Register Separation)
+// ============================================================
+function setAuthMode(mode) {
+  gAuthMode = mode;
+  updateAuthUI();
+}
+
+// Override existing updateAuthUI
+(function() {
+  var _origUpdate = window.updateAuthUI;
+  window.updateAuthUI = function() {
+    var isLogin = gAuthMode === 'login';
+    document.getElementById('auth-submit').textContent = isLogin ? '登入' : '註冊';
+    document.getElementById('auth-name-field').style.display = isLogin ? 'none' : 'block';
+    var confirmField = document.getElementById('auth-confirm-field');
+    if (confirmField) confirmField.style.display = isLogin ? 'none' : 'block';
+    var forgotEl = document.getElementById('auth-forgot');
+    if (forgotEl) forgotEl.style.display = isLogin ? 'block' : 'none';
+    document.getElementById('auth-error').textContent = '';
+    // Update tab active states
+    document.querySelectorAll('.auth-tab').forEach(function(t) {
+      t.classList.toggle('active', t.dataset.mode === gAuthMode);
+    });
+  };
+})();
+
+// Patch submitAuth to validate confirm password
+(function() {
+  var _origSubmit = window.submitAuth;
+  var _patched = false;
+  var origFn = submitAuth;
+  window.submitAuth = async function() {
+    if (gAuthMode === 'register') {
+      var pw = document.getElementById('auth-password').value;
+      var cpw = document.getElementById('auth-confirm-password');
+      if (cpw && cpw.value !== pw) {
+        document.getElementById('auth-error').textContent = '兩次密碼不一致';
+        return;
+      }
+    }
+    return origFn.apply(this, arguments);
+  };
+})();
+
+// ============================================================
+// #12 — Hero Banner (CTA for non-logged-in users)
+// ============================================================
+function initHeroBanner() {
+  var banner = document.getElementById('hero-banner');
+  if (!banner) return;
+  var dismissed = localStorage.getItem('ct-hero-dismissed') === '1';
+  if (!gCurrentUser && !dismissed) {
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+function dismissHero() {
+  localStorage.setItem('ct-hero-dismissed', '1');
+  var banner = document.getElementById('hero-banner');
+  if (banner) banner.style.display = 'none';
+}
+function heroSearch() {
+  var input = document.getElementById('hero-search-input');
+  var val = (input ? input.value : '').trim();
+  if (!val) return;
+  // Try to analyze stock
+  document.getElementById('stock-input').value = val;
+  switchTab('analysis', true);
+  setTimeout(function() { analyzeStock(); }, 200);
+  dismissHero();
+}
+
+// ============================================================
+// #5 — AI Market Summary (client-side generated)
+// ============================================================
+function renderAIMarketSummary() {
+  var card = document.getElementById('ai-market-summary-card');
+  var content = document.getElementById('ai-market-summary-content');
+  if (!card || !content) return;
+
+  // Need market data
+  var statsEl = document.getElementById('market-stats');
+  if (!statsEl || statsEl.querySelector('.skeleton')) return;
+
+  var parts = [];
+
+  // Try to get TAIEX data from ticker or stat boxes
+  var statBoxes = statsEl.querySelectorAll('.stat-box');
+  var taiexVal = '', taiexChg = '';
+  statBoxes.forEach(function(box) {
+    var label = box.querySelector('.label');
+    var value = box.querySelector('.value');
+    if (label && label.textContent.includes('加權')) {
+      taiexVal = value ? value.textContent : '';
+    }
+    if (label && label.textContent.includes('漲跌')) {
+      taiexChg = value ? value.textContent : '';
+    }
+  });
+
+  if (taiexVal) {
+    var isUp = !taiexChg.includes('-') && !taiexChg.includes('▼');
+    parts.push('今日加權指數收在 ' + taiexVal + '，' + (taiexChg ? (isUp ? '上漲' : '下跌') + ' ' + taiexChg.replace(/[+▲▼-]/g,'').trim() : '') + '。');
+  }
+
+  // Get institutional data
+  var instEl = document.getElementById('inst-summary-overview');
+  if (instEl && !instEl.querySelector('.skeleton')) {
+    var instBoxes = instEl.querySelectorAll('.stat-box');
+    var instParts = [];
+    instBoxes.forEach(function(box) {
+      var label = box.querySelector('.label');
+      var value = box.querySelector('.value');
+      if (label && value) {
+        var name = label.textContent.trim();
+        var val = value.textContent.trim();
+        var isBuy = !val.includes('-');
+        instParts.push(name + (isBuy ? '買超' : '賣超') + ' ' + val.replace(/[+-]/g,''));
+      }
+    });
+    if (instParts.length > 0) {
+      parts.push('三大法人動態：' + instParts.join('、') + '。');
+    }
+  }
+
+  // Get advance/decline
+  var adEl = document.getElementById('advance-decline');
+  if (adEl && adEl.textContent && !adEl.querySelector('.skeleton')) {
+    var text = adEl.textContent;
+    var upMatch = text.match(/上漲.*?(\d+)/);
+    var downMatch = text.match(/下跌.*?(\d+)/);
+    if (upMatch && downMatch) {
+      var up = parseInt(upMatch[1]), down = parseInt(downMatch[1]);
+      var mood = up > down ? '偏多' : up < down ? '偏空' : '持平';
+      parts.push('上漲 ' + up + ' 家、下跌 ' + down + ' 家，市場氣氛' + mood + '。');
+    }
+  }
+
+  if (parts.length === 0) return;
+
+  content.textContent = parts.join('');
+  card.style.display = 'block';
+  var timeEl = document.getElementById('ai-summary-time');
+  if (timeEl) {
+    var now = new Date();
+    timeEl.textContent = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0') + ' 更新';
+  }
+}
+
+// ============================================================
+// #8 — Watchlist Overview on Homepage
+// ============================================================
+function renderWatchlistOverview() {
+  var card = document.getElementById('wl-overview-card');
+  var content = document.getElementById('wl-overview-content');
+  if (!card || !content) return;
+  if (!gCurrentUser) { card.style.display = 'none'; return; }
+
+  var wl = typeof wlGet === 'function' ? wlGet() : [];
+  if (!wl || wl.length === 0) {
+    content.innerHTML = '<div class="wl-overview-cta">還沒關注任何股票？試試搜尋 <a onclick="openGlobalSearch()">台積電 (2330)</a></div>';
+    card.style.display = 'block';
+    return;
+  }
+
+  var items = wl.slice(0, 5);
+  var html = '<div class="wl-overview-list">';
+  items.forEach(function(code) {
+    var data = (typeof gStockMap !== 'undefined' && gStockMap[code]) || (typeof gMiscCache !== 'undefined' && gMiscCache[code]);
+    var name = data ? (data.name || data.n || code) : code;
+    var price = data ? (data.close || data.price || data.c || '-') : '-';
+    var chg = data ? (data.change_pct || data.pct || data.cp || 0) : 0;
+    var chgNum = parseFloat(chg) || 0;
+    var color = chgNum > 0 ? 'var(--red)' : chgNum < 0 ? 'var(--green)' : 'var(--text2)';
+    var sign = chgNum > 0 ? '+' : '';
+    html += '<div class="wl-overview-item" onclick="document.getElementById(\'stock-input\').value=\'' + code + '\';switchTab(\'analysis\',true);setTimeout(analyzeStock,200);">';
+    html += '<div><span class="wl-ov-code">' + code + '</span><span class="wl-ov-name">' + name + '</span></div>';
+    html += '<div><span class="wl-ov-price" style="color:' + color + '">' + price + '</span>';
+    html += '<span class="wl-ov-chg" style="color:' + color + '">' + sign + chgNum.toFixed(2) + '%</span></div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  if (wl.length > 5) {
+    html += '<div style="text-align:center;margin-top:8px;font-size:12px;color:var(--text2);">還有 ' + (wl.length - 5) + ' 檔...</div>';
+  }
+  content.innerHTML = html;
+  card.style.display = 'block';
+}
+
+// ============================================================
+// #14 — Legal Overlay
+// ============================================================
+var LEGAL_CONTENT = {
+  disclaimer: {
+    title: '免責聲明',
+    html: '<h3>投資風險警告</h3><p>本網站所提供之所有資訊、分析報告、AI 建議及任何內容，僅供參考用途，不構成任何投資建議或推薦。投資涉及風險，過去的績效不保證未來的收益。</p><h3>資料來源說明</h3><p>本站股票數據來自台灣證券交易所（TWSE）、證券櫃檯買賣中心（TPEx）及 Yahoo Finance 等公開資訊。我們盡力確保資料準確，但不對資料的即時性、完整性或正確性做出保證。</p><h3>AI 分析免責</h3><p>本站 AI 選股與分析功能係基於歷史數據與統計模型產出，其結果可能存在誤差，使用者應自行判斷並承擔投資決策之風險。</p><h3>責任限制</h3><p>CT Investments 謙堂資本及其開發團隊不對因使用本站資訊而直接或間接產生的任何損失負責。</p>'
+  },
+  privacy: {
+    title: '隱私權政策',
+    html: '<h3>個人資料蒐集</h3><p>我們僅蒐集註冊所需之 Email 及顯示名稱。不會蒐集身分證號碼、信用卡號碼等敏感資訊。</p><h3>資料用途</h3><ul><li>帳號認證與登入</li><li>提供個人化服務（關注清單、到價提醒）</li><li>網站使用行為分析（改善服務品質）</li></ul><h3>資料保護</h3><p>密碼以 SHA-256 加密儲存，傳輸全程使用 HTTPS 加密。我們不會將您的個人資料出售或提供給第三方。</p><h3>Cookie 使用</h3><p>本站使用 localStorage 儲存使用者偏好設定，不使用第三方追蹤 Cookie。</p>'
+  },
+  terms: {
+    title: '服務條款',
+    html: '<h3>服務說明</h3><p>CT Investments 謙堂資本提供台灣股票市場資訊查詢、技術分析、AI 選股等線上服務。</p><h3>帳號規範</h3><ul><li>每人限註冊一個帳號</li><li>帳號不得轉讓或與他人共用</li><li>使用者應妥善保管帳號密碼</li></ul><h3>付費方案</h3><ul><li>Free 方案永久免費</li><li>Pro / Pro+ 方案提供 7 天免費試用</li><li>試用期間可隨時取消，不收取任何費用</li><li>試用期滿後自動轉為月繳</li></ul><h3>退費政策</h3><ul><li>年繳方案：購買後 14 天內可申請全額退費</li><li>月繳方案：當月不退費，可取消下月續訂</li><li>退費請聯繫 chan010212@gmail.com</li></ul><h3>服務變更</h3><p>我們保留隨時修改服務內容、價格及條款之權利，變更將於網站上公告。</p>'
+  }
+};
+
+function openLegalOverlay(section) {
+  var overlay = document.getElementById('legal-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  renderLegalTabs(section);
+  renderLegalContent(section);
+}
+function closeLegalOverlay() {
+  var overlay = document.getElementById('legal-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+function renderLegalTabs(activeSection) {
+  var tabsEl = document.getElementById('legal-tabs');
+  if (!tabsEl) return;
+  var html = '';
+  ['disclaimer','privacy','terms'].forEach(function(key) {
+    var d = LEGAL_CONTENT[key];
+    html += '<button class="legal-tab' + (key === activeSection ? ' active' : '') + '" onclick="switchLegalTab(\'' + key + '\')">' + d.title + '</button>';
+  });
+  tabsEl.innerHTML = html;
+}
+function renderLegalContent(section) {
+  var el = document.getElementById('legal-content');
+  if (!el || !LEGAL_CONTENT[section]) return;
+  el.innerHTML = LEGAL_CONTENT[section].html;
+}
+function switchLegalTab(section) {
+  renderLegalTabs(section);
+  renderLegalContent(section);
+}
+
+// ============================================================
+// #6 — Onboarding (3-step welcome)
+// ============================================================
+var ONBOARDING_STEPS = [
+  { icon: '📊', title: '掌握大盤方向', desc: '總覽頁一眼看出今天市場漲還是跌，加權指數、法人動向、成交量一目瞭然。' },
+  { icon: '🔍', title: '搜尋感興趣的股票', desc: '按 Ctrl+K 或點擊個股分析，輸入名稱或代號即可查看完整技術分析與 AI 建議。' },
+  { icon: '⭐', title: '加入關注清單追蹤', desc: '把你關心的股票加入關注清單，每天快速追蹤漲跌動態，不再錯過任何變化。' }
+];
+var gOnboardStep = 0;
+
+function initOnboarding() {
+  if (localStorage.getItem('ct-onboarding-done') === '1') return;
+  gOnboardStep = 0;
+  renderOnboardingStep();
+  document.getElementById('onboarding-overlay').style.display = 'flex';
+}
+function renderOnboardingStep() {
+  var step = ONBOARDING_STEPS[gOnboardStep];
+  var el = document.getElementById('onboarding-step');
+  if (!el) return;
+  el.innerHTML = '<div class="onboarding-icon">' + step.icon + '</div><div class="onboarding-title">' + step.title + '</div><div class="onboarding-desc">' + step.desc + '</div>';
+  // Dots
+  var dotsEl = document.getElementById('onboarding-dots');
+  if (dotsEl) {
+    var html = '';
+    for (var i = 0; i < ONBOARDING_STEPS.length; i++) {
+      html += '<div class="onboarding-dot' + (i === gOnboardStep ? ' active' : '') + '"></div>';
+    }
+    dotsEl.innerHTML = html;
+  }
+  // Button text
+  var btn = document.getElementById('onboarding-next');
+  if (btn) btn.textContent = gOnboardStep === ONBOARDING_STEPS.length - 1 ? '開始使用' : '下一步';
+}
+function nextOnboardingStep() {
+  gOnboardStep++;
+  if (gOnboardStep >= ONBOARDING_STEPS.length) {
+    closeOnboarding();
+    return;
+  }
+  renderOnboardingStep();
+}
+function skipOnboarding() { closeOnboarding(); }
+function closeOnboarding() {
+  localStorage.setItem('ct-onboarding-done', '1');
+  document.getElementById('onboarding-overlay').style.display = 'none';
+}
+
+// Init onboarding after short delay
+setTimeout(initOnboarding, 1500);
+
+// ============================================================
+// #10 — Show/Hide upgrade nav based on plan
+// ============================================================
+function updateUpgradeNav() {
+  var el = document.getElementById('nav-upgrade');
+  if (!el) return;
+  if (gCurrentUser && (gCurrentPlan === 'pro' || gCurrentPlan === 'proplus' || gCurrentUser.role === 'admin')) {
+    el.style.display = 'none';
+  } else {
+    el.style.display = '';
+  }
+}
+
+// Patch renderUserSection to call our new functions
+(function() {
+  var _origRender = window.renderUserSection;
+  if (_origRender) {
+    window.renderUserSection = function() {
+      _origRender.apply(this, arguments);
+      initHeroBanner();
+      updateUpgradeNav();
+      setTimeout(renderWatchlistOverview, 500);
+    };
+  }
+})();
+
+// Hook into overview rendering to add AI summary + watchlist
+(function() {
+  // Use MutationObserver on market-stats to detect when data loads
+  var statsEl = document.getElementById('market-stats');
+  if (statsEl) {
+    var observer = new MutationObserver(function() {
+      setTimeout(renderAIMarketSummary, 300);
+      setTimeout(renderWatchlistOverview, 500);
+    });
+    observer.observe(statsEl, { childList: true, subtree: true });
+  }
+})();
+
+// ============================================================
 // Tooltip — mobile tap support
 // ============================================================
 (function() {
