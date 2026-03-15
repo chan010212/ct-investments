@@ -104,16 +104,6 @@ function toTpexDate(yyyymmdd) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Body scroll lock for modals (prevents background scrolling on mobile)
-function lockBodyScroll() {
-  document.documentElement.classList.add('modal-open');
-  document.body.classList.add('modal-open');
-}
-function unlockBodyScroll() {
-  document.documentElement.classList.remove('modal-open');
-  document.body.classList.remove('modal-open');
-}
-
 // ============================================================
 // iOS PWA: prevent whole-page drag/bounce
 // ============================================================
@@ -4904,7 +4894,7 @@ function openSearch() {
   searchInput.value = '';
   searchResults.innerHTML = '';
   gsIdx = -1;
-  lockBodyScroll();
+
   setTimeout(() => searchInput.focus(), 50);
 }
 
@@ -4912,7 +4902,7 @@ function closeSearch() {
   searchOverlay.classList.remove('show');
   searchInput.value = '';
   gsIdx = -1;
-  unlockBodyScroll();
+
 }
 
 searchOverlay.addEventListener('click', e => {
@@ -5177,7 +5167,7 @@ function showUpgradeModal(requiredPlan) {
   var overlay = document.getElementById('pricing-overlay');
   if (!overlay) return;
   overlay.classList.add('show');
-  lockBodyScroll();
+
   // Highlight the required plan card
   document.querySelectorAll('.plan-card').forEach(function(c) { c.style.opacity = ''; });
   updatePricingButtons();
@@ -5186,7 +5176,7 @@ function showUpgradeModal(requiredPlan) {
 function closePricingModal() {
   var overlay = document.getElementById('pricing-overlay');
   if (overlay) overlay.classList.remove('show');
-  unlockBodyScroll();
+
 }
 
 function updatePricingButtons() {
@@ -5310,7 +5300,7 @@ function openAuthModal() {
   gAuthMode = 'login';
   updateAuthUI();
   document.getElementById('auth-overlay').classList.add('show');
-  lockBodyScroll();
+
   document.getElementById('auth-error').textContent = '';
   document.getElementById('auth-email').value = '';
   document.getElementById('auth-password').value = '';
@@ -5320,7 +5310,7 @@ function openAuthModal() {
 
 function closeAuthModal() {
   document.getElementById('auth-overlay').classList.remove('show');
-  unlockBodyScroll();
+
 }
 
 function toggleAuthMode() {
@@ -6734,13 +6724,13 @@ function openPortfolioModal() {
   document.getElementById('port-notes').value = '';
   document.getElementById('port-error').textContent = '';
   document.getElementById('portfolio-overlay').classList.add('show');
-  lockBodyScroll();
+
   setTimeout(function() { document.getElementById('port-code').focus(); }, 100);
 }
 
 function closePortfolioModal() {
   document.getElementById('portfolio-overlay').classList.remove('show');
-  unlockBodyScroll();
+
 }
 
 document.addEventListener('click', function(e) {
@@ -6889,7 +6879,7 @@ function openAlertModal() {
   document.getElementById('alert-price').value = '';
   document.getElementById('alert-error').textContent = '';
   document.getElementById('alert-overlay').classList.add('show');
-  lockBodyScroll();
+
   // Pre-fill with current price if available
   var mis = gMisCache[code];
   if (mis && mis.price) document.getElementById('alert-price').value = mis.price;
@@ -6898,7 +6888,7 @@ function openAlertModal() {
 
 function closeAlertModal() {
   document.getElementById('alert-overlay').classList.remove('show');
-  unlockBodyScroll();
+
 }
 
 document.addEventListener('click', function(e) {
@@ -7443,14 +7433,14 @@ function openLegalOverlay(section) {
   var overlay = document.getElementById('legal-overlay');
   if (!overlay) return;
   overlay.style.display = 'flex';
-  lockBodyScroll();
+
   renderLegalTabs(section);
   renderLegalContent(section);
 }
 function closeLegalOverlay() {
   var overlay = document.getElementById('legal-overlay');
   if (overlay) overlay.style.display = 'none';
-  unlockBodyScroll();
+
 }
 function renderLegalTabs(activeSection) {
   var tabsEl = document.getElementById('legal-tabs');
@@ -7487,7 +7477,7 @@ function initOnboarding() {
   gOnboardStep = 0;
   renderOnboardingStep();
   document.getElementById('onboarding-overlay').style.display = 'flex';
-  lockBodyScroll();
+
 }
 function renderOnboardingStep() {
   var step = ONBOARDING_STEPS[gOnboardStep];
@@ -7519,7 +7509,7 @@ function skipOnboarding() { closeOnboarding(); }
 function closeOnboarding() {
   localStorage.setItem('ct-onboarding-done', '1');
   document.getElementById('onboarding-overlay').style.display = 'none';
-  unlockBodyScroll();
+
 }
 
 // Init onboarding after short delay
@@ -7901,7 +7891,7 @@ function openLesson(idx) {
 
   overlay.style.display = 'block';
   overlay.scrollTop = 0;
-  lockBodyScroll();
+
 
   // Render chart after overlay is visible
   setTimeout(() => renderAcadChart(l.chart), 100);
@@ -7909,7 +7899,7 @@ function openLesson(idx) {
 
 function closeLesson() {
   document.getElementById('acad-lesson-overlay').style.display = 'none';
-  unlockBodyScroll();
+
   if (_acadChart) { _acadChart.remove(); _acadChart = null; }
   _acadCurrentLesson = null;
 }
@@ -8314,13 +8304,13 @@ function startQuiz(levelId) {
   if (!level) return;
   _quizState = { levelId, qIdx: 0, score: 0, answers: [] };
   document.getElementById('quiz-overlay').style.display = 'block';
-  lockBodyScroll();
+
   renderQuizQuestion();
 }
 
 function closeQuiz() {
   document.getElementById('quiz-overlay').style.display = 'none';
-  unlockBodyScroll();
+
   _quizState = null;
 }
 
