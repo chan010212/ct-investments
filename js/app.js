@@ -5187,8 +5187,8 @@ function updatePricingButtons() {
 
 var gPricingPeriod = 'monthly';
 var PLAN_PRICING_TWD = {
-  pro: { monthly: 599, yearly: 5990 },
-  proplus: { monthly: 799, yearly: 7990 }
+  pro: { monthly: 699, yearly: 6990 },
+  proplus: { monthly: 999, yearly: 9990 }
 };
 
 function setPricingPeriod(period) {
