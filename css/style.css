@@ -3310,8 +3310,8 @@
     .acad-lesson-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(4,8,20,0.95);
-      z-index: 5000;
+      background: #060b18;
+      z-index: 9500;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       animation: panelIn 0.3s ease;
@@ -3564,8 +3564,8 @@
     .quiz-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(4,8,20,0.97);
-      z-index: 5000;
+      background: #060b18;
+      z-index: 9500;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       animation: panelIn 0.3s ease;
@@ -3573,7 +3573,7 @@
     .quiz-card {
       max-width: 640px;
       margin: 0 auto;
-      padding: 30px 24px 60px;
+      padding: 30px 24px 40px;
     }
     .quiz-header {
       display: flex;
@@ -3765,8 +3765,7 @@
       .quiz-level-desc { font-size: 12px; }
 
       /* Quiz overlay */
-      .quiz-overlay { padding: 0 0 env(safe-area-inset-bottom, 60px); }
-      .quiz-card { padding: 16px 14px 80px; }
+      .quiz-card { padding: 16px 14px 30px; }
       .quiz-header { flex-wrap: wrap; gap: 8px; }
       .quiz-question { font-size: 16px; line-height: 1.6; word-break: break-word; }
       .quiz-options { gap: 10px; }
@@ -3787,8 +3786,7 @@
       .quiz-result-badge { font-size: 14px; padding: 10px 18px; }
 
       /* Lesson overlay */
-      .acad-lesson-overlay { padding: 0 0 env(safe-area-inset-bottom, 60px); }
-      .acad-lesson-card { padding: 16px 14px 80px; }
+      .acad-lesson-card { padding: 16px 14px 30px; }
       .acad-lesson-title { font-size: 20px; }
       .acad-lesson-subtitle { font-size: 13px; }
       .acad-lesson-body { font-size: 14px; }
@@ -3823,7 +3821,7 @@
       .acad-lesson-card { padding: 12px 10px 36px; }
       .acad-lesson-chart { height: 190px; }
 
-      .quiz-card { padding: 12px 10px 80px; }
+      .quiz-card { padding: 12px 10px 24px; }
       .quiz-question { font-size: 15px; line-height: 1.6; }
       .quiz-options { gap: 8px; }
       .quiz-option { padding: 12px 12px; font-size: 13px; gap: 10px; min-height: 44px; }
