@@ -4269,6 +4269,7 @@ const US_STOCK_GROUPS = {
     { symbol: 'AMD', name: 'AMD' },
     { symbol: 'AVGO', name: 'Broadcom' },
     { symbol: 'TSM', name: '台積電ADR' },
+    { symbol: 'MU', name: '美光 Micron' },
     { symbol: 'ASML', name: 'ASML' },
     { symbol: 'ARM', name: 'ARM' },
     { symbol: 'MRVL', name: 'Marvell' },
