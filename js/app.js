@@ -1112,6 +1112,7 @@ function switchTab(tabName, pushHistory, restoreScroll) {
   if (tabName === 'academy') initAcademyFull();
   trackAction('view_tab', tabName);
   updateBackBtn();
+  if (window.innerWidth <= 768) updateMobileNavActive(tabName);
 }
 
 window.addEventListener('popstate', function(e) {
@@ -5602,10 +5603,12 @@ let gAdminLoaded = false;
 
 function showAdminNav() {
   document.querySelectorAll('.nav-admin').forEach(el => { el.style.display = ''; });
+  document.querySelectorAll('.mbn-more-admin').forEach(el => { el.style.display = ''; });
 }
 
 function hideAdminNav() {
   document.querySelectorAll('.nav-admin').forEach(el => { el.style.display = 'none'; });
+  document.querySelectorAll('.mbn-more-admin').forEach(el => { el.style.display = 'none'; });
 }
 
 async function loadAdminPanel() {
@@ -8553,3 +8556,118 @@ function initAcademyFull() {
   initQuizLevels();
 }
 initAcademyFull();
+
+// ============================================================
+// MOBILE BOTTOM NAV (5+1)
+// ============================================================
+(function() {
+  var mbnTabMap = {
+    overview:'overview', global:'overview', briefing:'overview', ai:'overview',
+    analysis:'analysis', daytrade:'analysis',
+    watchlist:'watchlist',
+    institutional:'institutional', sectors:'institutional',
+    opinion:'opinion'
+  };
+
+  window.updateMobileNavActive = function(tabName) {
+    var nav = document.getElementById('mobile-bottom-nav');
+    if (!nav) return;
+    var mapped = mbnTabMap[tabName] || null;
+    nav.querySelectorAll('.mbn-item').forEach(function(el) {
+      el.classList.remove('active');
+      if (el.dataset.mbnTab === mapped) el.classList.add('active');
+    });
+    if (!mapped) {
+      var moreBtn = document.getElementById('mbn-more-btn');
+      if (moreBtn) moreBtn.classList.add('active');
+    }
+  };
+
+  window.closeMobileMoreMenu = function() {
+    var ov = document.getElementById('mbn-more-overlay');
+    if (ov) ov.classList.remove('show');
+  };
+
+  function openMobileMoreMenu() {
+    var ov = document.getElementById('mbn-more-overlay');
+    if (ov) ov.classList.add('show');
+  }
+
+  function buildMoreGrid() {
+    var grid = document.getElementById('mbn-more-grid');
+    if (!grid) return;
+    var items = [
+      { tab:'academy', label:'學院', icon:'<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>' },
+      { tab:'daytrade', label:'當沖', icon:'<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>' },
+      { tab:'sectors', label:'題材', icon:'<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 2v10l7 4"/>' },
+      { tab:'global', label:'國際', icon:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a16 16 0 0 1 0 20M12 2a16 16 0 0 0 0 20"/>' },
+      { tab:'briefing', label:'晨訊', icon:'<path d="M4 4a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4z"/><path d="M8 8h8M8 12h8M8 16h5"/>' },
+      { tab:'ai', label:'AI', icon:'<path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><path d="M6 10v1a6 6 0 0 0 12 0v-1M8 18h8M10 22h4M12 18v4"/>' },
+      { tab:'screener', label:'篩選', icon:'<path d="M3 4h18v2H3zM5 10h14v2H5zM8 16h8v2H8z"/>' },
+      { tab:'compare', label:'比較', icon:'<path d="M18 20V10M12 20V4M6 20v-6"/>' }
+    ];
+    var html = '';
+    items.forEach(function(it) {
+      html += '<div class="mbn-more-item" data-mbn-tab="'+it.tab+'">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">'+it.icon+'</svg>' +
+        '<span>'+it.label+'</span></div>';
+    });
+    // Admin
+    html += '<div class="mbn-more-item mbn-more-admin" data-mbn-tab="admin" style="display:none;">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.38.35.94.56 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' +
+      '<span>管理</span></div>';
+    // Upgrade
+    html += '<div class="mbn-more-item" onclick="closeMobileMoreMenu();showUpgradeModal();">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>' +
+      '<span>升級 Pro</span></div>';
+    // Account
+    html += '<div class="mbn-more-item" id="mbn-more-account" onclick="closeMobileMoreMenu();openAuthModal();">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' +
+      '<span>帳號</span></div>';
+
+    grid.innerHTML = html;
+
+    // Click handlers for tab items
+    grid.querySelectorAll('.mbn-more-item[data-mbn-tab]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        switchTab(el.dataset.mbnTab, true);
+        closeMobileMoreMenu();
+      });
+    });
+  }
+
+  function initMobileBottomNav() {
+    var nav = document.getElementById('mobile-bottom-nav');
+    if (!nav) return;
+
+    // 5 main tab items
+    nav.querySelectorAll('.mbn-item[data-mbn-tab]').forEach(function(item) {
+      item.addEventListener('click', function() {
+        switchTab(item.dataset.mbnTab, true);
+        closeMobileMoreMenu();
+      });
+    });
+
+    // More button
+    var moreBtn = document.getElementById('mbn-more-btn');
+    if (moreBtn) {
+      moreBtn.addEventListener('click', function() {
+        var ov = document.getElementById('mbn-more-overlay');
+        if (ov && ov.classList.contains('show')) {
+          closeMobileMoreMenu();
+        } else {
+          openMobileMoreMenu();
+        }
+      });
+    }
+
+    // Backdrop close
+    var backdrop = document.getElementById('mbn-more-backdrop');
+    if (backdrop) {
+      backdrop.addEventListener('click', closeMobileMoreMenu);
+    }
+  }
+
+  buildMoreGrid();
+  initMobileBottomNav();
+})();
