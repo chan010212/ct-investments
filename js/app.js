@@ -1757,6 +1757,11 @@ function renderSectorHeatmap(sectorsData) {
 
   var W = el.clientWidth;
   var H = el.clientHeight || 320;
+  // iOS PWA: element may not be laid out yet (display:none or not rendered), retry later
+  if (W < 10) {
+    setTimeout(function() { renderSectorHeatmap(sectorsData); }, 500);
+    return;
+  }
   el.innerHTML = '';
 
   var cells = squarify(items, { x: 0, y: 0, w: W, h: H });
@@ -7264,6 +7269,10 @@ function applyViewMode(mode) {
     if (fabIcon) fabIcon.textContent = '📊';
   }
   localStorage.setItem('ct-view-mode', mode);
+  // Re-render heatmap when switching to pro (card was display:none in simple)
+  if (mode === 'pro' && _lastSectorData) {
+    setTimeout(function() { renderSectorHeatmap(_lastSectorData); }, 100);
+  }
 }
 
 function toggleViewMode() {
