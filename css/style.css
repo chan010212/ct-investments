@@ -4180,13 +4180,15 @@
         bottom: 0;
         left: 0;
         right: 0;
-        height: 52px;
+        height: 56px;
         background: rgba(6, 11, 24, 0.98);
         border-top: 1px solid var(--border);
         z-index: 1000;
+        padding-top: 4px;
         padding-bottom: env(safe-area-inset-bottom, 0);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
+        box-sizing: content-box;
       }
 
       .mbn-item {
@@ -4222,7 +4224,7 @@
 
       /* Main content padding for fixed nav */
       .main {
-        padding-bottom: calc(52px + env(safe-area-inset-bottom, 0));
+        padding-bottom: calc(60px + env(safe-area-inset-bottom, 0));
       }
       .app {
         flex-direction: column;
