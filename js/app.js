@@ -1115,11 +1115,16 @@ function switchTab(tabName, pushHistory, restoreScroll) {
   if (window.innerWidth <= 768) updateMobileNavActive(tabName);
 }
 
+// Replace initial history entry so back button doesn't leave the site
+history.replaceState({ tab: 'overview' }, '', '');
+
 window.addEventListener('popstate', function(e) {
   navHistoryDepth = Math.max(0, navHistoryDepth - 1);
   if (e.state && e.state.tab) {
     switchTab(e.state.tab, false, true);
   } else {
+    // No state = user at first entry, stay on overview instead of leaving
+    history.replaceState({ tab: 'overview' }, '', '');
     switchTab('overview', false, true);
   }
 });
