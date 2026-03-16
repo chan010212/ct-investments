@@ -7568,7 +7568,8 @@ function switchLegalTab(section) {
 var ONBOARDING_STEPS = [
   { icon: '📊', title: '掌握大盤方向', desc: '總覽頁一眼看出今天市場漲還是跌，加權指數、法人動向、成交量一目瞭然。' },
   { icon: '🔍', title: '搜尋感興趣的股票', desc: '按 Ctrl+K 或點擊個股分析，輸入名稱或代號即可查看完整技術分析與 AI 建議。' },
-  { icon: '⭐', title: '加入關注清單追蹤', desc: '把你關心的股票加入關注清單，每天快速追蹤漲跌動態，不再錯過任何變化。' }
+  { icon: '⭐', title: '加入關注清單追蹤', desc: '把你關心的股票加入關注清單，每天快速追蹤漲跌動態，不再錯過任何變化。' },
+  { icon: '🔄', title: '簡易 / 專業模式', desc: '初次使用建議先用「簡易模式」快速上手，熟悉後可在底部「更多」選單切換為「專業模式」，解鎖完整功能。' }
 ];
 var gOnboardStep = 0;
 
@@ -8606,7 +8607,12 @@ initAcademyFull();
       { tab:'screener', label:'篩選', icon:'<path d="M3 4h18v2H3zM5 10h14v2H5zM8 16h8v2H8z"/>' },
       { tab:'compare', label:'比較', icon:'<path d="M18 20V10M12 20V4M6 20v-6"/>' }
     ];
-    var html = '';
+    // Mode toggle as first item
+    var isSimple = document.body.classList.contains('simple-mode');
+    var html = '<div class="mbn-more-item mbn-mode-toggle" id="mbn-mode-toggle" style="border-color:' + (isSimple ? 'rgba(0,240,255,0.3)' : 'rgba(180,77,255,0.3)') + ';">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>' +
+      '<span style="color:' + (isSimple ? 'var(--cyan)' : 'var(--purple)') + ';">' + (isSimple ? '切換專業' : '切換簡易') + '</span></div>';
+
     items.forEach(function(it) {
       html += '<div class="mbn-more-item" data-mbn-tab="'+it.tab+'">' +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">'+it.icon+'</svg>' +
@@ -8626,6 +8632,17 @@ initAcademyFull();
       '<span>帳號</span></div>';
 
     grid.innerHTML = html;
+
+    // Mode toggle click
+    var modeBtn = document.getElementById('mbn-mode-toggle');
+    if (modeBtn) {
+      modeBtn.addEventListener('click', function() {
+        toggleViewMode();
+        closeMobileMoreMenu();
+        // Rebuild to update label
+        setTimeout(buildMoreGrid, 100);
+      });
+    }
 
     // Click handlers for tab items
     grid.querySelectorAll('.mbn-more-item[data-mbn-tab]').forEach(function(el) {

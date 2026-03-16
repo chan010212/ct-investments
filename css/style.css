@@ -4295,9 +4295,9 @@
         height: 24px;
       }
 
-      /* Adjust floating mode button for new nav */
+      /* Hide floating mode button — mode toggle is in "更多" menu now */
       .mobile-mode-fab {
-        bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 10px) !important;
+        display: none !important;
       }
     }
 
