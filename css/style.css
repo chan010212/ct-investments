@@ -1214,11 +1214,11 @@
     .clickable { cursor: pointer; color: var(--cyan); transition: color 0.2s, border-color 0.2s, background-color 0.2s; text-decoration: none; }
     .clickable:hover { text-shadow: 0 0 8px var(--cyan); }
 
-    /* --- Advance/Decline bar --- */
-    .ad-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; }
-    .ad-up { background: var(--red); }
-    .ad-flat { background: var(--text2); opacity: 0.3; }
-    .ad-down { background: var(--green); }
+    /* --- Advance/Decline energy bar --- */
+    .ad-bar { display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: rgba(255,255,255,0.04); }
+    .ad-up { background: linear-gradient(90deg, var(--red), #ff4d4d); box-shadow: 0 0 12px rgba(255,50,50,0.4); transition: width 0.8s cubic-bezier(.4,0,.2,1); }
+    .ad-flat { background: var(--text2); opacity: 0.25; transition: width 0.8s cubic-bezier(.4,0,.2,1); }
+    .ad-down { background: linear-gradient(90deg, #00c853, var(--green)); box-shadow: 0 0 12px rgba(0,200,83,0.4); transition: width 0.8s cubic-bezier(.4,0,.2,1); }
 
     /* --- Sector ranking bars --- */
     .sector-bars { display: flex; flex-direction: column; gap: 4px; }

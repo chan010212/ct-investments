@@ -1531,8 +1531,11 @@ function renderOverview() {
   const adEl = document.getElementById('advance-decline');
   if (adEl) {
     const total = upN + dnN + flatN;
+    const upPct = total > 0 ? (upN / total * 100) : 0;
+    const flatPct = total > 0 ? (flatN / total * 100) : 0;
+    const dnPct = total > 0 ? (dnN / total * 100) : 0;
     adEl.innerHTML = `
-      <div style="display:flex;gap:12px;align-items:flex-end;justify-content:center;margin-bottom:12px;">
+      <div style="display:flex;gap:12px;align-items:flex-end;justify-content:center;margin-bottom:14px;">
         <div style="text-align:center;">
           <div class="up" style="font-size:28px;font-weight:800;">${upN}</div>
           <div class="text-sm text-muted">上漲</div>
@@ -1547,14 +1550,18 @@ function renderOverview() {
         </div>
       </div>
       <div class="ad-bar">
-        <div class="ad-up" style="width:${total>0?(upN/total*100):0}%;"></div>
-        <div class="ad-flat" style="width:${total>0?(flatN/total*100):0}%;"></div>
-        <div class="ad-down" style="width:${total>0?(dnN/total*100):0}%;"></div>
+        <div class="ad-up" style="width:${upPct}%;${upPct>=15?'display:flex;align-items:center;justify-content:center;':''}">
+          ${upPct>=15?`<span style="font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5);">${upPct.toFixed(1)}%</span>`:''}
+        </div>
+        <div class="ad-flat" style="width:${flatPct}%;"></div>
+        <div class="ad-down" style="width:${dnPct}%;${dnPct>=15?'display:flex;align-items:center;justify-content:center;':''}">
+          ${dnPct>=15?`<span style="font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5);">${dnPct.toFixed(1)}%</span>`:''}
+        </div>
       </div>
-      <div style="display:flex;justify-content:space-between;margin-top:6px;">
-        <span class="up text-sm">${total>0?(upN/total*100).toFixed(1):0}%</span>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;">
+        <span class="up text-sm" style="font-weight:600;">${upPct.toFixed(1)}%</span>
         <span class="text-sm text-muted">共 ${total} 檔</span>
-        <span class="down text-sm">${total>0?(dnN/total*100).toFixed(1):0}%</span>
+        <span class="down text-sm" style="font-weight:600;">${dnPct.toFixed(1)}%</span>
       </div>`;
   }
 
