@@ -1472,20 +1472,10 @@ function renderOverview() {
     <div class="stat-box"><div class="label">上市+上櫃股票數</div><div class="value">${totalCount}</div></div>
     <div class="stat-box"><div class="label">上市總成交金額</div><div class="value">${fmtBig(totalVal)}</div></div>
     <div class="stat-box"><div class="label">總成交量</div><div class="value">${fmtBig(totalVol)} 股</div></div>
-    <div class="stat-box"><div class="label">上漲 / 下跌</div><div class="value"><span class="up">${upN}</span> <span style="color:var(--text2);">/</span> <span class="down">${dnN}</span></div></div>
     <div class="stat-box"><div class="label">漲停 / 跌停</div><div class="value"><span class="up">${limitUp}</span> <span style="color:var(--text2);">/</span> <span class="down">${limitDown}</span></div></div>
     <div class="stat-box">
       <div class="label">市場情緒</div>
       <div class="value" style="font-size:16px;color:${sentimentColor};">${sentimentLabel}</div>
-      <div class="sentiment-bar">
-        <div class="seg-up" style="width:${upPct}%;"></div>
-        <div class="seg-flat" style="width:${flatPct}%;"></div>
-        <div class="seg-down" style="width:${dnPct}%;"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:var(--text2);">
-        <span class="up">${upPct.toFixed(0)}%漲</span>
-        <span class="down">${dnPct.toFixed(0)}%跌</span>
-      </div>
     </div>
     ${marginHTML}
   `;
