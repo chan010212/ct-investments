@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CT Investments</string>
+    <string name="title_activity_main">CT Investments</string>
+    <string name="package_name">com.ctinvestments.app</string>
+    <string name="custom_url_scheme">com.ctinvestments.app</string>
+</resources>

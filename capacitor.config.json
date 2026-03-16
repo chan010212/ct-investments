@@ -1,0 +1,32 @@
+{
+  "appId": "com.ctinvestments.app",
+  "appName": "CT Investments",
+  "webDir": "www",
+  "server": {
+    "url": "https://ct-investments.zeabur.app",
+    "cleartext": false
+  },
+  "ios": {
+    "scheme": "CT Investments",
+    "contentInset": "automatic",
+    "backgroundColor": "#060b18"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#060b18"
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#060b18"
+    },
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#060b18",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": true,
+      "splashImmersive": true
+    }
+  }
+}
