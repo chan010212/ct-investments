@@ -7456,16 +7456,50 @@ function renderWatchlistOverview() {
   var items = wl.slice(0, 5);
   var html = '<div class="wl-overview-list">';
   items.forEach(function(code) {
-    var data = (typeof gStockMap !== 'undefined' && gStockMap[code]) || (typeof gMiscCache !== 'undefined' && gMiscCache[code]);
-    var name = data ? (data.name || data.n || code) : code;
-    var price = data ? (data.close || data.price || data.c || '-') : '-';
-    var chg = data ? (data.change_pct || data.pct || data.cp || 0) : 0;
-    var chgNum = parseFloat(chg) || 0;
+    var name = code, price = '-', chgNum = 0;
+
+    // 1. Try gMisCache (real-time quotes from Fugle/MIS)
+    var mis = (typeof gMisCache !== 'undefined') ? gMisCache[code] : null;
+    if (mis && mis.price > 0) {
+      name = mis.name || (gStockDB[code] ? gStockDB[code].name : code);
+      price = mis.price;
+      chgNum = mis.pct || 0;
+    }
+    // 2. Fallback: gStockMap (daily close from TWSE/TPEX)
+    else if (gStockMap[code]) {
+      var m = gStockMap[code];
+      var d = m.data;
+      if (m.market === 'twse') {
+        name = (d[1] || '').trim();
+        var close = parseNum(d[7]), chg = parseNum(d[8]);
+        var prev = close - chg;
+        price = close > 0 ? close : '-';
+        chgNum = (prev > 0 && close > 0) ? (chg / prev * 100) : 0;
+      } else {
+        name = (d[1] || '').trim();
+        var close = parseNum(d[2]), chg = parseNum(d[3]);
+        var prev = close - chg;
+        price = close > 0 ? close : '-';
+        chgNum = (prev > 0 && close > 0) ? (chg / prev * 100) : 0;
+      }
+    }
+    // 3. Fallback: gStockDB (name only)
+    else if (gStockDB[code]) {
+      name = gStockDB[code].name || code;
+    }
+    // 4. Fallback: Yahoo cache
+    if (price === '-' && gWlYahooCache[code]) {
+      var yc = gWlYahooCache[code];
+      price = yc.price || '-';
+      chgNum = yc.pct || 0;
+    }
+
     var color = chgNum > 0 ? 'var(--red)' : chgNum < 0 ? 'var(--green)' : 'var(--text2)';
     var sign = chgNum > 0 ? '+' : '';
+    var priceStr = (typeof price === 'number') ? price.toFixed(price >= 100 ? 0 : price >= 10 ? 1 : 2) : price;
     html += '<div class="wl-overview-item" onclick="document.getElementById(\'stock-input\').value=\'' + code + '\';switchTab(\'analysis\',true);setTimeout(analyzeStock,200);">';
     html += '<div><span class="wl-ov-code">' + code + '</span><span class="wl-ov-name">' + name + '</span></div>';
-    html += '<div><span class="wl-ov-price" style="color:' + color + '">' + price + '</span>';
+    html += '<div><span class="wl-ov-price" style="color:' + color + '">' + priceStr + '</span>';
     html += '<span class="wl-ov-chg" style="color:' + color + '">' + sign + chgNum.toFixed(2) + '%</span></div>';
     html += '</div>';
   });
