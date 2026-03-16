@@ -233,6 +233,7 @@ const API_TWSE = {
   marketDaily: (d) => apiFetch(`${TWSE}/afterTrading/FMTQIK?response=json&date=${d}`),
   pePbYield:   (d) => apiFetch(`${TWSE}/afterTrading/BWIBBU_d?response=json&date=${d}&selectType=ALL`),
   marginTrade: (d) => apiFetch(`${TWSE}/marginTrading/MI_MARGN?response=json&date=${d}&selectType=STOCK`),
+  marginSummary: (d) => apiFetch(`${TWSE}/marginTrading/MI_MARGN?response=json&date=${d}`),
 };
 
 // ============================================================
@@ -842,6 +843,7 @@ let gAllStocks = [];      // TWSE
 let gTpexAllStocks = [];  // TPEx
 let gInstStocks = [];     // TWSE institutional
 let gTpexInstStocks = []; // TPEx institutional
+let gMarginData = null;   // 融資融券市場彙總
 let gChartsReady = false;
 let gStockMap = {};   // cached: code → { data, market }
 let gInstMap = {};    // cached: code → { f, t, d }
@@ -1441,6 +1443,29 @@ function renderOverview() {
   const sentimentLabel = sentiment > 20 ? '極度樂觀' : sentiment > 5 ? '偏多' : sentiment > -5 ? '中性' : sentiment > -20 ? '偏空' : '極度悲觀';
   const sentimentColor = sentiment > 5 ? 'var(--red)' : sentiment > -5 ? 'var(--yellow)' : 'var(--green)';
 
+  // Margin maintenance ratio card
+  let marginHTML = '';
+  if (gMarginData) {
+    const mr = gMarginData.maintenanceRatio;
+    const mBal = gMarginData.marginAmount;
+    const mUsage = gMarginData.marginUsage;
+    const sBal = gMarginData.shortBalance;
+    // Color: <130% red (danger), 130-150% orange (caution), >150% green (safe)
+    let mrColor = 'var(--green)', mrLabel = '安全';
+    if (mr > 0 && mr < 130) { mrColor = 'var(--red)'; mrLabel = '警戒'; }
+    else if (mr >= 130 && mr < 150) { mrColor = 'var(--orange)'; mrLabel = '注意'; }
+    else if (mr >= 150 && mr < 170) { mrColor = 'var(--yellow)'; mrLabel = '正常'; }
+
+    marginHTML = `
+    <div class="stat-box margin-ratio-box">
+      <div class="label">融資維持率</div>
+      <div class="value" style="color:${mrColor};">${mr > 0 ? mr.toFixed(1) + '%' : '--'}</div>
+      ${mr > 0 ? `<div class="margin-gauge"><div class="margin-gauge-fill" style="width:${Math.min(mr / 2, 100)}%;background:${mrColor};"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:9px;color:var(--text2);"><span>130%</span><span style="color:${mrColor};">${mrLabel}</span><span>170%</span></div>` : ''}
+      ${mBal > 0 ? `<div style="font-size:10px;color:var(--text2);margin-top:4px;">餘額 ${fmtBig(mBal)}</div>` : ''}
+    </div>`;
+  }
+
   document.getElementById('market-stats').innerHTML = `
     <div class="stat-box"><div class="label">上市+上櫃股票數</div><div class="value">${totalCount}</div></div>
     <div class="stat-box"><div class="label">上市總成交金額</div><div class="value">${fmtBig(totalVal)}</div></div>
@@ -1460,6 +1485,7 @@ function renderOverview() {
         <span class="down">${dnPct.toFixed(0)}%跌</span>
       </div>
     </div>
+    ${marginHTML}
   `;
 
   const gainers = [...allWithPct].sort((a, b) => b.pct - a.pct).filter(s => s.chg > 0).slice(0, 15);
@@ -3953,6 +3979,7 @@ async function init() {
       apiFetch(OPENAPI_TPEX_ALL),         // [6] OpenAPI 上櫃 (reliable)
       apiFetch(OPENAPI_EMERGING),         // [7] OpenAPI 興櫃 (reliable)
       apiFetch(OPENAPI_TPEX_CLOSE),       // [8] OpenAPI 上櫃收盤 (reliable)
+      API_TWSE.marginSummary(gDate),       // [9] 融資融券彙總
     ]);
 
     const instSummary  = results[0].status === 'fulfilled' ? results[0].value : null;
@@ -3964,6 +3991,45 @@ async function init() {
     const openTpex     = results[6].status === 'fulfilled' ? results[6].value : null;
     const openEmerging = results[7].status === 'fulfilled' ? results[7].value : null;
     const openTpexClose = results[8].status === 'fulfilled' ? results[8].value : null;
+    const marginRaw     = results[9].status === 'fulfilled' ? results[9].value : null;
+
+    // --- Parse margin summary (融資融券彙總) ---
+    if (marginRaw && marginRaw.stat === 'OK') {
+      try {
+        // MI_MARGN response: tables[0]=融資, tables[1]=融券
+        // 融資 table last row = 合計: [日期, 融資買進, 融資賣出, 融資現償, 融資餘額(張), 融資餘額(金額), 融資限額, 融資使用率]
+        // Or creditList array with summary
+        const t = marginRaw.tables || [];
+        if (t.length >= 1 && t[0].data && t[0].data.length > 0) {
+          const lastRow = t[0].data[t[0].data.length - 1];
+          gMarginData = {
+            marginBuy: parseNum(lastRow[1]),      // 融資買進
+            marginSell: parseNum(lastRow[2]),      // 融資賣出
+            marginCash: parseNum(lastRow[3]),      // 融資現償
+            marginBalance: parseNum(lastRow[4]),   // 融資餘額(張)
+            marginAmount: parseNum(lastRow[5]),    // 融資餘額(金額)
+            marginLimit: parseNum(lastRow[6]),     // 融資限額
+            marginUsage: parseNum(lastRow[7]),     // 融資使用率(%)
+          };
+        }
+        if (t.length >= 2 && t[1].data && t[1].data.length > 0) {
+          const lastRow2 = t[1].data[t[1].data.length - 1];
+          if (gMarginData) {
+            gMarginData.shortSell = parseNum(lastRow2[1]);    // 融券賣出
+            gMarginData.shortBuy = parseNum(lastRow2[2]);     // 融券買進
+            gMarginData.shortBalance = parseNum(lastRow2[4]); // 融券餘額(張)
+          }
+        }
+        // creditList has maintenance ratio
+        if (marginRaw.creditList && marginRaw.creditList.length > 0) {
+          const cl = marginRaw.creditList;
+          const last = cl[cl.length - 1];
+          if (gMarginData) {
+            gMarginData.maintenanceRatio = parseNum(last[14]) || parseNum(last[13]) || parseNum(last[12]);
+          }
+        }
+      } catch(e) { console.warn('[CT] Margin parse error:', e); }
+    }
 
     // --- TWSE all stocks: prefer traditional, fallback to OpenAPI ---
     if (allStocks && allStocks.stat === 'OK' && allStocks.data) {
