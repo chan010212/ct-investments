@@ -1443,26 +1443,28 @@ function renderOverview() {
   const sentimentLabel = sentiment > 20 ? '極度樂觀' : sentiment > 5 ? '偏多' : sentiment > -5 ? '中性' : sentiment > -20 ? '偏空' : '極度悲觀';
   const sentimentColor = sentiment > 5 ? 'var(--red)' : sentiment > -5 ? 'var(--yellow)' : 'var(--green)';
 
-  // Margin maintenance ratio card
+  // Margin/Short balance card
   let marginHTML = '';
   if (gMarginData) {
-    const mr = gMarginData.maintenanceRatio;
     const mBal = gMarginData.marginAmount;
-    const mUsage = gMarginData.marginUsage;
-    const sBal = gMarginData.shortBalance;
-    // Color: <130% red (danger), 130-150% orange (caution), >150% green (safe)
-    let mrColor = 'var(--green)', mrLabel = '安全';
-    if (mr > 0 && mr < 130) { mrColor = 'var(--red)'; mrLabel = '警戒'; }
-    else if (mr >= 130 && mr < 150) { mrColor = 'var(--orange)'; mrLabel = '注意'; }
-    else if (mr >= 150 && mr < 170) { mrColor = 'var(--yellow)'; mrLabel = '正常'; }
+    const mPrev = gMarginData.marginPrevAmount;
+    const mChg = mBal - mPrev;
+    const mChgColor = mChg > 0 ? 'var(--red)' : mChg < 0 ? 'var(--green)' : 'var(--text2)';
+    const mChgSign = mChg > 0 ? '+' : '';
+    const sChg = gMarginData.shortBalShares - gMarginData.shortPrevShares;
+    const sChgColor = sChg > 0 ? 'var(--green)' : sChg < 0 ? 'var(--red)' : 'var(--text2)';
+    const sChgSign = sChg > 0 ? '+' : '';
 
     marginHTML = `
     <div class="stat-box margin-ratio-box">
-      <div class="label">融資維持率</div>
-      <div class="value" style="color:${mrColor};">${mr > 0 ? mr.toFixed(1) + '%' : '--'}</div>
-      ${mr > 0 ? `<div class="margin-gauge"><div class="margin-gauge-fill" style="width:${Math.min(mr / 2, 100)}%;background:${mrColor};"></div></div>
-      <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:9px;color:var(--text2);"><span>130%</span><span style="color:${mrColor};">${mrLabel}</span><span>170%</span></div>` : ''}
-      ${mBal > 0 ? `<div style="font-size:10px;color:var(--text2);margin-top:4px;">餘額 ${fmtBig(mBal)}</div>` : ''}
+      <div class="label">融資餘額</div>
+      <div class="value" style="font-size:20px;">${fmtBig(mBal)}</div>
+      <div style="font-size:12px;color:${mChgColor};margin-top:4px;">${mChgSign}${fmtBig(mChg)}</div>
+      <div class="margin-gauge"><div class="margin-gauge-fill" style="width:${mChg > 0 ? '60' : '40'}%;background:${mChgColor};"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--text2);">
+        <span>融券 ${fmtNum(gMarginData.shortBalShares, 0)} 張</span>
+        <span style="color:${sChgColor};">${sChgSign}${fmtNum(sChg, 0)}</span>
+      </div>
     </div>`;
   }
 
@@ -3994,39 +3996,28 @@ async function init() {
     const marginRaw     = results[9].status === 'fulfilled' ? results[9].value : null;
 
     // --- Parse margin summary (融資融券彙總) ---
+    // API format: tables[0] = 信用交易統計
+    // row[0]: 融資(交易單位) — [項目, 買進, 賣出, 現償, 前日餘額, 今日餘額]
+    // row[1]: 融券(交易單位) — same fields
+    // row[2]: 融資金額(仟元) — same fields
     if (marginRaw && marginRaw.stat === 'OK') {
       try {
-        // MI_MARGN response: tables[0]=融資, tables[1]=融券
-        // 融資 table last row = 合計: [日期, 融資買進, 融資賣出, 融資現償, 融資餘額(張), 融資餘額(金額), 融資限額, 融資使用率]
-        // Or creditList array with summary
         const t = marginRaw.tables || [];
-        if (t.length >= 1 && t[0].data && t[0].data.length > 0) {
-          const lastRow = t[0].data[t[0].data.length - 1];
+        if (t.length >= 1 && t[0].data && t[0].data.length >= 3) {
+          const rows = t[0].data;
+          const mShares = rows[0]; // 融資(交易單位)
+          const sShares = rows[1]; // 融券(交易單位)
+          const mAmount = rows[2]; // 融資金額(仟元)
           gMarginData = {
-            marginBuy: parseNum(lastRow[1]),      // 融資買進
-            marginSell: parseNum(lastRow[2]),      // 融資賣出
-            marginCash: parseNum(lastRow[3]),      // 融資現償
-            marginBalance: parseNum(lastRow[4]),   // 融資餘額(張)
-            marginAmount: parseNum(lastRow[5]),    // 融資餘額(金額)
-            marginLimit: parseNum(lastRow[6]),     // 融資限額
-            marginUsage: parseNum(lastRow[7]),     // 融資使用率(%)
+            marginBalShares: parseNum(mShares[5]),    // 融資今日餘額(張)
+            marginPrevShares: parseNum(mShares[4]),   // 融資前日餘額(張)
+            marginBuy: parseNum(mShares[1]),           // 融資買進(張)
+            marginSell: parseNum(mShares[2]),          // 融資賣出(張)
+            shortBalShares: parseNum(sShares[5]),      // 融券今日餘額(張)
+            shortPrevShares: parseNum(sShares[4]),     // 融券前日餘額(張)
+            marginAmount: parseNum(mAmount[5]) * 1000, // 融資餘額(元) — 原始單位仟元
+            marginPrevAmount: parseNum(mAmount[4]) * 1000,
           };
-        }
-        if (t.length >= 2 && t[1].data && t[1].data.length > 0) {
-          const lastRow2 = t[1].data[t[1].data.length - 1];
-          if (gMarginData) {
-            gMarginData.shortSell = parseNum(lastRow2[1]);    // 融券賣出
-            gMarginData.shortBuy = parseNum(lastRow2[2]);     // 融券買進
-            gMarginData.shortBalance = parseNum(lastRow2[4]); // 融券餘額(張)
-          }
-        }
-        // creditList has maintenance ratio
-        if (marginRaw.creditList && marginRaw.creditList.length > 0) {
-          const cl = marginRaw.creditList;
-          const last = cl[cl.length - 1];
-          if (gMarginData) {
-            gMarginData.maintenanceRatio = parseNum(last[14]) || parseNum(last[13]) || parseNum(last[12]);
-          }
         }
       } catch(e) { console.warn('[CT] Margin parse error:', e); }
     }
