@@ -3,7 +3,9 @@
 CT Investments — 台灣股票儀表板後端
 Serves static files + proxies API requests + member system
 All using Python stdlib only (no pip dependencies)
+VERSION = v52-fix-20260318
 """
+print('[BOOT] ===== VERSION v52-fix-20260318 =====', flush=True)
 
 import http.server
 import socketserver
