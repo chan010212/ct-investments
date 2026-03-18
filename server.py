@@ -1572,6 +1572,17 @@ def init_db():
     conn.execute('PRAGMA journal_mode=WAL')
     c = conn.cursor()
 
+    # Fix: drop broken webauthn table from v55 deployment
+    c.execute('DROP TABLE IF EXISTS webauthn_credentials')
+    c.execute('DROP TABLE IF EXISTS db_meta')
+    c.execute('DROP TABLE IF EXISTS stock_daily')
+    c.execute('DROP TABLE IF EXISTS stock_inst_daily')
+    c.execute('DROP TABLE IF EXISTS stock_revenue')
+    c.execute('DROP TABLE IF EXISTS stock_quarterly')
+    c.execute('DROP TABLE IF EXISTS stock_fundamentals')
+    c.execute('DROP TABLE IF EXISTS stock_dividend')
+    c.execute('DROP TABLE IF EXISTS stock_news')
+
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE NOT NULL,
