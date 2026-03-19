@@ -195,7 +195,7 @@ async function _doFetch(url, _retry) {
 
   // Route all external API requests through proxy to bypass CORS
   let fetchUrl = url;
-  if (url.includes('tpex.org.tw') || url.includes('twse.com.tw') || url.includes('yahoo.com') || url.includes('cnyes.com')) {
+  if (url.includes('tpex.org.tw') || url.includes('twse.com.tw') || url.includes('yahoo.com') || url.includes('cnyes.com') || url.includes('finmindtrade.com')) {
     fetchUrl = '/api/proxy?url=' + encodeURIComponent(url);
   }
 
@@ -1402,6 +1402,37 @@ function toggleChartSeries(key) {
 // ============================================================
 // RENDER: MARKET OVERVIEW
 // ============================================================
+function renderRankWithToggle(containerId, fullList, renderFn, defaultCount) {
+  defaultCount = defaultCount || 20;
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (fullList.length <= defaultCount) {
+    el.innerHTML = renderFn(fullList);
+    return;
+  }
+  const toggleId = containerId + '-toggle';
+  const shortHTML = renderFn(fullList.slice(0, defaultCount));
+  const fullHTML = renderFn(fullList);
+  el.innerHTML = `<div class="rank-toggle-short">${shortHTML}</div><div class="rank-toggle-full" style="display:none;">${fullHTML}</div>`
+    + `<div style="text-align:center;margin-top:10px;"><button id="${toggleId}" class="btn btn-secondary" data-expanded="0" style="font-size:12px;padding:6px 18px;">顯示更多 (${fullList.length}筆)</button></div>`;
+  document.getElementById(toggleId).addEventListener('click', function() {
+    var btn = this;
+    var short = el.querySelector('.rank-toggle-short');
+    var full = el.querySelector('.rank-toggle-full');
+    if (btn.dataset.expanded === '1') {
+      btn.dataset.expanded = '0';
+      btn.textContent = '顯示更多 (' + fullList.length + '筆)';
+      full.style.display = 'none';
+      short.style.display = '';
+    } else {
+      btn.dataset.expanded = '1';
+      btn.textContent = '收起';
+      full.style.display = '';
+      short.style.display = 'none';
+    }
+  });
+}
+
 function renderOverview() {
   const dStr = gDate.slice(0,4) + '/' + gDate.slice(4,6) + '/' + gDate.slice(6,8);
   document.getElementById('market-date').textContent = '資料日期：' + dStr;
@@ -1486,8 +1517,8 @@ function renderOverview() {
     ${marginHTML}
   `;
 
-  const gainers = [...allWithPct].sort((a, b) => b.pct - a.pct).filter(s => s.chg > 0).slice(0, 15);
-  const losers  = [...allWithPct].sort((a, b) => a.pct - b.pct).filter(s => s.chg < 0).slice(0, 15);
+  const gainers = [...allWithPct].sort((a, b) => b.pct - a.pct).filter(s => s.chg > 0).slice(0, 50);
+  const losers  = [...allWithPct].sort((a, b) => a.pct - b.pct).filter(s => s.chg < 0).slice(0, 50);
 
   function rankHTML(list) {
     if (window.innerWidth <= 768) {
@@ -1526,12 +1557,12 @@ function renderOverview() {
     }));
   }
 
-  document.getElementById('top-gainers').innerHTML = rankHTML(gainers);
-  document.getElementById('top-losers').innerHTML = rankHTML(losers);
+  renderRankWithToggle('top-gainers', gainers, rankHTML);
+  renderRankWithToggle('top-losers', losers, rankHTML);
 
   // Volume ranking
-  const volRanked = [...allWithPct].sort((a, b) => b.vol - a.vol).slice(0, 15);
-  document.getElementById('top-volume').innerHTML = rankHTML(volRanked);
+  const volRanked = [...allWithPct].sort((a, b) => b.vol - a.vol).slice(0, 50);
+  renderRankWithToggle('top-volume', volRanked, rankHTML);
 
   // Advance/Decline visual
   const adEl = document.getElementById('advance-decline');
@@ -2065,11 +2096,19 @@ function renderInstRank(type) {
 
   const parsed = [];
 
+  // Helper: get close price from gStockMap
+  function _getClose(code) {
+    const entry = gStockMap[code];
+    if (!entry) return 0;
+    if (entry.market === 'twse') return parseNum(entry.data[7]);
+    return parseNum(entry.data[2]); // tpex close is index 2
+  }
+
   // TWSE
   gInstStocks.forEach(r => {
     const code = r[0].trim();
     if (/^\d{4}$/.test(code)) {
-      parsed.push({ code, name: r[1].trim(), net: parseNum(r[col]), market: 'twse' });
+      parsed.push({ code, name: r[1].trim(), net: parseNum(r[col]), market: 'twse', close: _getClose(code) });
     }
   });
 
@@ -2086,7 +2125,7 @@ function renderInstRank(type) {
         default: net = parseNum(r[23]); break;
       }
     } catch(e) {}
-    if (!isNaN(net)) parsed.push({ code, name: (r[1]||'').trim(), net, market: 'tpex' });
+    if (!isNaN(net)) parsed.push({ code, name: (r[1]||'').trim(), net, market: 'tpex', close: _getClose(code) });
   });
 
   // FinMind fallback: fill in stocks not already covered by T86/TPEX
@@ -2118,6 +2157,8 @@ function renderInstRank(type) {
       let h = '<div class="rank-card-list">';
       list.forEach((s, i) => {
         const cls = s.net >= 0 ? 'up' : 'down';
+        const estAmt = s.close > 0 ? Math.abs(s.net) * s.close : 0;
+        const estStr = estAmt > 0 ? fmtBig(estAmt) : '';
         h += `<div class="rank-card" onclick="goAnalyze('${s.code}')">
           <div class="rank-card-head">
             <span class="rank-card-num">${i+1}</span>
@@ -2125,19 +2166,22 @@ function renderInstRank(type) {
             <span class="rank-card-name">${s.name}</span>${warningTag(s.code)}
             <span class="rank-card-pct ${cls}">${s.net>0?'+':''}${fmtShares(s.net)}</span>
           </div>
+          ${estStr ? `<div class="rank-card-body"><div><span class="dt-label">估計金額</span><span style="color:var(--yellow);">${estStr}</span></div></div>` : ''}
         </div>`;
       });
       h += '</div>';
       return h;
     }
-    return mkTable(['代號', '名稱', '市場', '買賣超（股）'], list.map(s => {
+    return mkTable(['代號', '名稱', '市場', '買賣超（股）', '估計金額'], list.map(s => {
       const mTag = s.market === 'twse'
         ? '<span class="tag-market tag-twse">上市</span>'
         : '<span class="tag-market tag-tpex">上櫃</span>';
+      const estAmt = s.close > 0 ? Math.abs(s.net) * s.close : 0;
       return [
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.code}</span>`,
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>${warningTag(s.code)}`, mTag,
-        `<span class="${s.net > 0 ? 'up' : 'down'}" style="font-weight:600">${s.net > 0 ? '+' : ''}${fmtShares(s.net)}</span>`
+        `<span class="${s.net > 0 ? 'up' : 'down'}" style="font-weight:600">${s.net > 0 ? '+' : ''}${fmtShares(s.net)}</span>`,
+        `<span style="color:var(--yellow);">${estAmt > 0 ? fmtBig(estAmt) : '--'}</span>`
       ];
     }));
   }
@@ -2486,10 +2530,13 @@ function renderWatchlist() {
       var fCls = inst.f > 0 ? 'up' : inst.f < 0 ? 'down' : '';
       var tCls = inst.t > 0 ? 'up' : inst.t < 0 ? 'down' : '';
       var dCls = inst.d > 0 ? 'up' : inst.d < 0 ? 'down' : '';
+      var instTotal = (inst.f || 0) + (inst.t || 0) + (inst.d || 0);
+      var totalCls = instTotal > 0 ? 'up' : instTotal < 0 ? 'down' : '';
       instHtml = '<div class="sc-inst">'
         + '<div class="sc-inst-item"><span class="sc-inst-label">外資</span><span class="' + fCls + '">' + (inst.f > 0 ? '+' : '') + fmtShares(inst.f) + '</span></div>'
         + '<div class="sc-inst-item"><span class="sc-inst-label">投信</span><span class="' + tCls + '">' + (inst.t > 0 ? '+' : '') + fmtShares(inst.t) + '</span></div>'
         + '<div class="sc-inst-item"><span class="sc-inst-label">自營</span><span class="' + dCls + '">' + (inst.d > 0 ? '+' : '') + fmtShares(inst.d) + '</span></div>'
+        + '<div class="sc-inst-item" style="border-top:1px solid var(--border);padding-top:4px;margin-top:4px;"><span class="sc-inst-label" style="font-weight:700;">合計</span><span class="' + totalCls + '" style="font-weight:700;">' + (instTotal > 0 ? '+' : '') + fmtShares(instTotal) + '</span></div>'
         + '</div>';
     }
 
@@ -2781,6 +2828,17 @@ async function analyzeStock(code) {
     document.getElementById('stock-change').innerHTML = `<span class="${chg >= 0 ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>${limitTag(pct)}`;
     document.getElementById('stock-header').style.display = 'block';
 
+    // B4: OHLCV stats below header
+    try {
+      const statsEl = document.getElementById('stock-detail-stats');
+      if (statsEl && n > 0) {
+        const lastO = O[n-1], lastH = H[n-1], lastL = L[n-1], lastV = V[n-1];
+        const volStr = lastV >= 1000 ? fmtNum(Math.round(lastV / 1000), 0) + ' 張' : fmtNum(lastV, 0) + ' 股';
+        statsEl.innerHTML = `<span>開 <b>${fmtNum(lastO, 2)}</b></span><span>高 <b class="up">${fmtNum(lastH, 2)}</b></span><span>低 <b class="down">${fmtNum(lastL, 2)}</b></span><span>收 <b>${fmtNum(lastC, 2)}</b></span><span>量 <b>${volStr}</b></span>`;
+        statsEl.style.display = 'flex';
+      }
+    } catch(e) {}
+
     // Indicators
     const ma5 = TA.sma(C, 5), ma10 = TA.sma(C, 10), ma20 = TA.sma(C, 20);
     const bb = TA.boll(C);
@@ -2890,11 +2948,13 @@ async function analyzeStock(code) {
 
     // Institutional
     if (instInfo) {
+      const _instTotal = (instInfo.f || 0) + (instInfo.t || 0) + (instInfo.d || 0);
       document.getElementById('stock-inst-info').innerHTML = `
         <div class="stat-grid">
           <div class="stat-box"><div class="label">外資買賣超</div><div class="value ${instInfo.f > 0 ? 'up' : 'down'}">${instInfo.f > 0 ? '+' : ''}${fmtShares(instInfo.f)}</div></div>
           <div class="stat-box"><div class="label">投信買賣超</div><div class="value ${instInfo.t > 0 ? 'up' : 'down'}">${instInfo.t > 0 ? '+' : ''}${fmtShares(instInfo.t)}</div></div>
           <div class="stat-box"><div class="label">自營商買賣超</div><div class="value ${instInfo.d > 0 ? 'up' : 'down'}">${instInfo.d > 0 ? '+' : ''}${fmtShares(instInfo.d)}</div></div>
+          <div class="stat-box" style="border-top:1px solid var(--border);padding-top:8px;"><div class="label" style="font-weight:700;">三大法人合計</div><div class="value ${_instTotal > 0 ? 'up' : 'down'}" style="font-weight:700;">${_instTotal > 0 ? '+' : ''}${fmtShares(_instTotal)}</div></div>
         </div>
         <div id="stock-inst-streak" style="margin-top:12px;"></div>`;
       loadStockInstStreak(code);
@@ -2980,9 +3040,89 @@ async function fetchStockRevenue(code, stockName) {
         <div class="stat-box"><div class="label">上月營收</div><div class="value">${fmtBig(prevRev)}</div></div>
         <div class="stat-box"><div class="label">去年同月營收</div><div class="value">${fmtBig(lastYearRev)}</div></div>
         <div class="stat-box"><div class="label">累計營收 YoY</div><div class="value ${cumPct>=0?'up':'down'}">${cumPct>0?'+':''}${cumPct.toFixed(2)}%</div></div>
-      </div>`;
+      </div>
+      <div id="revenue-history-chart" style="margin-top:16px;"></div>`;
+    // Load revenue history chart
+    _loadRevenueHistory(code, el);
   } catch (e) {
     el.innerHTML = '<div class="text-muted">營收資料載入失敗</div>';
+  }
+}
+
+async function _loadRevenueHistory(code, parentEl) {
+  try {
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth() - 26, 1);
+    const startStr = `${startDate.getFullYear()}-${String(startDate.getMonth()+1).padStart(2,'0')}-01`;
+    const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id=${code}&start_date=${startStr}`;
+    const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
+    const resp = await fetch(proxyUrl);
+    if (!resp.ok) return;
+    const json = await resp.json();
+    const rows = json.data || [];
+    if (rows.length === 0) return;
+
+    // Build history data (month, revenue, yoy%)
+    const histData = [];
+    const byMonth = {};
+    rows.forEach(r => {
+      const dt = r.date || r.revenue_date || '';
+      const rev = r.revenue || 0;
+      if (!dt || !rev) return;
+      const ym = dt.slice(0, 7); // "2024-01"
+      byMonth[ym] = rev;
+    });
+
+    const months = Object.keys(byMonth).sort();
+    months.forEach(ym => {
+      const rev = byMonth[ym];
+      const parts = ym.split('-');
+      const prevYearYm = `${parseInt(parts[0])-1}-${parts[1]}`;
+      const prevYearRev = byMonth[prevYearYm] || 0;
+      const yoy = prevYearRev > 0 ? ((rev - prevYearRev) / prevYearRev * 100) : null;
+      histData.push({ month: ym, rev, yoy });
+    });
+
+    if (histData.length < 3) return;
+
+    const chartEl = document.getElementById('revenue-history-chart');
+    if (!chartEl) return;
+    chartEl.innerHTML = '<div class="text-sm" style="color:var(--cyan);font-weight:600;margin-bottom:6px;">月營收趨勢 (近26月)</div><div id="rev-hist-box" style="height:200px;"></div>';
+    const box = document.getElementById('rev-hist-box');
+    if (!box || box.clientWidth === 0) return;
+
+    const chart = LightweightCharts.createChart(box, {
+      width: box.clientWidth, height: 200,
+      layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: 10 },
+      grid: { vertLines: { color: 'rgba(0,240,255,0.04)' }, horzLines: { color: 'rgba(0,240,255,0.04)' } },
+      timeScale: { borderColor: 'rgba(0,240,255,0.1)' },
+      rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', scaleMargins: { top: 0.1, bottom: 0.2 } },
+    });
+
+    const barSeries = chart.addHistogramSeries({
+      color: 'rgba(0, 212, 255, 0.6)',
+      priceFormat: { type: 'volume' },
+    });
+    barSeries.setData(histData.map(d => {
+      const color = d.yoy !== null ? (d.yoy >= 0 ? 'rgba(255,56,96,0.6)' : 'rgba(0,232,123,0.6)') : 'rgba(0,212,255,0.4)';
+      return { time: d.month + '-01', value: d.rev, color };
+    }));
+
+    // YoY line on second axis
+    const yoyData = histData.filter(d => d.yoy !== null).map(d => ({ time: d.month + '-01', value: d.yoy }));
+    if (yoyData.length > 0) {
+      const yoySeries = chart.addLineSeries({
+        color: '#ffd036', lineWidth: 2,
+        priceScaleId: 'yoy',
+        priceFormat: { type: 'custom', formatter: v => v.toFixed(1) + '%' },
+      });
+      chart.priceScale('yoy').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.2 } });
+      yoySeries.setData(yoyData);
+    }
+
+    chart.timeScale().fitContent();
+  } catch(e) {
+    console.warn('[CT] Revenue history chart error:', e);
   }
 }
 
@@ -3034,9 +3174,77 @@ async function fetchStockQuarterly(code) {
         <div class="stat-box"><div class="label">營業利益</div><div class="value">${fmtBig(opIncome)}</div></div>
         <div class="stat-box"><div class="label">營業利益率</div><div class="value">${opMargin}%</div></div>
         <div class="stat-box"><div class="label">淨利率</div><div class="value">${netMargin}%</div></div>
-      </div>`;
+      </div>
+      <div id="quarterly-history-chart" style="margin-top:16px;"></div>`;
+    // Load quarterly EPS history chart
+    _loadQuarterlyHistory(code, el);
   } catch (e) {
     el.innerHTML = '<div class="text-muted">財報載入失敗</div>';
+  }
+}
+
+async function _loadQuarterlyHistory(code, parentEl) {
+  try {
+    const now = new Date();
+    const startDate = new Date(now.getFullYear() - 3, 0, 1);
+    const startStr = `${startDate.getFullYear()}-01-01`;
+    const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockFinancialStatements&data_id=${code}&start_date=${startStr}`;
+    const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
+    const resp = await fetch(proxyUrl);
+    if (!resp.ok) return;
+    const json = await resp.json();
+    const rows = json.data || [];
+    if (rows.length === 0) return;
+
+    // Group by date (quarter), extract EPS
+    const byQuarter = {};
+    rows.forEach(r => {
+      const dt = r.date || '';
+      const type = r.type || '';
+      const val = parseFloat(r.value) || 0;
+      if (!dt) return;
+      if (!byQuarter[dt]) byQuarter[dt] = {};
+      if (type === 'EPS') byQuarter[dt].eps = val;
+      else if (type === 'Revenue') byQuarter[dt].revenue = val;
+      else if (type === 'NetIncome') byQuarter[dt].netIncome = val;
+      else if (type === 'OperatingIncome') byQuarter[dt].opIncome = val;
+    });
+
+    const quarters = Object.keys(byQuarter).sort();
+    const epsData = quarters.filter(q => byQuarter[q].eps !== undefined).map(q => ({
+      quarter: q, eps: byQuarter[q].eps,
+      revenue: byQuarter[q].revenue || 0,
+      netIncome: byQuarter[q].netIncome || 0,
+    }));
+
+    if (epsData.length < 2) return;
+
+    const chartEl = document.getElementById('quarterly-history-chart');
+    if (!chartEl) return;
+    chartEl.innerHTML = '<div class="text-sm" style="color:var(--cyan);font-weight:600;margin-bottom:6px;">季度 EPS 趨勢 (近3年)</div><div id="qtr-hist-box" style="height:200px;"></div>';
+    const box = document.getElementById('qtr-hist-box');
+    if (!box || box.clientWidth === 0) return;
+
+    const chart = LightweightCharts.createChart(box, {
+      width: box.clientWidth, height: 200,
+      layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: 10 },
+      grid: { vertLines: { color: 'rgba(0,240,255,0.04)' }, horzLines: { color: 'rgba(0,240,255,0.04)' } },
+      timeScale: { borderColor: 'rgba(0,240,255,0.1)' },
+      rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', scaleMargins: { top: 0.1, bottom: 0.1 } },
+    });
+
+    const barSeries = chart.addHistogramSeries({
+      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+    });
+    barSeries.setData(epsData.map(d => ({
+      time: d.quarter,
+      value: d.eps,
+      color: d.eps >= 0 ? 'rgba(255,56,96,0.65)' : 'rgba(0,232,123,0.65)',
+    })));
+
+    chart.timeScale().fitContent();
+  } catch(e) {
+    console.warn('[CT] Quarterly history chart error:', e);
   }
 }
 
@@ -3110,15 +3318,19 @@ async function fetchStockFundamentals(code) {
     // Fields: 代號, 名稱, 收盤價, 殖利率(%), 股利年度, 本益比, 股價淨值比, 財報年/季
     const price = found[2] || '--';
     const yield_ = found[3] || '--';
+    const dividendYear = found[4] || '';
     const pe = found[5] || '--';
     const pb = found[6] || '--';
     const period = found[7] || '';
+    const dividendYearStr = dividendYear ? `以${parseInt(dividendYear)+1911}年股利計算` : '';
+    const peNote = period ? '以近四季EPS計算' : '';
 
     el.innerHTML = `
       <div class="stat-grid">
         <div class="stat-box">
           <div class="label">本益比 (PE)</div>
           <div class="value" style="color:var(--cyan);font-size:20px;">${pe === '-' ? 'N/A' : pe}</div>
+          ${peNote ? `<div class="text-sm text-muted" style="margin-top:2px;">${peNote}</div>` : ''}
         </div>
         <div class="stat-box">
           <div class="label">股價淨值比 (PB)</div>
@@ -3127,6 +3339,7 @@ async function fetchStockFundamentals(code) {
         <div class="stat-box">
           <div class="label">殖利率</div>
           <div class="value" style="color:var(--yellow);font-size:20px;">${yield_}%</div>
+          ${dividendYearStr ? `<div class="text-sm text-muted" style="margin-top:2px;">${dividendYearStr}</div>` : ''}
         </div>
       </div>
       <div class="text-sm text-muted" style="margin-top:8px;">財報期間：${period}</div>`;
@@ -3143,7 +3356,7 @@ async function fetchStockMargin(code) {
   if (!el) return;
   el.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
   try {
-    let data = null;
+    let data = null, marginDate = '';
     for (let i = 0; i < 7; i++) {
       const d = dateStr(i);
       try {
@@ -3152,6 +3365,7 @@ async function fetchStockMargin(code) {
           const t = res.tables[1];
           if (t.data && t.data.length > 0) {
             data = res;
+            marginDate = d;
             break;
           }
         }
@@ -3161,38 +3375,83 @@ async function fetchStockMargin(code) {
       el.innerHTML = '<div class="text-muted">暫無融資融券資料</div>';
       return;
     }
-    const rows = data.tables[1].data;
+    const table = data.tables[1];
+    const rows = table.data;
     const found = rows.find(r => (r[0] || '').trim() === code);
     if (!found) {
       el.innerHTML = '<div class="text-muted">此股票無融資融券資料</div>';
       return;
     }
-    // Fields: 代號,名稱, 融資:買進,賣出,現金償還,前日餘額,今日餘額,限額, 融券:買進,賣出,現金償還,前日餘額,今日餘額,限額, 資券互抵
-    const mBuy = fmtNum(parseNum(found[2]));
-    const mSell = fmtNum(parseNum(found[3]));
-    const mPrevBal = fmtNum(parseNum(found[5]));
-    const mBal = fmtNum(parseNum(found[6]));
-    const mChg = parseNum(found[6]) - parseNum(found[5]);
-    const sBuy = fmtNum(parseNum(found[8]));
-    const sSell = fmtNum(parseNum(found[9]));
-    const sPrevBal = fmtNum(parseNum(found[11]));
-    const sBal = fmtNum(parseNum(found[12]));
-    const sChg = parseNum(found[12]) - parseNum(found[11]);
-    const offset = found[14] || '0';
+
+    // Build field name -> index mapping from table headers
+    const fields = table.fields || [];
+    const fi = {};
+    fields.forEach((f, idx) => { fi[f.trim()] = idx; });
+
+    // Helper: get value by field name, fallback to index
+    function gv(name, fallbackIdx) {
+      const idx = fi[name] !== undefined ? fi[name] : fallbackIdx;
+      return idx !== undefined && idx < found.length ? found[idx] : '0';
+    }
+
+    const mBuy = fmtNum(parseNum(gv('買進', 2)));
+    const mSell = fmtNum(parseNum(gv('賣出', 3)));
+    const mPrevBal = fmtNum(parseNum(gv('前日餘額', 5)));
+    const mBalVal = parseNum(gv('今日餘額', 6));
+    const mBal = fmtNum(mBalVal);
+    const mChg = mBalVal - parseNum(gv('前日餘額', 5));
+    const mLimitNum = parseNum(gv('限額', 7));
+
+    // Short selling fields - match by name to handle variable column positions
+    // Look for fields that contain specific keywords in the short section
+    let sBuyIdx = fi['買進'] !== undefined ? fi['買進'] : 8;
+    let sSellIdx = fi['賣出'] !== undefined ? fi['賣出'] : 9;
+    let sPrevBalIdx = fi['前日餘額'] !== undefined ? fi['前日餘額'] : 11;
+    let sBalIdx = fi['今日餘額'] !== undefined ? fi['今日餘額'] : 12;
+    let sLimitIdx = fi['限額'] !== undefined ? fi['限額'] : 13;
+    let offsetIdx = fi['資券互抵'] !== undefined ? fi['資券互抵'] : 14;
+
+    // Smarter detection: scan field names for duplicate names (融資 section vs 融券 section)
+    // The TWSE MI_MARGN table has repeated field names: 買進, 賣出, etc. appear twice
+    // First occurrence = 融資, second = 融券
+    const fieldDups = {};
+    fields.forEach((f, idx) => {
+      const name = f.trim();
+      if (!fieldDups[name]) fieldDups[name] = [];
+      fieldDups[name].push(idx);
+    });
+    if (fieldDups['買進'] && fieldDups['買進'].length >= 2) sBuyIdx = fieldDups['買進'][1];
+    if (fieldDups['賣出'] && fieldDups['賣出'].length >= 2) sSellIdx = fieldDups['賣出'][1];
+    if (fieldDups['前日餘額'] && fieldDups['前日餘額'].length >= 2) sPrevBalIdx = fieldDups['前日餘額'][1];
+    if (fieldDups['今日餘額'] && fieldDups['今日餘額'].length >= 2) sBalIdx = fieldDups['今日餘額'][1];
+    if (fieldDups['限額'] && fieldDups['限額'].length >= 2) sLimitIdx = fieldDups['限額'][1];
+    // 資券互抵 only appears once, also check for 資券相抵
+    if (fieldDups['資券互抵']) offsetIdx = fieldDups['資券互抵'][0];
+    else if (fieldDups['資券相抵']) offsetIdx = fieldDups['資券相抵'][0];
+
+    const sBuyVal = parseNum(found[sBuyIdx] || '0');
+    const sSellVal = parseNum(found[sSellIdx] || '0');
+    const sPrevBalVal = parseNum(found[sPrevBalIdx] || '0');
+    const sBalVal = parseNum(found[sBalIdx] || '0');
+    const sLimitNum = parseNum(found[sLimitIdx] || '0');
+    const offsetVal = parseNum(found[offsetIdx] || '0');
+
+    const sBuy = fmtNum(sBuyVal);
+    const sSell = fmtNum(sSellVal);
+    const sBal = fmtNum(sBalVal);
+    const sChg = sBalVal - sPrevBalVal;
 
     // Calculate key ratios
-    const mBalNum = parseNum(found[6]);
-    const mLimitNum = parseNum(found[7]);
-    const sBalNum = parseNum(found[12]);
-    const marginUtil = mLimitNum > 0 ? (mBalNum / mLimitNum * 100).toFixed(1) : '--';
-    const shortRatio = mBalNum > 0 ? (sBalNum / mBalNum * 100).toFixed(1) : '--';
-
+    const marginUtil = mLimitNum > 0 ? (mBalVal / mLimitNum * 100).toFixed(1) : '--';
+    const shortRatio = mBalVal > 0 ? (sBalVal / mBalVal * 100).toFixed(1) : '--';
     const mLimitStr = fmtNum(mLimitNum);
-    const sLimitNum = parseNum(found[13]);
     const sLimitStr = fmtNum(sLimitNum);
-    const shortUtil = sLimitNum > 0 ? (sBalNum / sLimitNum * 100).toFixed(1) : '--';
+    const shortUtil = sLimitNum > 0 ? (sBalVal / sLimitNum * 100).toFixed(1) : '--';
+
+    const dateDisplay = marginDate ? `${marginDate.slice(0,4)}/${marginDate.slice(4,6)}/${marginDate.slice(6,8)}` : '';
 
     el.innerHTML = `
+      ${dateDisplay ? `<div class="text-sm" style="margin-bottom:10px;color:var(--cyan);font-weight:600;">資料日期：${dateDisplay}</div>` : ''}
       <div class="stat-grid" style="margin-bottom:12px;">
         <div class="stat-box">
           <div class="label">融資餘額（張）</div>
@@ -3210,7 +3469,7 @@ async function fetchStockMargin(code) {
         </div>
         <div class="stat-box">
           <div class="label">資券互抵</div>
-          <div class="value">${fmtNum(parseNum(offset))}</div>
+          <div class="value">${fmtNum(offsetVal)}</div>
         </div>
       </div>
       <div class="grid-2" style="gap:16px;">
@@ -3470,10 +3729,18 @@ function renderChipSummary(code, name, C, H, L, V, instInfo, aiScoreObj, signals
         <span class="chip-inst-val ${cls}">${val>0?'+':''}${fmtShares(val)}</span>
       </div>`;
     }
+    const instTotal = (instInfo.f || 0) + (instInfo.t || 0) + (instInfo.d || 0);
     instHtml = `<div class="chip-inst">
       ${instBar('外資', instInfo.f)}
       ${instBar('投信', instInfo.t)}
       ${instBar('自營', instInfo.d)}
+      <div class="chip-inst-row" style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px;">
+        <span class="chip-inst-label" style="font-weight:700;">合計</span>
+        <div class="chip-inst-bar-wrap">
+          <div class="chip-inst-bar" style="width:${Math.abs(instTotal)/maxInst*100}%;background:${instTotal>=0?'var(--red)':'var(--green)'};"></div>
+        </div>
+        <span class="chip-inst-val ${instTotal>=0?'up':'down'}" style="font-weight:700;">${instTotal>0?'+':''}${fmtShares(instTotal)}</span>
+      </div>
     </div>`;
   } else {
     instHtml = '<div class="text-muted" style="font-size:12px;">無法人資料</div>';
@@ -4354,7 +4621,7 @@ async function renderGlobalIndices() {
     const chg = q.regularMarketChange || 0;
     const pct = q.regularMarketChangePercent || 0;
     const isUp = chg >= 0;
-    html += `<div class="stat-box">
+    html += `<div class="stat-box" style="cursor:pointer;" onclick="showIndexDetailModal('${idx.symbol}','${idx.name}',${price},${chg},${pct})">
       <div class="label">${idx.name}</div>
       <div class="value" style="font-size:18px;">${fmtNum(price, price > 1000 ? 0 : 2)}</div>
       <div class="text-sm ${isUp ? 'up' : 'down'}">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</div>
@@ -4362,6 +4629,120 @@ async function renderGlobalIndices() {
   });
   html += '</div>';
   box.innerHTML = html;
+}
+
+// D1: International index detail modal
+async function showIndexDetailModal(symbol, name, price, chg, pct) {
+  // Remove existing modal if any
+  const existing = document.getElementById('index-detail-modal');
+  if (existing) existing.remove();
+
+  const isUp = chg >= 0;
+  const cls = isUp ? 'up' : 'down';
+
+  const modal = document.createElement('div');
+  modal.id = 'index-detail-modal';
+  modal.className = 'index-modal-overlay';
+  modal.innerHTML = `
+    <div class="index-modal">
+      <div class="index-modal-header">
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--text);">${name}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px;">${symbol}</div>
+        </div>
+        <button class="index-modal-close" onclick="document.getElementById('index-detail-modal').remove()">&times;</button>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:16px;">
+        <span style="font-size:28px;font-weight:800;color:var(--text);">${fmtNum(price, price > 1000 ? 0 : 2)}</span>
+        <span class="${cls}" style="font-size:16px;">${chg > 0 ? '+' : ''}${fmtNum(chg, 2)} (${pct > 0 ? '+' : ''}${pct.toFixed(2)}%)</span>
+      </div>
+      <div id="index-modal-chart" style="height:250px;margin-bottom:16px;"><div class="loading-box"><div class="spinner"></div></div></div>
+      <div id="index-modal-info" style="margin-bottom:8px;"></div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  // Close on overlay click
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) modal.remove();
+  });
+
+  // Fetch 1-month chart data
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1mo`;
+    const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
+    const resp = await fetch(proxyUrl);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    const result = data.chart?.result?.[0];
+    if (!result || !result.timestamp) throw new Error('No data');
+
+    const ts = result.timestamp;
+    const closes = result.indicators?.quote?.[0]?.close || [];
+    const highs = result.indicators?.quote?.[0]?.high || [];
+    const lows = result.indicators?.quote?.[0]?.low || [];
+    const meta = result.meta || {};
+
+    // Chart
+    const chartEl = document.getElementById('index-modal-chart');
+    if (chartEl) {
+      chartEl.innerHTML = '';
+      const chart = LightweightCharts.createChart(chartEl, {
+        width: chartEl.clientWidth, height: 250,
+        layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: 10 },
+        grid: { vertLines: { color: 'rgba(0,240,255,0.04)' }, horzLines: { color: 'rgba(0,240,255,0.04)' } },
+        timeScale: { borderColor: 'rgba(0,240,255,0.1)' },
+        rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', scaleMargins: { top: 0.05, bottom: 0.05 } },
+        crosshair: { mode: 0 },
+      });
+      const areaSeries = chart.addAreaSeries({
+        lineColor: isUp ? '#ff4070' : '#00ff88',
+        topColor: isUp ? 'rgba(255,64,112,0.2)' : 'rgba(0,255,136,0.2)',
+        bottomColor: 'rgba(0,0,0,0)',
+        lineWidth: 2,
+      });
+      const chartData = [];
+      for (let i = 0; i < ts.length; i++) {
+        if (closes[i] != null) {
+          chartData.push({ time: ts[i], value: closes[i] });
+        }
+      }
+      areaSeries.setData(chartData);
+      chart.timeScale().fitContent();
+    }
+
+    // 52-week high/low from meta
+    const high52 = meta.fiftyTwoWeekHigh || 0;
+    const low52 = meta.fiftyTwoWeekLow || 0;
+    const range52 = meta.fiftyTwoWeekRange || '';
+    // Compute month high/low
+    const monthHigh = highs.filter(v => v != null).length > 0 ? Math.max(...highs.filter(v => v != null)) : 0;
+    const monthLow = lows.filter(v => v != null).length > 0 ? Math.min(...lows.filter(v => v != null)) : 0;
+
+    const infoEl = document.getElementById('index-modal-info');
+    if (infoEl) {
+      let infoHtml = '<div class="stat-grid">';
+      if (monthHigh > 0) infoHtml += `<div class="stat-box"><div class="label">月最高</div><div class="value up" style="font-size:14px;">${fmtNum(monthHigh, price > 1000 ? 0 : 2)}</div></div>`;
+      if (monthLow > 0) infoHtml += `<div class="stat-box"><div class="label">月最低</div><div class="value down" style="font-size:14px;">${fmtNum(monthLow, price > 1000 ? 0 : 2)}</div></div>`;
+      if (high52 > 0) infoHtml += `<div class="stat-box"><div class="label">52週最高</div><div class="value" style="font-size:14px;color:var(--cyan);">${fmtNum(high52, price > 1000 ? 0 : 2)}</div></div>`;
+      if (low52 > 0) infoHtml += `<div class="stat-box"><div class="label">52週最低</div><div class="value" style="font-size:14px;color:var(--orange);">${fmtNum(low52, price > 1000 ? 0 : 2)}</div></div>`;
+      infoHtml += '</div>';
+
+      // Related ETF info
+      const etfMap = {
+        '^DJI': 'DIA (SPDR Dow Jones)', '^GSPC': 'SPY (SPDR S&P 500)',
+        '^IXIC': 'QQQ (Invesco NASDAQ)', '^SOX': 'SOXX (iShares Semiconductor)',
+        '^VIX': 'UVXY / VXX', '^TWII': '0050 (元大台灣50)',
+        '^N225': 'EWJ (iShares Japan)', '000001.SS': 'FXI (iShares China)',
+      };
+      if (etfMap[symbol]) {
+        infoHtml += `<div class="text-sm text-muted" style="margin-top:10px;">相關 ETF：<span style="color:var(--yellow);">${etfMap[symbol]}</span></div>`;
+      }
+      infoEl.innerHTML = infoHtml;
+    }
+  } catch(e) {
+    const chartEl = document.getElementById('index-modal-chart');
+    if (chartEl) chartEl.innerHTML = '<div class="text-muted" style="text-align:center;padding:20px;">圖表載入失敗</div>';
+  }
 }
 
 function renderUSStockTabs() {
@@ -4590,6 +4971,23 @@ async function fetchRealtimeQuote(code) {
   if (lastPrice > 0) {
     document.getElementById('realtime-info').innerHTML =
       `開盤 ${fmtNum(open,2)} | 最高 <span class="up">${fmtNum(high,2)}</span> | 最低 <span class="down">${fmtNum(low,2)}</span> | 量 ${fmtNum(vol,0)} 張 | ${timeStr}`;
+
+    // B5: Intraday info bar
+    try {
+      const infoBar = document.getElementById('intraday-info-bar');
+      if (infoBar && prevClose > 0) {
+        const rtChg = lastPrice - prevClose;
+        const rtPct = (rtChg / prevClose * 100);
+        const rtCls = rtChg >= 0 ? 'up' : 'down';
+        const volStr = vol >= 1000 ? fmtNum(Math.round(vol / 1000), 0) + ' 張' : fmtNum(vol, 0) + ' 股';
+        infoBar.innerHTML = `<span class="ib-item">現價 <b class="${rtCls}">${fmtNum(lastPrice, 2)}</b></span>`
+          + `<span class="ib-item ${rtCls}">${rtChg > 0 ? '+' : ''}${fmtNum(rtChg, 2)} (${rtPct > 0 ? '+' : ''}${rtPct.toFixed(2)}%)</span>`
+          + `<span class="ib-item">高 <b class="up">${fmtNum(high, 2)}</b></span>`
+          + `<span class="ib-item">低 <b class="down">${fmtNum(low, 2)}</b></span>`
+          + `<span class="ib-item">量 <b>${volStr}</b></span>`;
+        infoBar.style.display = 'flex';
+      }
+    } catch(e) {}
   }
 
   return { price: lastPrice, prevClose, chg: lastPrice - prevClose, pct: prevClose > 0 ? ((lastPrice - prevClose) / prevClose * 100) : 0 };
@@ -5520,8 +5918,10 @@ async function checkAuth() {
       if (data.user.role === 'admin') gCurrentPlan = 'proplus';
       renderUserSection();
       await loadWatchlistFromServer();
-    } else {
+    } else if (r.status === 401) {
       clearToken();
+    } else {
+      console.warn('checkAuth: server returned', r.status, '— keeping token');
     }
   } catch (e) { console.warn('checkAuth failed:', e); }
 }

@@ -4305,6 +4305,98 @@
       }
     }
 
+    /* ===== OHLCV Stats Row (B4) ===== */
+    .stock-ohlcv-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--text2);
+    }
+    .stock-ohlcv-row span { white-space: nowrap; }
+    .stock-ohlcv-row b { color: var(--text); font-weight: 600; }
+
+    /* ===== Intraday Info Bar (B5) ===== */
+    .intraday-info-bar {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      padding: 6px 10px;
+      background: rgba(0, 240, 255, 0.04);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text2);
+    }
+    .intraday-info-bar .ib-item { white-space: nowrap; }
+    .intraday-info-bar b { font-weight: 600; }
+
+    /* ===== Index Detail Modal (D1) ===== */
+    .index-modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 10000;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      backdrop-filter: blur(4px);
+    }
+    .index-modal {
+      background: var(--bg2);
+      border: 1px solid var(--border-bright);
+      border-radius: 14px;
+      padding: 24px;
+      max-width: 560px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 0 40px rgba(0, 240, 255, 0.15), 0 20px 60px rgba(0, 0, 0, 0.5);
+      animation: modalFadeIn 0.2s ease;
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .index-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .index-modal-close {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text2);
+      font-size: 22px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .index-modal-close:hover {
+      background: rgba(255, 64, 112, 0.15);
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    @media (max-width: 768px) {
+      .stock-ohlcv-row { gap: 8px; font-size: 11px; padding: 6px 8px; }
+      .intraday-info-bar { gap: 6px; font-size: 11px; padding: 4px 8px; }
+      .index-modal { padding: 16px; max-width: 100%; }
+    }
+
     /* ===== SCANLINE EFFECT (subtle) ===== */
     .scanline {
       position: fixed;

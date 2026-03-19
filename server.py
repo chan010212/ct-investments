@@ -70,6 +70,7 @@ ALLOWED_HOSTS = [
     'query2.finance.yahoo.com',
     'mops.twse.com.tw',
     'api.cnyes.com',
+    'api.finmindtrade.com',
 ]
 
 # ============================================================
@@ -1869,6 +1870,7 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
     """Serves static files + proxies API requests + member API"""
 
     def do_GET(self):
+      try:
         if self.path == '/api/health':
             resp = {'status': 'ok', 'time': _tw_now().isoformat()}
             if _healthcheck_result:
@@ -1928,8 +1930,16 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
         else:
             super().do_GET()
+      except (BrokenPipeError, ConnectionResetError):
+          pass
+      except Exception as e:
+          try:
+              self.send_error(500, str(e))
+          except (BrokenPipeError, ConnectionResetError):
+              pass
 
     def do_POST(self):
+      try:
         if self.path == '/api/register':
             self.handle_register()
         elif self.path == '/api/login':
@@ -1956,8 +1966,16 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_trigger_alert()
         else:
             self.send_error(404)
+      except (BrokenPipeError, ConnectionResetError):
+          pass
+      except Exception as e:
+          try:
+              self.send_error(500, str(e))
+          except (BrokenPipeError, ConnectionResetError):
+              pass
 
     def do_DELETE(self):
+      try:
         if self.path.startswith('/api/watchlist/'):
             self.handle_delete_watchlist()
         elif self.path.startswith('/api/alerts/'):
@@ -1968,19 +1986,42 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_admin_delete_pick()
         else:
             self.send_error(404)
+      except (BrokenPipeError, ConnectionResetError):
+          pass
+      except Exception as e:
+          try:
+              self.send_error(500, str(e))
+          except (BrokenPipeError, ConnectionResetError):
+              pass
 
     def do_PUT(self):
+      try:
         if self.path.startswith('/api/portfolio/'):
             self.handle_put_portfolio()
         else:
             self.send_error(404)
+      except (BrokenPipeError, ConnectionResetError):
+          pass
+      except Exception as e:
+          try:
+              self.send_error(500, str(e))
+          except (BrokenPipeError, ConnectionResetError):
+              pass
 
     def do_OPTIONS(self):
+      try:
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         self.end_headers()
+      except (BrokenPipeError, ConnectionResetError):
+          pass
+      except Exception as e:
+          try:
+              self.send_error(500, str(e))
+          except (BrokenPipeError, ConnectionResetError):
+              pass
 
     # --- Helpers ---
     def read_body(self):
@@ -3082,7 +3123,7 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
         try:
             cached = proxy_cache_get('_taifex_txf')
             if cached:
-                self.send_json(json.loads(cached[0]))
+                self.send_json(json.loads(cached['data']))
                 return
             req = urllib.request.Request(
                 'https://mis.taifex.com.tw/futures/api/getQuoteList',

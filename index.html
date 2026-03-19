@@ -20,7 +20,7 @@
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%23060b18'/><text x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='system-ui' font-size='28' font-weight='800' fill='%2300f0ff'>CT</text></svg>">
   <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
-  <link rel="stylesheet" href="/css/style.css?v=52">
+  <link rel="stylesheet" href="/css/style.css?v=53">
 </head>
 <body>
 <!-- Futuristic Background Effects -->
@@ -436,6 +436,7 @@
               <span id="stock-change" style="font-size:15px;margin-left:10px;"></span>
             </div>
           </div>
+          <div id="stock-detail-stats" class="stock-ohlcv-row" style="display:none;"></div>
         </div>
       </div>
 
@@ -468,6 +469,7 @@
           <div class="card">
             <div class="card-title">&#x23F1; 盤中即時走勢</div>
             <div id="intraday-chart" class="chart-box chart-intraday"></div>
+            <div id="intraday-info-bar" class="intraday-info-bar" style="display:none;"></div>
             <div class="text-sm text-muted" style="margin-top:6px;text-align:right;" id="intraday-status">非交易時段</div>
           </div>
           <div class="card">
