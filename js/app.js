@@ -3888,24 +3888,28 @@ function zoomChart(action) {
 let _fsOverlay = null;
 let _fsChart = null;
 
+var _fsOrientationLocked = false;
+
 function toggleChartFullscreen() {
   if (_fsOverlay) { closeChartFullscreen(); return; }
 
   const isMobile = window.innerWidth <= 768;
 
-  // Create overlay
-  _fsOverlay = document.createElement('div');
-  _fsOverlay.className = 'chart-fullscreen-overlay' + (isMobile ? ' fs-landscape' : '');
+  // Mobile: try to lock orientation to landscape (no CSS rotate needed)
+  if (isMobile && screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('landscape').then(() => {
+      _fsOrientationLocked = true;
+    }).catch(() => {
+      _fsOrientationLocked = false;
+    });
+  }
 
-  // On mobile: use visual viewport for reliable dimensions (avoids address bar / notch issues)
+  // Create overlay — no longer use fs-landscape class (no CSS rotate)
+  _fsOverlay = document.createElement('div');
+  _fsOverlay.className = 'chart-fullscreen-overlay';
+
   if (isMobile) {
-    const vv = window.visualViewport || { width: window.innerWidth, height: window.innerHeight };
-    const vw = Math.round(vv.width);
-    const vh = Math.round(vv.height);
-    _fsOverlay.style.width = vh + 'px';
-    _fsOverlay.style.height = vw + 'px';
-    _fsOverlay.style.left = vw + 'px';
-    _fsOverlay.style.top = '0px';
+    // Let the overlay fill the screen naturally
     _fsOverlay.style.overflow = 'hidden';
   }
 
@@ -3961,20 +3965,19 @@ function toggleChartFullscreen() {
   _fsOverlay.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
   // Use setTimeout for reliable layout settling (rAF can fire before transform layout finishes)
+  // Use longer delay on mobile to wait for orientation change to settle
   setTimeout(() => {
     if (!_fsOverlay) return;
 
-    // Calculate chart dimensions explicitly instead of relying on clientWidth/Height in rotated container
+    // Calculate chart dimensions from actual viewport (no CSS rotate, so width/height are real)
     let w, h;
     const mob = isMobile;
     if (mob) {
       const vv = window.visualViewport || { width: window.innerWidth, height: window.innerHeight };
-      const overlayW = Math.round(vv.height); // overlay width = vh (rotated)
-      const overlayH = Math.round(vv.width);  // overlay height = vw (rotated)
+      w = Math.round(Math.max(vv.width, vv.height));  // landscape: wider dimension
+      h = Math.round(Math.min(vv.width, vv.height));   // landscape: shorter dimension
       const headerH = header.offsetHeight || 32;
-      w = overlayW;
-      h = overlayH - headerH;
-      // Force body dimensions explicitly — prevent overflow
+      h = h - headerH;
       body.style.width = w + 'px';
       body.style.height = h + 'px';
       body.style.maxWidth = w + 'px';
@@ -3985,7 +3988,6 @@ function toggleChartFullscreen() {
     }
 
     if (w <= 0 || h <= 0) {
-      // Fallback: try reading from DOM
       w = body.clientWidth || window.innerWidth;
       h = body.clientHeight || window.innerHeight - 50;
     }
@@ -4164,33 +4166,16 @@ function toggleChartFullscreen() {
 
 function _fsResize() {
   if (!_fsChart || !_fsOverlay) return;
-  const isMob = _fsOverlay.classList.contains('fs-landscape');
-  if (isMob) {
-    const vv = window.visualViewport || { width: window.innerWidth, height: window.innerHeight };
-    const vw = Math.round(vv.width);
-    const vh = Math.round(vv.height);
-    _fsOverlay.style.width = vh + 'px';
-    _fsOverlay.style.height = vw + 'px';
-    _fsOverlay.style.left = vw + 'px';
-  }
   setTimeout(() => {
     if (!_fsChart || !_fsOverlay) return;
     const body = _fsOverlay.querySelector('.chart-fs-body');
     const header = _fsOverlay.querySelector('.chart-fs-header');
     if (!body) return;
-    let w, h;
-    if (isMob) {
-      const vv = window.visualViewport || { width: window.innerWidth, height: window.innerHeight };
-      w = Math.round(vv.height);
-      h = Math.round(vv.width) - (header ? header.offsetHeight : 32);
-      body.style.width = w + 'px';
-      body.style.height = h + 'px';
-      body.style.maxWidth = w + 'px';
-      body.style.maxHeight = h + 'px';
-    } else {
-      w = body.clientWidth;
-      h = body.clientHeight;
-    }
+    const vv = window.visualViewport || { width: window.innerWidth, height: window.innerHeight };
+    let w = Math.round(vv.width);
+    let h = Math.round(vv.height) - (header ? header.offsetHeight : 32);
+    body.style.width = w + 'px';
+    body.style.height = h + 'px';
     _fsChart.applyOptions({ width: w, height: h });
   }, 80);
 }
@@ -4215,6 +4200,11 @@ function closeChartFullscreen() {
   if (_fsChart) { try { _fsChart.remove(); } catch(e) {} _fsChart = null; }
   if (_fsOverlay) { _fsOverlay.remove(); _fsOverlay = null; }
   document.body.style.overflow = '';
+  // Unlock screen orientation
+  if (_fsOrientationLocked && screen.orientation && screen.orientation.unlock) {
+    try { screen.orientation.unlock(); } catch(e) {}
+    _fsOrientationLocked = false;
+  }
 }
 
 // ESC to close fullscreen
@@ -8099,12 +8089,21 @@ function updateUpgradeNav() {
         tip.classList.toggle('active');
         activeTip = tip.classList.contains('active') ? tip : null;
 
-        // Position popup for mobile
+        // Position popup for mobile — center on screen
         if (activeTip) {
           const popup = tip.querySelector('.ct-tip-popup');
           if (popup && window.innerWidth <= 768) {
-            const rect = tip.getBoundingClientRect();
-            popup.style.top = (rect.bottom + 8) + 'px';
+            // Reset any previous inline styles
+            popup.style.transform = 'none';
+            popup.style.top = '50%';
+            popup.style.left = '16px';
+            // After layout, measure and center vertically
+            requestAnimationFrame(() => {
+              const ph = popup.offsetHeight;
+              const vh = window.innerHeight;
+              const top = Math.max(16, (vh - ph) / 2);
+              popup.style.top = top + 'px';
+            });
           }
         }
       }
