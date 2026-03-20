@@ -1178,6 +1178,7 @@ async function init() {
       if (typeof renderWatchlist === 'function') renderWatchlist();
       if (typeof renderSectorRanking === 'function') renderSectorRanking();
       if (typeof renderTaiexChart === 'function') renderTaiexChart();
+      if (typeof loadMarketNews === 'function') loadMarketNews();
       renderRecentStocks();
     });
 

@@ -1272,6 +1272,7 @@
     }
     .news-title { flex: 1; font-size: 13px; line-height: 1.4; }
     .news-time { flex-shrink: 0; font-size: 11px; color: var(--text2); white-space: nowrap; }
+    .market-news-list { max-height: 480px; overflow-y: auto; }
 
     /* ===== RECENT CHIPS ===== */
     .recent-chips { display: flex; flex-wrap: wrap; gap: 6px; }
