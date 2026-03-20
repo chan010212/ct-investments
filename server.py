@@ -1345,6 +1345,199 @@ def _streak_top(db, inst_type, direction, limit=20):
 
 
 # ============================================================
+# STOCK HISTORY CACHE (個股歷史 K 線快取)
+# ============================================================
+_hist_lock = threading.Lock()
+_hist_fetching = set()   # codes currently being fetched
+
+def _hist_is_fresh(code):
+    """Check if cached history for code is recent enough (last date within 2 trading days)."""
+    try:
+        db = get_db()
+        row = db.execute('SELECT MAX(date) as max_date, COUNT(*) as cnt FROM stock_history WHERE code=?', (code,)).fetchone()
+        db.close()
+        if not row or row['cnt'] < 60:
+            return False
+        max_date = row['max_date']
+        if not max_date:
+            return False
+        # If last cached date is within 2 days of today, consider fresh
+        today = _tw_now().strftime('%Y-%m-%d')
+        from datetime import date as _date
+        last = _date.fromisoformat(max_date)
+        now = _date.fromisoformat(today)
+        diff = (now - last).days
+        # Allow 3 days gap (weekends/holidays)
+        return diff <= 3
+    except Exception:
+        return False
+
+
+def _hist_get_cached(code):
+    """Return cached OHLCV data from SQLite."""
+    try:
+        db = get_db()
+        rows = db.execute(
+            'SELECT date, open, high, low, close, volume FROM stock_history WHERE code=? ORDER BY date ASC',
+            (code,)
+        ).fetchall()
+        db.close()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def _hist_fetch_twse(code):
+    """Fetch 13 months of TWSE data server-side."""
+    now = _tw_now()
+    all_rows = []
+    stock_name = ''
+    for m in range(13):
+        d = datetime(now.year, now.month, 1) - timedelta(days=30 * m)
+        ds = d.strftime('%Y%m01')
+        url = f'https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?response=json&date={ds}&stockNo={code}'
+        try:
+            data = _api_fetch_json(url)
+            if data and data.get('stat') == 'OK' and data.get('data'):
+                if not stock_name and data.get('title'):
+                    import re
+                    mt = re.search(r'\d+\s+(.+?)\s+各日', data['title'])
+                    if mt:
+                        stock_name = mt.group(1)
+                for row in data['data']:
+                    try:
+                        # ROC date → ISO
+                        parts = row[0].strip().split('/')
+                        y = int(parts[0]) + 1911
+                        iso = f'{y}-{parts[1].strip().zfill(2)}-{parts[2].strip().zfill(2)}'
+                        vol = int(row[1].replace(',', ''))
+                        o = float(row[3].replace(',', ''))
+                        h = float(row[4].replace(',', ''))
+                        l = float(row[5].replace(',', ''))
+                        c = float(row[6].replace(',', ''))
+                        all_rows.append((code, iso, o, h, l, c, vol))
+                    except (ValueError, IndexError):
+                        continue
+            time.sleep(0.3)  # Be polite to TWSE
+        except Exception as e:
+            print(f'[HIST] TWSE fetch error for {code} month {ds}: {e}')
+            time.sleep(0.5)
+    return all_rows, stock_name
+
+
+def _hist_fetch_tpex(code):
+    """Fetch 13 months of TPEx data server-side."""
+    now = _tw_now()
+    all_rows = []
+    stock_name = ''
+    for m in range(13):
+        d = datetime(now.year, now.month, 1) - timedelta(days=30 * m)
+        ds = f'{d.year}/{d.month:02d}/01'
+        url = f'https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock?response=json&date={ds}&code={code}'
+        try:
+            data = _api_fetch_json(url)
+            if data and data.get('tables') and data['tables'][0].get('data'):
+                if not stock_name and data.get('name'):
+                    stock_name = data['name']
+                for row in data['tables'][0]['data']:
+                    try:
+                        parts = row[0].strip().split('/')
+                        y = int(parts[0]) + 1911
+                        iso = f'{y}-{parts[1].strip().zfill(2)}-{parts[2].strip().zfill(2)}'
+                        vol = int(str(row[1]).replace(',', '')) * 1000  # TPEx 單位=張, 轉股
+                        o = float(str(row[3]).replace(',', ''))
+                        h = float(str(row[4]).replace(',', ''))
+                        l = float(str(row[5]).replace(',', ''))
+                        c = float(str(row[6]).replace(',', ''))
+                        all_rows.append((code, iso, o, h, l, c, vol))
+                    except (ValueError, IndexError):
+                        continue
+            time.sleep(0.3)
+        except Exception as e:
+            print(f'[HIST] TPEx fetch error for {code} month {ds}: {e}')
+            time.sleep(0.5)
+    return all_rows, stock_name
+
+
+def _hist_fetch_yahoo(code):
+    """Fetch 1 year of Yahoo Finance data server-side (fallback)."""
+    all_rows = []
+    stock_name = ''
+    for suffix in ['.TW', '.TWO']:
+        try:
+            url = f'https://query1.finance.yahoo.com/v8/finance/chart/{code}{suffix}?interval=1d&range=1y'
+            data = _api_fetch_json(url)
+            result = data.get('chart', {}).get('result', [None])[0]
+            if not result or not result.get('timestamp') or len(result['timestamp']) < 5:
+                continue
+            ts = result['timestamp']
+            q = result['indicators']['quote'][0]
+            stock_name = result.get('meta', {}).get('shortName', code)
+            for i in range(len(ts)):
+                if q['close'][i] is None:
+                    continue
+                d = datetime.fromtimestamp(ts[i], tz=_TW_TZ)
+                iso = d.strftime('%Y-%m-%d')
+                o = round(q['open'][i] or 0, 2)
+                h = round(q['high'][i] or 0, 2)
+                l = round(q['low'][i] or 0, 2)
+                c = round(q['close'][i], 2)
+                vol = int(q['volume'][i] or 0)
+                all_rows.append((code, iso, o, h, l, c, vol))
+            if all_rows:
+                break
+        except Exception:
+            continue
+    return all_rows, stock_name
+
+
+def _hist_save(rows):
+    """Upsert rows into stock_history table."""
+    if not rows:
+        return
+    try:
+        db = get_db()
+        db.executemany(
+            'INSERT OR REPLACE INTO stock_history (code, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            rows
+        )
+        db.commit()
+        db.close()
+    except Exception as e:
+        print(f'[HIST] Save error: {e}')
+
+
+def _hist_fetch_and_cache(code):
+    """Fetch stock history from exchanges and cache in SQLite. Runs in background thread."""
+    with _hist_lock:
+        if code in _hist_fetching:
+            return  # Another thread is already fetching
+        _hist_fetching.add(code)
+
+    try:
+        print(f'[HIST] Fetching history for {code}...')
+        # Try TWSE first
+        rows, name = _hist_fetch_twse(code)
+        if not rows:
+            # Try TPEx
+            rows, name = _hist_fetch_tpex(code)
+        if not rows:
+            # Fallback to Yahoo
+            rows, name = _hist_fetch_yahoo(code)
+
+        if rows:
+            _hist_save(rows)
+            print(f'[HIST] Cached {len(rows)} days for {code} ({name})')
+        else:
+            print(f'[HIST] No data found for {code}')
+    except Exception as e:
+        print(f'[HIST] Error fetching {code}: {e}')
+    finally:
+        with _hist_lock:
+            _hist_fetching.discard(code)
+
+
+# ============================================================
 # FUGLE + FINMIND API — rate-limited cache + helpers
 # ============================================================
 _api_cache = {}          # key → { data, ts }
@@ -1578,13 +1771,24 @@ def init_db():
     # Fix: drop broken webauthn table from v55 deployment
     c.execute('DROP TABLE IF EXISTS webauthn_credentials')
     c.execute('DROP TABLE IF EXISTS db_meta')
-    c.execute('DROP TABLE IF EXISTS stock_daily')
     c.execute('DROP TABLE IF EXISTS stock_inst_daily')
     c.execute('DROP TABLE IF EXISTS stock_revenue')
     c.execute('DROP TABLE IF EXISTS stock_quarterly')
     c.execute('DROP TABLE IF EXISTS stock_fundamentals')
     c.execute('DROP TABLE IF EXISTS stock_dividend')
     c.execute('DROP TABLE IF EXISTS stock_news')
+
+    c.execute('''CREATE TABLE IF NOT EXISTS stock_history (
+        code TEXT NOT NULL,
+        date TEXT NOT NULL,
+        open REAL,
+        high REAL,
+        low REAL,
+        close REAL,
+        volume INTEGER,
+        PRIMARY KEY(code, date)
+    )''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_stock_history_code ON stock_history(code, date)')
 
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1879,6 +2083,8 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             return
         elif self.path == '/api/morning-report':
             self.handle_morning_report()
+        elif self.path.startswith('/api/stock-history'):
+            self.handle_stock_history()
         elif self.path.startswith('/api/stock-news'):
             self.handle_stock_news()
         elif self.path == '/api/futures':
@@ -3026,6 +3232,33 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
             return
         items = _fetch_stock_news(code, name)
         self.send_json({'items': items})
+
+    def handle_stock_history(self):
+        """GET /api/stock-history?code=2330 — cached OHLCV history"""
+        qs = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(qs)
+        code = params.get('code', [''])[0].strip()
+        if not code:
+            self.send_json({'error': 'missing code'}, 400)
+            return
+
+        # Return cached data if available
+        cached = _hist_get_cached(code)
+        fresh = _hist_is_fresh(code)
+
+        if cached and fresh:
+            self.send_json({'code': code, 'data': cached, 'cached': True, 'count': len(cached)})
+            return
+
+        if cached and not fresh:
+            # Return stale cache + trigger background refresh
+            threading.Thread(target=_hist_fetch_and_cache, args=(code,), daemon=True).start()
+            self.send_json({'code': code, 'data': cached, 'cached': True, 'stale': True, 'count': len(cached)})
+            return
+
+        # No cache — trigger background fetch, tell frontend to use fallback
+        threading.Thread(target=_hist_fetch_and_cache, args=(code,), daemon=True).start()
+        self.send_json({'code': code, 'data': [], 'cached': False, 'count': 0})
 
     # --- Proxy ---
     # --- Fugle + FinMind API endpoints ---

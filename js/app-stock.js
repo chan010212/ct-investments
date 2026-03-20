@@ -384,6 +384,31 @@ async function analyzeStock(code) {
     // Start fetching real-time quote in parallel with history (so it's ready when we render)
     const realtimePromise = fetchRealtimeQuote(code);
 
+    // === Fast path: try server-side cache (1 request vs 13) ===
+    let _fromCache = false;
+    try {
+      const _hResp = await fetch('/api/stock-history?code=' + encodeURIComponent(code));
+      if (_hResp.ok) {
+        const _hData = await _hResp.json();
+        if (_hData.data && _hData.data.length >= 60) {
+          // Convert cached data to TWSE-like rawRows format for seamless downstream processing
+          rawRows = _hData.data.map(function(r) {
+            // Build ROC date string: YYYY-MM-DD → yyy/mm/dd
+            var parts = r.date.split('-');
+            var rocY = parseInt(parts[0]) - 1911;
+            return [rocY + '/' + parts[1] + '/' + parts[2], String(r.volume), '0', String(r.open), String(r.high), String(r.low), String(r.close), '0', '0'];
+          });
+          stockName = (gStockDB[code] && gStockDB[code].name) || code;
+          if (isEmerging) market = 'tpex';
+          else if (market === 'unknown') market = 'twse';
+          // Force TWSE parse path (volume already in shares from server)
+          if (market === 'tpex') isYahoo = true; // prevent ×1000
+          _fromCache = true;
+        }
+      }
+    } catch(e) { /* cache unavailable — use original fetch */ }
+
+    if (!_fromCache) {
     if (market === 'emerging') {
       // Emerging market stock — use Yahoo Finance
       const r = await fetchYahooHistory(code);
@@ -431,6 +456,7 @@ async function analyzeStock(code) {
         }
       }
     }
+    } // end if (!_fromCache)
 
     if (rawRows.length === 0) {
       document.getElementById('analysis-loading').innerHTML = `<div class="card"><div class="empty-state"><div class="icon">&#x26A0;</div><p>找不到股票 ${code} 的資料<br><span class="text-sm text-muted">請確認股票代號是否正確（支援上市、上櫃、興櫃）</span></p></div></div>`;
