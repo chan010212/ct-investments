@@ -8076,62 +8076,77 @@ function updateUpgradeNav() {
 (function() {
   let activeTip = null;
 
+  function closeTip() {
+    if (activeTip) {
+      activeTip.classList.remove('active');
+      const popup = activeTip.querySelector('.ct-tip-popup');
+      if (popup) { popup.style.top = ''; popup.style.left = ''; popup.style.bottom = ''; }
+      activeTip = null;
+    }
+    const bd = document.getElementById('ct-tip-backdrop');
+    if (bd) bd.remove();
+  }
+
+  function positionPopup(tip) {
+    const popup = tip.querySelector('.ct-tip-popup');
+    if (!popup) return;
+    const isMobile = window.innerWidth <= 768;
+    const rect = tip.getBoundingClientRect();
+
+    if (isMobile) {
+      // Mobile: centered on screen with backdrop
+      let bd = document.getElementById('ct-tip-backdrop');
+      if (!bd) {
+        bd = document.createElement('div');
+        bd.id = 'ct-tip-backdrop';
+        bd.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;';
+        bd.onclick = closeTip;
+        document.body.appendChild(bd);
+      }
+      popup.style.left = '16px';
+      requestAnimationFrame(() => {
+        const ph = popup.offsetHeight;
+        const vh = window.innerHeight;
+        popup.style.top = Math.max(16, (vh - ph) / 2) + 'px';
+      });
+    } else {
+      // Desktop: show above the ? icon
+      const popupW = 320;
+      let left = rect.left + rect.width / 2 - popupW / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - popupW - 8));
+      popup.style.left = left + 'px';
+      // Try above first
+      requestAnimationFrame(() => {
+        const ph = popup.offsetHeight;
+        let top = rect.top - ph - 8;
+        if (top < 8) top = rect.bottom + 8; // fallback: below
+        popup.style.top = top + 'px';
+      });
+    }
+  }
+
   document.addEventListener('click', function(e) {
     const tip = e.target.closest('.ct-tip');
     if (tip) {
-      // On mobile, toggle active class
-      if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (activeTip && activeTip !== tip) {
-          activeTip.classList.remove('active');
-        }
-        tip.classList.toggle('active');
-        activeTip = tip.classList.contains('active') ? tip : null;
-
-        // Position popup for mobile — center on screen with backdrop
-        if (activeTip) {
-          const popup = tip.querySelector('.ct-tip-popup');
-          if (popup && window.innerWidth <= 768) {
-            // Add backdrop
-            let bd = document.getElementById('ct-tip-backdrop');
-            if (!bd) {
-              bd = document.createElement('div');
-              bd.id = 'ct-tip-backdrop';
-              bd.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;';
-              bd.onclick = function() {
-                if (activeTip) { activeTip.classList.remove('active'); activeTip = null; }
-                bd.remove();
-              };
-              document.body.appendChild(bd);
-            }
-            // Clear inline transform to let CSS !important work
-            popup.style.transform = '';
-            popup.style.top = '';
-            popup.style.left = '';
-            // Center vertically after layout
-            requestAnimationFrame(() => {
-              const ph = popup.offsetHeight;
-              const vh = window.innerHeight;
-              const top = Math.max(16, (vh - ph) / 2);
-              popup.style.top = top + 'px';
-            });
-          }
-        } else {
-          // Closing — remove backdrop
-          const bd = document.getElementById('ct-tip-backdrop');
-          if (bd) bd.remove();
-        }
+      e.preventDefault();
+      e.stopPropagation();
+      if (activeTip && activeTip !== tip) closeTip();
+      tip.classList.toggle('active');
+      if (tip.classList.contains('active')) {
+        activeTip = tip;
+        positionPopup(tip);
+      } else {
+        closeTip();
       }
       return;
     }
-    // Click outside closes active tooltip
-    if (activeTip) {
-      activeTip.classList.remove('active');
-      activeTip = null;
-      const bd = document.getElementById('ct-tip-backdrop');
-      if (bd) bd.remove();
-    }
+    closeTip();
+  });
+
+  // Desktop: also show on hover
+  document.addEventListener('mouseover', function(e) {
+    const tip = e.target.closest('.ct-tip');
+    if (tip && !activeTip) positionPopup(tip);
   });
 })();
 

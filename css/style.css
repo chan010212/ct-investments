@@ -3105,37 +3105,24 @@
     }
     .ct-tip-popup {
       display: none;
-      position: absolute;
-      bottom: calc(100% + 8px);
-      left: 50%;
-      transform: translateX(-50%);
+      position: fixed;
+      z-index: 10000;
       background: #101d3a;
-      border: 1px solid rgba(0, 240, 255, 0.3);
+      border: 1px solid rgba(0, 240, 255, 0.4);
       border-radius: 8px;
-      padding: 10px 14px;
-      font-size: 12px;
+      padding: 12px 16px;
+      font-size: 13px;
       font-weight: 400;
       color: var(--text);
-      white-space: nowrap;
-      max-width: 280px;
       white-space: normal;
-      z-index: 1000;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 15px rgba(0,240,255,0.1);
-      line-height: 1.6;
-      animation: tipIn 0.15s ease;
+      max-width: 320px;
+      line-height: 1.7;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.6), 0 0 15px rgba(0,240,255,0.1);
+      animation: tipFade 0.15s ease;
     }
-    @keyframes tipIn {
-      from { opacity: 0; transform: translateX(-50%) translateY(4px); }
-      to { opacity: 1; transform: translateX(-50%) translateY(0); }
-    }
-    .ct-tip-popup::after {
-      content: '';
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      border: 6px solid transparent;
-      border-top-color: rgba(0, 240, 255, 0.3);
+    @keyframes tipFade {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
     .ct-tip:hover .ct-tip-popup,
     .ct-tip.active .ct-tip-popup {
@@ -3143,27 +3130,11 @@
     }
     @media (max-width: 768px) {
       .ct-tip-popup {
-        position: fixed;
-        bottom: auto;
-        top: auto;
         left: 16px !important;
-        right: 16px;
-        transform: none !important;
-        animation: tipInMobile 0.15s ease !important;
+        right: 16px !important;
         max-width: none;
         width: calc(100vw - 32px);
-        z-index: 10000;
-        font-size: 13px;
-        line-height: 1.7;
-        padding: 14px 18px;
-        background: #101d3a;
-        border: 1px solid rgba(0, 240, 255, 0.4);
       }
-      @keyframes tipInMobile {
-        from { opacity: 0; }
-        to { opacity: 1; }
-      }
-      .ct-tip-popup::after { display: none; }
     }
 
     /* ===== 簡易/專業模式 ===== */
