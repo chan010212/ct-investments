@@ -8089,15 +8089,27 @@ function updateUpgradeNav() {
         tip.classList.toggle('active');
         activeTip = tip.classList.contains('active') ? tip : null;
 
-        // Position popup for mobile — center on screen
+        // Position popup for mobile — center on screen with backdrop
         if (activeTip) {
           const popup = tip.querySelector('.ct-tip-popup');
           if (popup && window.innerWidth <= 768) {
-            // Reset any previous inline styles
-            popup.style.transform = 'none';
-            popup.style.top = '50%';
-            popup.style.left = '16px';
-            // After layout, measure and center vertically
+            // Add backdrop
+            let bd = document.getElementById('ct-tip-backdrop');
+            if (!bd) {
+              bd = document.createElement('div');
+              bd.id = 'ct-tip-backdrop';
+              bd.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:9999;';
+              bd.onclick = function() {
+                if (activeTip) { activeTip.classList.remove('active'); activeTip = null; }
+                bd.remove();
+              };
+              document.body.appendChild(bd);
+            }
+            // Clear inline transform to let CSS !important work
+            popup.style.transform = '';
+            popup.style.top = '';
+            popup.style.left = '';
+            // Center vertically after layout
             requestAnimationFrame(() => {
               const ph = popup.offsetHeight;
               const vh = window.innerHeight;
@@ -8105,6 +8117,10 @@ function updateUpgradeNav() {
               popup.style.top = top + 'px';
             });
           }
+        } else {
+          // Closing — remove backdrop
+          const bd = document.getElementById('ct-tip-backdrop');
+          if (bd) bd.remove();
         }
       }
       return;
@@ -8113,6 +8129,8 @@ function updateUpgradeNav() {
     if (activeTip) {
       activeTip.classList.remove('active');
       activeTip = null;
+      const bd = document.getElementById('ct-tip-backdrop');
+      if (bd) bd.remove();
     }
   });
 })();
