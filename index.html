@@ -488,10 +488,17 @@
               <button class="chart-zoom-btn chart-fs-btn" onclick="toggleChartFullscreen()" title="全螢幕">&#x26F6;</button>
             </div>
           </div>
+          <div id="kline-period-bar" class="kline-period-bar">
+            <button class="kline-period-btn active" data-period="daily" onclick="switchKlinePeriod('daily')">日K</button>
+            <button class="kline-period-btn" data-period="weekly" onclick="switchKlinePeriod('weekly')">週K</button>
+            <button class="kline-period-btn" data-period="monthly" onclick="switchKlinePeriod('monthly')">月K</button>
+          </div>
           <div id="chart-toggles" class="chart-toggle-bar">
             <label class="chart-toggle"><input type="checkbox" id="tog-ma5" checked onchange="toggleChartSeries('ma5')"><span class="tog-dot" style="background:#ffd036;"></span>MA5 <span id="ma5-val" class="ma-val" style="color:#ffd036;"></span></label>
             <label class="chart-toggle"><input type="checkbox" id="tog-ma10" checked onchange="toggleChartSeries('ma10')"><span class="tog-dot" style="background:#00d4ff;"></span>MA10 <span id="ma10-val" class="ma-val" style="color:#00d4ff;"></span></label>
             <label class="chart-toggle"><input type="checkbox" id="tog-ma20" checked onchange="toggleChartSeries('ma20')"><span class="tog-dot" style="background:#b44dff;"></span>MA20 <span id="ma20-val" class="ma-val" style="color:#b44dff;"></span></label>
+            <label class="chart-toggle"><input type="checkbox" id="tog-ma60" checked onchange="toggleChartSeries('ma60')"><span class="tog-dot" style="background:#ff6b6b;"></span>MA60 <span id="ma60-val" class="ma-val" style="color:#ff6b6b;"></span></label>
+            <label class="chart-toggle"><input type="checkbox" id="tog-ma120" checked onchange="toggleChartSeries('ma120')"><span class="tog-dot" style="background:#51cf66;"></span>MA120 <span id="ma120-val" class="ma-val" style="color:#51cf66;"></span></label>
             <label class="chart-toggle"><input type="checkbox" id="tog-bb" checked onchange="toggleChartSeries('bb')"><span class="tog-dot" style="background:rgba(255,208,54,0.6);"></span>布林</label>
           </div>
           <div id="main-chart" class="chart-box chart-main"></div>
@@ -1070,7 +1077,9 @@
   </div>
 </div>
 
-<script src="/js/app.js?v=52"></script>
+<script src="/js/chart-extended.js?v=1"></script>
+<script src="/js/ai-scoring.js?v=1"></script>
+<script src="/js/app.js?v=54"></script>
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').then(reg => {

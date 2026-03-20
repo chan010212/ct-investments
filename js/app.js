@@ -462,6 +462,8 @@ function detectSignals(C, H, L, V) {
 // AI SCORING
 // ============================================================
 function aiScore(C, H, L, V, inst) {
+  // 委派給多因子模型（ai-scoring.js）
+  if (typeof aiScoreMultiFactor === 'function') return aiScoreMultiFactor(C, H, L, V, inst);
   const n = C.length;
   if (n < 30) return { total: 50, d: {} };
   const i = n - 1, p = n - 2;
@@ -525,6 +527,7 @@ function aiScore(C, H, L, V, inst) {
 }
 
 function scoreLabel(s) {
+  if (typeof scoreLabelEnhanced === 'function') return scoreLabelEnhanced(s);
   if (s >= 80) return { text: '強力推薦', cls: 'tag-strong', color: 'var(--green)' };
   if (s >= 65) return { text: '推薦買進', cls: 'tag-buy', color: 'var(--green)' };
   if (s >= 45) return { text: '中性觀望', cls: 'tag-hold', color: 'var(--yellow)' };
@@ -1294,6 +1297,9 @@ function initCharts() {
   sMa20 = chtMain.addLineSeries({ color: '#b44dff', lineWidth: isMobile ? 1 : 1.5, ...maOpts });
   sBbU  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2, ...maOpts });
   sBbL  = chtMain.addLineSeries({ color: 'rgba(255,208,54,0.35)', lineWidth: 1, lineStyle: 2, ...maOpts });
+
+  // 初始化擴展均線 MA60/MA120（chart-extended.js）
+  if (typeof initExtendedMAs === 'function') initExtendedMAs();
 
   // --- Indicator sub-charts (stacked below main, hide time axis except MACD) ---
   function indOpts(el, h) {
@@ -2297,19 +2303,25 @@ function renderAIRank() {
 
   const scored = allStockList.map(s => {
     const inst = instMap[s.code];
-    let score = 50;
-    if (inst) {
-      const buys = (inst.f > 0 ? 1 : 0) + (inst.t > 0 ? 1 : 0) + (inst.d > 0 ? 1 : 0);
-      score += buys * 8 - 12;
+    // 使用增強版排行評分（ai-scoring.js）或 fallback
+    let score;
+    if (typeof aiRankScoreEnhanced === 'function') {
+      score = aiRankScoreEnhanced(s, inst);
+    } else {
+      score = 50;
+      if (inst) {
+        const buys = (inst.f > 0 ? 1 : 0) + (inst.t > 0 ? 1 : 0) + (inst.d > 0 ? 1 : 0);
+        score += buys * 8 - 12;
+      }
+      if (s.pct > 3) score += 15;
+      else if (s.pct > 1) score += 10;
+      else if (s.pct > 0) score += 5;
+      else if (s.pct > -1) score += 0;
+      else if (s.pct > -3) score -= 5;
+      else score -= 10;
+      if (s.vol > 5e6) score += 5;
+      score = Math.max(0, Math.min(100, score));
     }
-    if (s.pct > 3) score += 15;
-    else if (s.pct > 1) score += 10;
-    else if (s.pct > 0) score += 5;
-    else if (s.pct > -1) score += 0;
-    else if (s.pct > -3) score -= 5;
-    else score -= 10;
-    if (s.vol > 5e6) score += 5;
-    score = Math.max(0, Math.min(100, score));
 
     return { ...s, inst, score };
   }).sort((a, b) => b.score - a.score).slice(0, 50);
@@ -2582,7 +2594,7 @@ document.querySelectorAll('[data-wlsort]').forEach(btn => {
 async function fetchTwseHistory(code) {
   const now = new Date();
   const months = [];
-  for (let m = 0; m < 8; m++) {
+  for (let m = 0; m < 13; m++) {
     const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
     months.push(d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + '01');
   }
@@ -2610,7 +2622,7 @@ async function fetchTwseHistory(code) {
 async function fetchTpexHistory(code) {
   const now = new Date();
   const months = [];
-  for (let m = 0; m < 8; m++) {
+  for (let m = 0; m < 13; m++) {
     const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -2642,7 +2654,7 @@ async function fetchYahooHistory(code) {
   const suffixes = ['.TWO', '.TW'];
   for (const suffix of suffixes) {
     try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${code}${suffix}?interval=1d&range=6mo`;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${code}${suffix}?interval=1d&range=1y`;
       const data = await apiFetch(url);
       const result = data?.chart?.result?.[0];
       if (!result || !result.timestamp || result.timestamp.length < 5) continue;
@@ -2857,6 +2869,12 @@ async function analyzeStock(code) {
     sBbU.setData(ld(bb.up));
     sBbL.setData(ld(bb.dn));
 
+    // 設定 MA60/MA120 擴展均線（chart-extended.js）
+    if (typeof setExtendedMAData === 'function') setExtendedMAData(C, dates, ld);
+
+    // 儲存原始資料供 日K/週K/月K 切換使用
+    window._klineRawData = { dates: dates, O: O, H: H, L: L, C: C, V: V };
+
     // Update MA values in toggle bar
     const lastMA = (arr) => { for (let i = arr.length - 1; i >= 0; i--) { if (arr[i] != null) return arr[i].toFixed(2); } return ''; };
     const ma5El = document.getElementById('ma5-val');
@@ -2937,7 +2955,8 @@ async function analyzeStock(code) {
 
     let detHTML = `<div class="tag ${lb.cls}" style="font-size:14px;margin-bottom:10px;">${lb.text}</div><div>`;
     for (const [k, v] of Object.entries(score.d)) {
-      const max = (k === '量能' || k === '法人') ? 10 : 20;
+      const maxMap = { 'RSI': 15, 'MACD': 15, 'KD': 15, '均線': 20, '量價': 15, '量能': 10, '法人': 10, '趨勢': 10 };
+      const max = maxMap[k] || 15;
       const pctVal = (v / max * 100).toFixed(0);
       const color = pctVal > 60 ? 'var(--green)' : pctVal > 35 ? 'var(--yellow)' : 'var(--red)';
       detHTML += `<div style="margin-bottom:6px;font-size:13px;">${k} <span class="text-muted">${v}/${max}</span>

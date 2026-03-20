@@ -688,6 +688,33 @@
     .chart-indicator { height: 130px; }
     #taiex-chart { height: 220px; }
 
+    /* K線週期切換 (日K/週K/月K) */
+    .kline-period-bar {
+      display: flex;
+      gap: 4px;
+      padding: 4px 8px 2px;
+    }
+    .kline-period-btn {
+      background: rgba(0, 240, 255, 0.06);
+      border: 1px solid rgba(0, 240, 255, 0.15);
+      color: var(--text2);
+      font-size: 12px;
+      padding: 3px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .kline-period-btn:hover {
+      background: rgba(0, 240, 255, 0.12);
+      color: var(--text);
+    }
+    .kline-period-btn.active {
+      background: rgba(0, 240, 255, 0.2);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
     /* MA / Bollinger toggle bar */
     .chart-toggle-bar {
       display: flex;
