@@ -1,20 +1,50 @@
 // ============================================================
-// CT Investments — 交易下單模組
-// 前端 UI 先行，Shioaji API 連接後直接接上
+// CT Investments — 快速下單（券商導向）
+// 查詢報價 + 五檔 → 導向用戶選擇的券商下單
 // ============================================================
 
 // === 狀態 ===
 var _tradeState = {
-  action: 'buy',       // buy | sell
-  priceType: 'LMT',   // LMT | MKT
-  orderType: 'ROD',   // ROD | IOC | FOK
-  connected: false,
   code: '',
   name: '',
   prevClose: 0,
   limitUp: 0,
   limitDown: 0,
   currentPrice: 0,
+};
+
+// === 券商連結設定 ===
+var BROKER_LINKS = {
+  sinopac: {
+    name: '永豐金證券',
+    web: 'https://www.sinotrade.com.tw/',
+    note: '永豐金證券線上交易平台'
+  },
+  yuanta: {
+    name: '元大證券',
+    web: 'https://www.yuanta.com.tw/',
+    note: '元大證券線上交易平台'
+  },
+  cathay: {
+    name: '國泰證券',
+    web: 'https://www.cathaysec.com.tw/',
+    note: '國泰證券線上交易平台'
+  },
+  fubon: {
+    name: '富邦證券',
+    web: 'https://www.fbs.com.tw/',
+    note: '富邦證券線上交易平台'
+  },
+  kgi: {
+    name: '凱基證券',
+    web: 'https://www.kgieworld.com.tw/',
+    note: '凱基證券線上交易平台'
+  },
+  mega: {
+    name: '兆豐證券',
+    web: 'https://www.emega.com.tw/',
+    note: '兆豐證券線上交易平台'
+  }
 };
 
 // === 初始化 ===
@@ -25,99 +55,13 @@ function initTradingTab() {
       if (e.key === 'Enter') tradeLoadQuote();
     });
   }
-  // 監聽價格/數量變動自動計算預估金額
-  var priceInput = document.getElementById('trade-price');
-  var qtyInput = document.getElementById('trade-qty');
-  if (priceInput) priceInput.addEventListener('input', tradeCalcEstimate);
-  if (qtyInput) qtyInput.addEventListener('input', tradeCalcEstimate);
 
   // 如果從個股分析帶入代號
   if (window._tradePrefill) {
-    codeInput.value = window._tradePrefill;
+    if (codeInput) codeInput.value = window._tradePrefill;
     window._tradePrefill = null;
     tradeLoadQuote();
   }
-}
-
-// === 買賣切換 ===
-function tradeSetAction(btn) {
-  var group = document.getElementById('trade-action-group');
-  group.querySelectorAll('.trade-toggle').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  _tradeState.action = btn.dataset.val;
-
-  var submitBtn = document.getElementById('trade-submit-btn');
-  var submitText = document.getElementById('trade-submit-text');
-  if (_tradeState.action === 'buy') {
-    submitBtn.className = 'btn trade-submit-btn trade-submit-buy';
-    submitText.textContent = '買進下單';
-  } else {
-    submitBtn.className = 'btn trade-submit-btn trade-submit-sell';
-    submitText.textContent = '賣出下單';
-  }
-}
-
-// === 價格類型切換 ===
-function tradeSetPriceType(btn) {
-  var group = document.getElementById('trade-price-type-group');
-  group.querySelectorAll('.trade-toggle').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  _tradeState.priceType = btn.dataset.val;
-
-  var priceRow = document.getElementById('trade-price-row');
-  if (_tradeState.priceType === 'MKT') {
-    priceRow.style.opacity = '0.4';
-    priceRow.style.pointerEvents = 'none';
-  } else {
-    priceRow.style.opacity = '1';
-    priceRow.style.pointerEvents = '';
-  }
-  tradeCalcEstimate();
-}
-
-// === 委託條件切換 ===
-function tradeSetOrderType(btn) {
-  var group = document.getElementById('trade-order-type-group');
-  group.querySelectorAll('.trade-toggle').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  _tradeState.orderType = btn.dataset.val;
-}
-
-// === 價格增減 ===
-function tradeAdjPrice(delta) {
-  var input = document.getElementById('trade-price');
-  var current = parseFloat(input.value) || _tradeState.currentPrice || 0;
-  // 台股最小跳動單位
-  var tick = _getTickSize(current);
-  var newPrice = Math.max(0, current + (delta > 0 ? tick : -tick));
-  input.value = newPrice.toFixed(_getTickDecimals(newPrice));
-  tradeCalcEstimate();
-}
-
-// === 數量增減 ===
-function tradeAdjQty(delta) {
-  var input = document.getElementById('trade-qty');
-  var current = parseInt(input.value) || 1;
-  input.value = Math.max(1, current + delta);
-  tradeCalcEstimate();
-}
-
-// === 台股升降單位 ===
-function _getTickSize(price) {
-  if (price < 10) return 0.01;
-  if (price < 50) return 0.05;
-  if (price < 100) return 0.1;
-  if (price < 500) return 0.5;
-  if (price < 1000) return 1;
-  return 5;
-}
-
-function _getTickDecimals(price) {
-  if (price < 10) return 2;
-  if (price < 50) return 2;
-  if (price < 100) return 1;
-  if (price < 500) return 1;
-  return 0;
 }
 
 // === 查詢報價 ===
@@ -180,13 +124,6 @@ async function tradeLoadQuote() {
     document.getElementById('trade-limit-down').style.color = 'var(--green)';
     document.getElementById('trade-prev-close').textContent = prevClose > 0 ? prevClose.toFixed(2) : '--';
 
-    // 自動帶入價格
-    var priceInput = document.getElementById('trade-price');
-    if (!priceInput.value || parseFloat(priceInput.value) === 0) {
-      priceInput.value = price > 0 ? price.toFixed(_getTickDecimals(price)) : '';
-    }
-    tradeCalcEstimate();
-
     // 載入五檔報價
     tradeLoadOrderbook(code);
 
@@ -203,11 +140,10 @@ async function tradeLoadOrderbook(code) {
   el.innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
 
   try {
-    // 使用 MIS API 取得五檔
-    var suffix = '';
+    var suffix = 'tse_';
     if (typeof getMarket === 'function') {
       var m = getMarket(code);
-      suffix = (m === 'tpex' || m === 'emerging') ? 'tse_' : 'tse_';
+      suffix = (m === 'tpex' || m === 'emerging') ? 'otc_' : 'tse_';
     }
     var url = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=' + suffix + code + '.tw&json=1&delay=0';
     var data = await apiFetch(url);
@@ -245,78 +181,14 @@ async function tradeLoadOrderbook(code) {
   }
 }
 
-// === 預估金額計算 ===
-function tradeCalcEstimate() {
-  var price = parseFloat(document.getElementById('trade-price').value) || 0;
-  var qty = parseInt(document.getElementById('trade-qty').value) || 0;
-
-  if (_tradeState.priceType === 'MKT') {
-    price = _tradeState.currentPrice || 0;
+// === 開啟券商交易頁面 ===
+function openBroker(brokerId) {
+  var broker = BROKER_LINKS[brokerId];
+  if (!broker) { toast('找不到該券商資訊'); return; }
+  window.open(broker.web, '_blank', 'noopener,noreferrer');
+  if (typeof trackAction === 'function') {
+    trackAction('open_broker', brokerId + (_tradeState.code ? ':' + _tradeState.code : ''));
   }
-
-  var shares = qty * 1000; // 1張 = 1000股
-  var amount = price * shares;
-  var fee = Math.max(20, Math.round(amount * 0.001425)); // 手續費 0.1425%，最低 20 元
-
-  document.getElementById('trade-est-amount').textContent = amount > 0 ? 'NT$ ' + amount.toLocaleString() : '--';
-  document.getElementById('trade-est-fee').textContent = fee > 0 ? 'NT$ ' + fee.toLocaleString() : '--';
-
-  // 賣出多顯示交易稅
-  if (_tradeState.action === 'sell') {
-    var tax = Math.round(amount * 0.003); // 證交稅 0.3%
-    document.getElementById('trade-est-fee').textContent = 'NT$ ' + fee.toLocaleString() + ' + 稅 NT$ ' + tax.toLocaleString();
-  }
-}
-
-// === 下單 ===
-function tradeSubmit() {
-  if (!_tradeState.connected) {
-    toast('尚未連接券商 API，無法下單');
-    // 顯示設定提示
-    var msg = document.getElementById('trade-conn-msg');
-    if (msg) msg.innerHTML = '請先取得永豐 Shioaji API Key 並至設定頁面輸入<br><a href="https://www.sinotrade.com.tw/ec/20191125/Main" target="_blank" rel="noopener" style="color:var(--accent);">前往永豐申請 &rarr;</a>';
-    return;
-  }
-
-  var code = _tradeState.code;
-  var price = parseFloat(document.getElementById('trade-price').value) || 0;
-  var qty = parseInt(document.getElementById('trade-qty').value) || 0;
-
-  if (!code) { toast('請先查詢股票'); return; }
-  if (_tradeState.priceType === 'LMT' && price <= 0) { toast('請輸入委託價格'); return; }
-  if (qty <= 0) { toast('請輸入委託數量'); return; }
-
-  // 限價範圍檢查
-  if (_tradeState.priceType === 'LMT' && _tradeState.limitUp > 0) {
-    if (price > _tradeState.limitUp) { toast('委託價格超過漲停價'); return; }
-    if (price < _tradeState.limitDown) { toast('委託價格低於跌停價'); return; }
-  }
-
-  var actionText = _tradeState.action === 'buy' ? '買進' : '賣出';
-  var shares = qty * 1000;
-  var amount = price * shares;
-  var confirm = window.confirm(
-    actionText + ' ' + code + ' ' + _tradeState.name + '\n' +
-    '價格：' + price + '\n' +
-    '數量：' + qty + ' 張 (' + shares.toLocaleString() + ' 股)\n' +
-    '預估金額：NT$ ' + amount.toLocaleString() + '\n' +
-    '委託條件：' + _tradeState.orderType + '\n\n' +
-    '確認下單？'
-  );
-
-  if (!confirm) return;
-
-  // TODO: 連接 Shioaji API 後實際下單
-  toast('下單功能開發中，等待券商 API 連接');
-}
-
-// === 刷新委託 ===
-function tradeRefreshOrders() {
-  if (!_tradeState.connected) {
-    toast('尚未連接券商');
-    return;
-  }
-  // TODO: 從 Shioaji API 取得委託回報
 }
 
 // === 從個股分析快速下單 ===

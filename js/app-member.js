@@ -460,7 +460,7 @@ async function loadAdminStats() {
         <div class="value" style="color:var(--green);">${data.active_today}</div>
       </div>
       <div class="stat-box">
-        <div class="label">有效投資建議</div>
+        <div class="label">觀察標的數</div>
         <div class="value" style="color:var(--purple);">${data.total_picks}</div>
       </div>
       <div class="stat-box">
@@ -543,7 +543,7 @@ async function loadAdminActions() {
       'watchlist_sync': '同步關注',
       'watchlist_remove': '移除關注',
       'auth': '認證',
-      'admin_add_pick': '發布建議',
+      'admin_add_pick': '新增觀察',
       'view_tab': '切換分頁',
     };
 
@@ -574,11 +574,11 @@ async function loadAdminPicks() {
 
     if (!data.picks || data.picks.length === 0) {
       document.getElementById('admin-picks-list').innerHTML =
-        '<div class="text-muted" style="padding:16px;text-align:center;">尚未發布任何投資建議</div>';
+        '<div class="text-muted" style="padding:16px;text-align:center;">尚未新增任何觀察標的</div>';
       return;
     }
 
-    const actionMap = { buy: '買進', sell: '賣出', hold: '觀望', short: '放空' };
+    const actionMap = { buy: '看多', sell: '看空', hold: '中性', short: '偏空' };
     const actionCls = { buy: 'up', sell: 'down', hold: '', short: 'down' };
 
     const rows = data.picks.map(p => [
@@ -590,11 +590,11 @@ async function loadAdminPicks() {
       p.score ? `<b>${p.score}</b>/10` : '--',
       `<span class="text-sm text-muted">${(p.reason || '').slice(0, 30)}${(p.reason || '').length > 30 ? '...' : ''}</span>`,
       p.created_at ? p.created_at.slice(0, 10) : '--',
-      `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px;" onclick="adminDeletePick(${p.id})">下架</button>`
+      `<button class="btn btn-danger" style="padding:4px 10px;font-size:11px;" onclick="adminDeletePick(${p.id})">移除</button>`
     ]);
 
     document.getElementById('admin-picks-list').innerHTML =
-      mkTable(['代號', '名稱', '建議', '目標價', '停損', '信心', '理由', '日期', '操作'], rows);
+      mkTable(['代號', '名稱', '方向', '參考價', '觀察價', '關注度', '原因', '日期', '操作'], rows);
   } catch (e) {
     document.getElementById('admin-picks-list').innerHTML = '<div class="text-muted">載入失敗</div>';
   }
@@ -624,7 +624,7 @@ async function adminAddPick() {
       })
     });
     if (r.ok) {
-      toast('投資建議已發布');
+      toast('觀察標的已新增');
       document.getElementById('pick-code').value = '';
       document.getElementById('pick-name').value = '';
       document.getElementById('pick-reason').value = '';
