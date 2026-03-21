@@ -437,6 +437,8 @@ function brEarnings(earnings) {
   return '<div class="br-section"><div class="br-section-title">最新財報 · 營收 · 獲利動態</div>' + rows + '</div>';
 }
 
+var BR_HOT_KEYWORDS = ['重大', '法說', '併購', '營收', '財報', '漲停', '跌停', '除權', '除息', '減資', '增資', 'AI', '輝達', '台積電', 'EPS', '創高', '轉盈', '轉虧'];
+
 function brNews(news) {
   if (!news || news.length === 0)
     return '<div class="br-section"><div class="br-section-title">財經要聞</div><div class="text-muted" style="padding:8px 0;">暫無新聞</div></div>';
@@ -447,16 +449,19 @@ function brNews(news) {
   ['頭條', '台股', '國際', '匯率', '總經'].forEach(function(cat) {
     var items = byCat[cat];
     if (!items) return;
-    var lim = cat === '頭條' ? 8 : cat === '台股' ? 6 : 4;
+    var lim = cat === '頭條' ? 10 : cat === '台股' ? 8 : 5;
     var rows = items.slice(0, lim).map(function(n) {
+      var title = brEscHtml(n.title);
+      var isHot = BR_HOT_KEYWORDS.some(function(kw) { return n.title.indexOf(kw) >= 0; });
+      var hotBadge = isHot ? '<span class="br-hot-badge">HOT</span>' : '';
       var link = n.url
-        ? '<a href="' + n.url + '" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">' + brEscHtml(n.title) + '</a>'
-        : brEscHtml(n.title);
-      return '<div style="display:flex;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.02);">'
-        + '<span style="color:var(--text2);font-size:11px;flex-shrink:0;width:40px;">' + n.time + '</span>'
-        + '<span style="font-size:13px;line-height:1.5;">' + link + '</span></div>';
+        ? '<a href="' + n.url + '" target="_blank" rel="noopener" class="br-news-link' + (isHot ? ' br-news-hot' : '') + '">' + title + '</a>'
+        : '<span' + (isHot ? ' class="br-news-hot"' : '') + '>' + title + '</span>';
+      return '<div class="br-news-row">'
+        + '<span class="br-news-time">' + n.time + '</span>'
+        + '<span class="br-news-title">' + hotBadge + link + '</span></div>';
     }).join('');
-    h += '<div style="margin-bottom:14px;"><div style="font-size:11px;font-weight:700;color:#d4a940;letter-spacing:2px;padding-bottom:5px;margin-bottom:5px;border-bottom:1px solid var(--border);">' + cat + '</div>' + rows + '</div>';
+    h += '<div class="br-news-cat"><div class="br-news-cat-label">' + cat + '</div>' + rows + '</div>';
   });
   h += '</div>';
   return h;
