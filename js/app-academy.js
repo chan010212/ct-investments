@@ -348,7 +348,7 @@ function renderAcadChart(type) {
   const data = [];
   let price = basePrice;
   for (let i = 0; i < days; i++) {
-    const d = new Date(2025, 0, 2 + i);
+    const d = new Date(new Date().getFullYear(), 0, 2 + i);
     // skip weekends
     if (d.getDay() === 0 || d.getDay() === 6) { price += (Math.random() - 0.48) * 3; continue; }
     const change = (Math.random() - 0.48) * 8;
