@@ -58,7 +58,7 @@ async function fetchYahooQuotes(symbols) {
       const hosts = ['query1.finance.yahoo.com', 'query2.finance.yahoo.com'];
       for (const host of hosts) {
         try {
-          const url = `https://${host}/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2d`;
+          const url = `https://${host}/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
           const r = await fetch('/api/proxy?url=' + encodeURIComponent(url));
           if (!r.ok) continue;
           const d = await r.json();
@@ -66,8 +66,9 @@ async function fetchYahooQuotes(symbols) {
           const meta = result?.meta;
           if (!meta) continue;
           const price = meta.regularMarketPrice || 0;
-          const closes = result?.indicators?.quote?.[0]?.close || [];
-          const prevClose = (closes.length >= 2 ? closes[closes.length - 2] : null) || meta.chartPreviousClose || price;
+          // Filter out null closes, then get the second-to-last valid close as prevClose
+          const closes = (result?.indicators?.quote?.[0]?.close || []).filter(c => c != null);
+          const prevClose = (closes.length >= 2 ? closes[closes.length - 2] : null) || meta.chartPreviousClose || meta.previousClose || price;
           const chg = price - prevClose;
           const pct = prevClose ? (chg / prevClose) * 100 : 0;
           return {
