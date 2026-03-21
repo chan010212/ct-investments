@@ -51,7 +51,7 @@ function renderOverview() {
     const pct = prev > 0 ? (chg / prev * 100) : 0;
     if (pct >= 9.5) limitUp++;
     if (pct <= -9.5) limitDown++;
-    if (close > 0) allWithPct.push({ code: s[0].trim(), name: s[1].trim(), close, chg, pct, vol: parseNum(s[2]), market: 'twse' });
+    if (close > 0) allWithPct.push({ code: s[0].trim(), name: s[1].trim(), close, chg, pct, vol: Math.round(parseNum(s[2]) / 1000), market: 'twse' });
   });
 
   // TPEx fields: 0=代號, 1=名稱, 2=收盤, 3=漲跌, 4=開盤, 5=最高, 6=最低, 7=成交股數, 8=成交金額, 9=成交筆數
@@ -65,7 +65,7 @@ function renderOverview() {
     const pct = prev > 0 ? (chg / prev * 100) : 0;
     if (pct >= 9.5) limitUp++;
     if (pct <= -9.5) limitDown++;
-    if (close > 0) allWithPct.push({ code: (s[0]||'').trim(), name: (s[1]||'').trim(), close, chg, pct, vol, market: 'tpex' });
+    if (close > 0) allWithPct.push({ code: (s[0]||'').trim(), name: (s[1]||'').trim(), close, chg, pct, vol: Math.round(vol / 1000), market: 'tpex' });
   });
 
   const totalCount = twseStocks.length + tpexStocks.length;
@@ -133,14 +133,14 @@ function renderOverview() {
           <div class="rank-card-body">
             <div><span class="dt-label">收盤</span><span>${limitPrice(s.close, s.pct)}</span></div>
             <div><span class="dt-label">漲跌</span><span class="${cls}">${s.chg>0?'+':''}${fmtNum(s.chg,2)}</span></div>
-            <div><span class="dt-label">成交量</span><span>${fmtBig(s.vol)}</span></div>
+            <div><span class="dt-label">成交量</span><span>${fmtNum(s.vol, 0)} 張</span></div>
           </div>
         </div>`;
       });
       h += '</div>';
       return h;
     }
-    return mkTable(['代號', '名稱', '市場', '收盤', '漲跌', '漲跌%', '成交量'], list.map(s => {
+    return mkTable(['代號', '名稱', '市場', '收盤', '漲跌', '漲跌%', '成交量(張)'], list.map(s => {
       const mTag = s.market === 'twse'
         ? '<span class="tag-market tag-twse">上市</span>'
         : '<span class="tag-market tag-tpex">上櫃</span>';
@@ -150,7 +150,7 @@ function renderOverview() {
         limitPrice(s.close, s.pct),
         `<span class="${s.chg > 0 ? 'up' : 'down'}">${s.chg > 0 ? '+' : ''}${fmtNum(s.chg, 2)}</span>`,
         `<span class="${s.pct > 0 ? 'up' : 'down'}">${s.pct > 0 ? '+' : ''}${s.pct.toFixed(2)}%</span>`,
-        fmtBig(s.vol)
+        fmtNum(s.vol, 0)
       ];
     }));
   }
@@ -951,7 +951,7 @@ function renderAIRank() {
         `<span class="clickable" onclick="goAnalyze('${s.code}')">${s.name}</span>`, mTag,
         limitPrice(s.close, s.pct),
         `<span class="${s.pct > 0 ? 'up' : 'down'}">${s.pct > 0 ? '+' : ''}${s.pct.toFixed(2)}%</span>`,
-        fmtBig(s.vol),
+        fmtNum(s.vol, 0),
         `<span class="${inst.f > 0 ? 'up' : 'down'}">${fmtShares(inst.f)}</span>`,
         `<span class="${inst.t > 0 ? 'up' : 'down'}">${fmtShares(inst.t)}</span>`,
         `<span class="${inst.d > 0 ? 'up' : 'down'}">${fmtShares(inst.d)}</span>`,
