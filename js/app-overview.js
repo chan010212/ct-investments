@@ -630,39 +630,6 @@ async function loadOverviewEvents() {
 }
 
 // ============================================================
-// RENDER: MARKET NEWS (即時市場新聞)
-// ============================================================
-async function loadMarketNews() {
-  var el = document.getElementById('market-news-list');
-  if (!el) return;
-  try {
-    var resp = await fetch('/api/market-news');
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    var data = await resp.json();
-    var items = (data.items || []).slice(0, 15);
-    if (items.length === 0) {
-      el.innerHTML = '<div class="text-muted" style="text-align:center;padding:12px;">暫無新聞</div>';
-      return;
-    }
-    var html = '<div class="news-list market-news-list">';
-    var KEYWORDS = ['重大', '法說', '併購', '營收', '財報', '漲停', '跌停', '除權', '除息', '減資', '增資', 'AI', '輝達', '台積電'];
-    items.forEach(function(n) {
-      var title = n.title || '';
-      var isHot = KEYWORDS.some(function(kw) { return title.indexOf(kw) >= 0; });
-      html += '<a href="' + (n.url || '#') + '" target="_blank" rel="noopener" class="news-item' + (isHot ? ' news-important' : '') + '">' +
-        (isHot ? '<span class="news-badge">熱</span>' : '') +
-        '<span class="news-title">' + title + '</span>' +
-        '<span class="news-time">' + (n.time || '') + '</span></a>';
-    });
-    html += '</div>';
-    el.innerHTML = html;
-  } catch(e) {
-    el.innerHTML = '<div class="text-muted" style="text-align:center;padding:12px;">新聞載入失敗</div>';
-  }
-}
-
-
-// ============================================================
 // RENDER: INSTITUTIONAL SUMMARY
 // ============================================================
 function renderInstSummary(data) {

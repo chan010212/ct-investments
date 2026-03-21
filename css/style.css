@@ -1272,7 +1272,19 @@
     }
     .news-title { flex: 1; font-size: 13px; line-height: 1.4; }
     .news-time { flex-shrink: 0; font-size: 11px; color: var(--text2); white-space: nowrap; }
-    .market-news-list { max-height: 480px; overflow-y: auto; }
+    /* Briefing news enhancements */
+    .br-news-row { display: flex; gap: 8px; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+    .br-news-time { color: var(--text2); font-size: 11px; flex-shrink: 0; width: 40px; }
+    .br-news-title { font-size: 13px; line-height: 1.5; display: flex; align-items: center; gap: 6px; }
+    .br-news-link { color: var(--text1); text-decoration: none; transition: color 0.15s; }
+    .br-news-link:hover { color: var(--cyan); }
+    .br-news-hot { color: #ff8c42; }
+    .br-hot-badge {
+      display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 700;
+      background: rgba(255,56,96,0.15); color: var(--red); flex-shrink: 0; letter-spacing: 0.5px;
+    }
+    .br-news-cat { margin-bottom: 14px; }
+    .br-news-cat-label { font-size: 11px; font-weight: 700; color: #d4a940; letter-spacing: 2px; padding-bottom: 5px; margin-bottom: 5px; border-bottom: 1px solid var(--border); }
 
     /* ===== TRADING UI ===== */
     .trade-status { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }

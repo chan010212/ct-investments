@@ -315,62 +315,6 @@ def proxy_cache_set(url, data, content_type):
 
 
 # ============================================================
-# MARKET NEWS (市場即時新聞) — Cnyes headlines
-# ============================================================
-_market_news_cache = {'items': [], 'ts': 0}
-_market_news_lock = threading.Lock()
-MARKET_NEWS_TTL = 300       # 5 minutes
-
-def _fetch_market_news():
-    """Fetch latest market headlines from Cnyes."""
-    now = int(time.time())
-    with _market_news_lock:
-        if now - _market_news_cache['ts'] < MARKET_NEWS_TTL and _market_news_cache['items']:
-            return _market_news_cache['items']
-
-    results = []
-    categories = ['tw_stock_news', 'headline']
-    for cat in categories:
-        try:
-            url = f'https://api.cnyes.com/media/api/v1/newslist/category/{cat}?limit=20'
-            data = _mr_fetch_json(url, True)
-            items = data.get('items', {}).get('data', [])
-            for it in items:
-                nid = it.get('newsId', '')
-                title = it.get('title', '').strip()
-                if not title:
-                    continue
-                import re as _re
-                title = _re.sub(r'<[^>]+>', '', title)  # strip HTML
-                pub = it.get('publishAt', 0)
-                dt = datetime.fromtimestamp(pub, tz=_TW_TZ) if pub else None
-                results.append({
-                    'title': title[:100],
-                    'time': dt.strftime('%m/%d %H:%M') if dt else '',
-                    'ts': pub,
-                    'url': f'https://news.cnyes.com/news/id/{nid}' if nid else '',
-                    'cat': cat.replace('tw_stock_news', '台股').replace('headline', '頭條'),
-                })
-        except Exception as e:
-            print(f'[MARKET-NEWS] Error fetching {cat}: {e}')
-
-    # Dedupe by title, sort by time
-    seen = set()
-    unique = []
-    for r in sorted(results, key=lambda x: x.get('ts', 0), reverse=True):
-        key = r['title'][:30]
-        if key not in seen:
-            seen.add(key)
-            unique.append(r)
-    unique = unique[:25]
-
-    with _market_news_lock:
-        _market_news_cache['items'] = unique
-        _market_news_cache['ts'] = now
-
-    return unique
-
-
 # ============================================================
 # STOCK NEWS (個股新聞) — Cnyes market-code filtered
 # ============================================================
@@ -2242,8 +2186,6 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             return
         elif self.path == '/api/morning-report':
             self.handle_morning_report()
-        elif self.path == '/api/market-news':
-            self.handle_market_news()
         elif self.path.startswith('/api/stock-history'):
             self.handle_stock_history()
         elif self.path.startswith('/api/stock-news'):
@@ -3417,14 +3359,6 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
             return
         items = _fetch_stock_news(code, name)
         self.send_json({'items': items})
-
-    def handle_market_news(self):
-        """GET /api/market-news — latest market headlines"""
-        try:
-            items = _fetch_market_news()
-            self.send_json({'items': items})
-        except Exception as e:
-            self.send_json({'items': [], 'error': str(e)})
 
     def handle_stock_history(self):
         """GET /api/stock-history?code=2330 — cached OHLCV history"""
