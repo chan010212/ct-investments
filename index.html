@@ -455,6 +455,8 @@
           <button class="analysis-nav-btn" onclick="scrollToSection('main-chart')">K線</button>
           <button class="analysis-nav-btn" onclick="scrollToSection('ai-score-ring')">AI</button>
           <button class="analysis-nav-btn" onclick="scrollToSection('stock-fundamentals')">基本面</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('stock-pe-river')">河流圖</button>
+          <button class="analysis-nav-btn" onclick="scrollToSection('stock-margin-trend')">利潤率</button>
           <button class="analysis-nav-btn" onclick="scrollToSection('stock-margin')">融資券</button>
           <button class="analysis-nav-btn" onclick="scrollToSection('stock-revenue')">營收</button>
           <button class="analysis-nav-btn" onclick="scrollToSection('stock-quarterly')">財報</button>
@@ -537,6 +539,9 @@
           </div>
         </div>
 
+        <div id="stock-pe-river" class="stock-section"></div>
+        <div id="stock-margin-trend" class="stock-section"></div>
+
         <div class="card">
           <div class="card-title">&#x1F4B3; 融資融券<span class="ct-tip" data-tip="融資融券"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">融資 = 借錢買股票，代表散戶看漲；融券 = 借股票來賣，代表有人看跌。券資比高代表看空力道較強。</span></span></div>
           <div id="stock-margin"><div class="text-muted">載入中...</div></div>
@@ -546,6 +551,7 @@
           <div class="card-title">&#x1F4B0; 月營收</div>
           <div class="text-sm text-muted mb-12">最新公布之月營收數據（單位：千元）</div>
           <div id="stock-revenue"><div class="text-muted">載入中...</div></div>
+          <div id="revenue-yoy-chart"></div>
         </div>
 
         <div class="card">
@@ -863,6 +869,31 @@
             <div class="filter-row">
               <label class="filter-check"><input type="checkbox" id="f-mkt-twse" checked> 上市</label>
               <label class="filter-check"><input type="checkbox" id="f-mkt-tpex" checked> 上櫃</label>
+            </div>
+          </div>
+
+          <!-- Row 7: 基本面 -->
+          <div class="filter-section">
+            <div class="filter-section-title">基本面指標</div>
+            <div class="filter-row">
+              <span class="filter-label">本益比</span>
+              <select class="input filter-select" id="f-pe-range">
+                <option value="">不限</option>
+                <option value="0-10">&lt; 10</option>
+                <option value="10-15">10 ~ 15</option>
+                <option value="15-20">15 ~ 20</option>
+                <option value="20-30">20 ~ 30</option>
+                <option value="30-9999">&gt; 30</option>
+              </select>
+            </div>
+            <div class="filter-row" style="margin-top:6px;">
+              <span class="filter-label">殖利率</span>
+              <select class="input filter-select" id="f-yield-range">
+                <option value="">不限</option>
+                <option value="3">&gt; 3%</option>
+                <option value="5">&gt; 5%</option>
+                <option value="7">&gt; 7%</option>
+              </select>
             </div>
           </div>
         </div>
@@ -1248,6 +1279,7 @@
 <script src="/js/app.js?v=57"></script>
 <script src="/js/app-charts.js?v=1"></script>
 <script src="/js/app-overview.js?v=2"></script>
+<script src="/js/app-fundamental.js?v=1"></script>
 <script src="/js/app-stock.js?v=2"></script>
 <script src="/js/app-market.js?v=1"></script>
 <script src="/js/app-member.js?v=1"></script>

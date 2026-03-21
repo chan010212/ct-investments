@@ -4524,6 +4524,87 @@
       .index-modal { padding: 16px; max-width: 100%; }
     }
 
+    /* ===== FUNDAMENTAL ANALYSIS (P/E River, Margin Trend) ===== */
+    .stock-section { margin-bottom: 0; }
+
+    .pe-river-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      background: rgba(0, 240, 255, 0.03);
+      border-radius: 8px;
+      border: 1px solid rgba(0, 240, 255, 0.08);
+    }
+    .pe-river-legend-item {
+      font-size: 13px;
+      color: var(--text2);
+    }
+    .pe-river-current-label strong {
+      font-size: 15px;
+    }
+    .pe-river-bands {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .pe-band-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .margin-trend-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+    .margin-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--text2);
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    /* Screener fundamental filter select */
+    .filter-select {
+      min-width: 120px;
+      max-width: 160px;
+      padding: 4px 8px;
+      font-size: 13px;
+      background: var(--card-bg);
+      color: var(--text1);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .filter-select:focus {
+      border-color: var(--cyan);
+      outline: none;
+    }
+
+    @media (max-width: 768px) {
+      .pe-river-legend { flex-direction: column; gap: 6px; padding: 6px 8px; }
+      .pe-river-current-label { font-size: 12px; }
+      .pe-river-current-label strong { font-size: 13px; }
+      .pe-band-tag { font-size: 10px; padding: 1px 6px; }
+      .margin-trend-legend { gap: 8px; }
+      .margin-legend-item { font-size: 11px; }
+      .filter-select { min-width: 100px; }
+    }
+
     /* ===== SCANLINE EFFECT (subtle) ===== */
     .scanline {
       position: fixed;

@@ -434,6 +434,11 @@ async function analyzeStock(code) {
     fetchStockNews(code, stockName);
     fetchStockEvents(code, dates);
 
+    // Fundamental analysis charts (app-fundamental.js)
+    if (typeof renderPERiverChart === 'function') renderPERiverChart(code);
+    if (typeof renderMarginTrendChart === 'function') renderMarginTrendChart(code);
+    if (typeof renderRevenueYoYChart === 'function') renderRevenueYoYChart(code);
+
     // Start real-time updates + intraday chart
     startRealtimeUpdates(code);
 

@@ -1,7 +1,11 @@
 // ============================================================
 // SCREENER (股票篩選器)
 // ============================================================
-function runScreener() {
+async function runScreener() {
+  // Load BWIBBU fundamental data if needed for PE/yield filters
+  if (typeof loadBwibbuData === 'function') {
+    await loadBwibbuData();
+  }
   const sMap = {};
   gAllStocks.forEach(s => {
     const code = s[0].trim();
@@ -57,12 +61,17 @@ function runScreener() {
   const fMktTwse = document.getElementById('f-mkt-twse').checked;
   const fMktTpex = document.getElementById('f-mkt-tpex').checked;
 
+  // Fundamental filters
+  const fPeRange = document.getElementById('f-pe-range') ? document.getElementById('f-pe-range').value : '';
+  const fYieldRange = document.getElementById('f-yield-range') ? document.getElementById('f-yield-range').value : '';
+
   // Check if any filter is active
   const hasFilter = fForeignBuy || fTrustBuy || fDealerBuy || fAllBuy || fAllSell ||
     fLimitUp || fLimitDown || fUp3 || fDown3 ||
     !isNaN(fPctMin) || !isNaN(fPctMax) || !isNaN(fPriceMin) || !isNaN(fPriceMax) ||
     fVolBurst || fVolUp || fVolShrink || !isNaN(fVolMin) || !isNaN(fVolMax) ||
-    fWarning || fDisposition || fNearWarning;
+    fWarning || fDisposition || fNearWarning ||
+    fPeRange || fYieldRange;
 
   if (!hasFilter) {
     toast('請至少選擇一個篩選條件');
@@ -124,6 +133,22 @@ function runScreener() {
       if (fDisposition && gDispositionSet.has(s.code)) match = true;
       if (fNearWarning && Math.abs(s.pct) >= 6 && volLots > 1000) match = true;
       if (!match) return;
+    }
+
+    // Fundamental filters (P/E and Dividend Yield)
+    if (fPeRange || fYieldRange) {
+      var bw = typeof getBwibbuForCode === 'function' ? getBwibbuForCode(s.code) : null;
+      if (fPeRange) {
+        if (!bw || !bw.pe || bw.pe <= 0) return; // skip stocks without P/E data
+        var peParts = fPeRange.split('-');
+        var peMin = parseFloat(peParts[0]);
+        var peMax = parseFloat(peParts[1]);
+        if (bw.pe < peMin || bw.pe > peMax) return;
+      }
+      if (fYieldRange) {
+        var yieldMin = parseFloat(fYieldRange);
+        if (!bw || !bw.yieldPct || bw.yieldPct < yieldMin) return;
+      }
     }
 
     s.inst = inst;
@@ -209,6 +234,7 @@ function clearScreener() {
     cb.checked = cb.id === 'f-mkt-twse' || cb.id === 'f-mkt-tpex';
   });
   document.querySelectorAll('#screener-filters input[type="number"]').forEach(inp => inp.value = '');
+  document.querySelectorAll('#screener-filters select').forEach(sel => sel.value = '');
   document.getElementById('screener-results').innerHTML = '';
   document.getElementById('screener-status').textContent = '';
 }
