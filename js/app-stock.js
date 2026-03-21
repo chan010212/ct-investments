@@ -438,6 +438,9 @@ async function analyzeStock(code) {
     if (typeof renderPERiverChart === 'function') renderPERiverChart(code);
     if (typeof renderMarginTrendChart === 'function') renderMarginTrendChart(code);
     if (typeof renderRevenueYoYChart === 'function') renderRevenueYoYChart(code);
+    if (typeof renderQuarterlyTable === 'function') renderQuarterlyTable(code);
+    if (typeof renderROEROAChart === 'function') renderROEROAChart(code);
+    if (typeof renderFreeCashFlowChart === 'function') renderFreeCashFlowChart(code);
 
     // Start real-time updates + intraday chart
     startRealtimeUpdates(code);

@@ -232,7 +232,7 @@ async function renderMarginTrendChart(code) {
 
   try {
     var now = new Date();
-    var startDate = new Date(now.getFullYear() - 3, 0, 1);
+    var startDate = new Date(now.getFullYear() - 5, 0, 1);
     var startStr = startDate.getFullYear() + '-01-01';
     var finApiUrl = '/api/finmind/stock?dataset=TaiwanStockFinancialStatements&data_id=' + encodeURIComponent(code) + '&start_date=' + startStr;
 
@@ -264,8 +264,8 @@ async function renderMarginTrendChart(code) {
     });
 
     var quarters = Object.keys(byQuarter).sort();
-    // Take last 12 quarters max
-    if (quarters.length > 12) quarters = quarters.slice(quarters.length - 12);
+    // Take last 20 quarters max (5 years)
+    if (quarters.length > 20) quarters = quarters.slice(quarters.length - 20);
 
     var grossMarginData = [];
     var opMarginData = [];
@@ -463,6 +463,350 @@ async function renderRevenueYoYChart(code) {
   } catch (e) {
     console.warn('[CT] Revenue YoY chart error:', e);
     targetEl.innerHTML = '';
+  }
+}
+
+
+// ============================================================
+// 2: Quarterly Financial Table (16 季財務總表)
+// ============================================================
+async function renderQuarterlyTable(code) {
+  var container = document.getElementById('stock-quarterly-table');
+  if (!container) return;
+  container.innerHTML = '<div class="card"><div class="card-title">\u{1F4CB} \u5B63\u5EA6\u8CA1\u52D9\u7E3D\u8868</div><div class="loading-box"><div class="spinner"></div><div>\u8F09\u5165\u4E2D...</div></div></div>';
+
+  try {
+    var now = new Date();
+    var startStr = (now.getFullYear() - 4) + '-01-01';
+    var revStartStr = (now.getFullYear() - 5) + '-01-01'; // Extra year for YoY calc
+
+    var [finResp, revResp] = await Promise.all([
+      fetch('/api/finmind/stock?dataset=TaiwanStockFinancialStatements&data_id=' + encodeURIComponent(code) + '&start_date=' + startStr),
+      fetch('/api/finmind/stock?dataset=TaiwanStockMonthRevenue&data_id=' + encodeURIComponent(code) + '&start_date=' + revStartStr)
+    ]);
+
+    if (!finResp.ok) { container.innerHTML = ''; return; }
+    var finJson = await finResp.json();
+    var finRows = finJson.data || [];
+    if (finRows.length === 0) { container.innerHTML = ''; return; }
+
+    // Group financial data by quarter
+    var byQ = {};
+    finRows.forEach(function(r) {
+      var dt = r.date || '';
+      var type = r.type || '';
+      var val = parseFloat(r.value) || 0;
+      if (!dt) return;
+      if (!byQ[dt]) byQ[dt] = {};
+      if (type === 'EPS') byQ[dt].eps = val;
+      else if (type === 'Revenue') byQ[dt].revenue = val;
+      else if (type === 'GrossProfit') byQ[dt].grossProfit = val;
+      else if (type === 'OperatingIncome') byQ[dt].opIncome = val;
+      else if (type === 'NetIncome' || type === 'IncomeAfterTaxes') byQ[dt].netIncome = val;
+    });
+
+    // Build quarterly revenue from monthly data for YoY
+    var qRevMap = {};
+    if (revResp.ok) {
+      var revJson = await revResp.json();
+      var revRows = revJson.data || [];
+      revRows.forEach(function(r) {
+        var dt = r.date || r.revenue_date || '';
+        var rev = r.revenue || 0;
+        if (!dt || !rev) return;
+        var y = parseInt(dt.slice(0, 4));
+        var m = parseInt(dt.slice(5, 7));
+        var q = Math.ceil(m / 3);
+        var qKey = y + '-Q' + q;
+        qRevMap[qKey] = (qRevMap[qKey] || 0) + rev;
+      });
+    }
+
+    var quarters = Object.keys(byQ).sort();
+    // Take last 16 quarters
+    if (quarters.length > 16) quarters = quarters.slice(quarters.length - 16);
+    if (quarters.length < 2) { container.innerHTML = ''; return; }
+
+    // Build table
+    var html = '<div class="card"><div class="card-title">\u{1F4CB} \u5B63\u5EA6\u8CA1\u52D9\u7E3D\u8868</div>';
+    html += '<div class="text-sm text-muted mb-12">\u8FD1 ' + quarters.length + ' \u5B63\u8CA1\u52D9\u6578\u64DA\u7E3D\u89BD</div>';
+    html += '<div class="table-wrap"><table class="table"><thead><tr>';
+    html += '<th>\u5B63\u5EA6</th><th>EPS</th><th>\u6BDB\u5229\u7387</th><th>\u71DF\u76CA\u7387</th><th>\u6DE8\u5229\u7387</th><th>\u71DF\u6536 YoY</th>';
+    html += '</tr></thead><tbody>';
+
+    quarters.forEach(function(q) {
+      var d = byQ[q];
+      var rev = d.revenue || 0;
+      var grossM = (rev > 0 && d.grossProfit !== undefined) ? (d.grossProfit / rev * 100) : null;
+      var opM = (rev > 0 && d.opIncome !== undefined) ? (d.opIncome / rev * 100) : null;
+      var netM = (rev > 0 && d.netIncome !== undefined) ? (d.netIncome / rev * 100) : null;
+
+      // Revenue YoY: parse quarter from date
+      var qYear = parseInt(q.slice(0, 4));
+      var qMonth = parseInt(q.slice(5, 7));
+      var qNum = Math.ceil(qMonth / 3);
+      var thisQKey = qYear + '-Q' + qNum;
+      var prevQKey = (qYear - 1) + '-Q' + qNum;
+      var revYoY = null;
+      if (qRevMap[thisQKey] && qRevMap[prevQKey] && qRevMap[prevQKey] > 0) {
+        revYoY = ((qRevMap[thisQKey] - qRevMap[prevQKey]) / qRevMap[prevQKey] * 100);
+      }
+
+      // Format quarter label: 2024-03-31 → 2024Q1
+      var qLabel = qYear + 'Q' + qNum;
+
+      function fmtPct(v) {
+        if (v === null) return '<span class="text-muted">--</span>';
+        var color = v >= 0 ? 'var(--red)' : 'var(--green)';
+        return '<span style="color:' + color + ';">' + v.toFixed(1) + '%</span>';
+      }
+      function fmtEps(v) {
+        if (v === undefined) return '<span class="text-muted">--</span>';
+        var color = v >= 0 ? 'var(--red)' : 'var(--green)';
+        return '<span style="color:' + color + ';font-weight:600;">' + v.toFixed(2) + '</span>';
+      }
+
+      html += '<tr>';
+      html += '<td style="white-space:nowrap;font-weight:600;">' + qLabel + '</td>';
+      html += '<td>' + fmtEps(d.eps) + '</td>';
+      html += '<td>' + fmtPct(grossM) + '</td>';
+      html += '<td>' + fmtPct(opM) + '</td>';
+      html += '<td>' + fmtPct(netM) + '</td>';
+      html += '<td>' + fmtPct(revYoY) + '</td>';
+      html += '</tr>';
+    });
+
+    html += '</tbody></table></div></div>';
+    container.innerHTML = html;
+
+  } catch (e) {
+    console.warn('[CT] Quarterly table error:', e);
+    container.innerHTML = '';
+  }
+}
+
+
+// ============================================================
+// 3: ROE / ROA Trend Chart
+// ============================================================
+async function renderROEROAChart(code) {
+  var container = document.getElementById('stock-roe-roa');
+  if (!container) return;
+  container.innerHTML = '<div class="card"><div class="card-title">\u{1F4C9} ROE / ROA \u8DA8\u52E2</div><div class="loading-box"><div class="spinner"></div><div>\u8F09\u5165\u4E2D...</div></div></div>';
+
+  try {
+    var now = new Date();
+    var startStr = (now.getFullYear() - 5) + '-01-01';
+
+    var [finResp, bsResp] = await Promise.all([
+      fetch('/api/finmind/stock?dataset=TaiwanStockFinancialStatements&data_id=' + encodeURIComponent(code) + '&start_date=' + startStr),
+      fetch('/api/finmind/stock?dataset=TaiwanStockBalanceSheet&data_id=' + encodeURIComponent(code) + '&start_date=' + startStr)
+    ]);
+
+    if (!finResp.ok || !bsResp.ok) { container.innerHTML = ''; return; }
+    var finJson = await finResp.json();
+    var bsJson = await bsResp.json();
+    var finRows = finJson.data || [];
+    var bsRows = bsJson.data || [];
+    if (finRows.length === 0 || bsRows.length === 0) { container.innerHTML = ''; return; }
+
+    // Group financial data
+    var finByQ = {};
+    finRows.forEach(function(r) {
+      var dt = r.date || '';
+      var type = r.type || '';
+      var val = parseFloat(r.value) || 0;
+      if (!dt) return;
+      if (!finByQ[dt]) finByQ[dt] = {};
+      if (type === 'NetIncome' || type === 'IncomeAfterTaxes') finByQ[dt].netIncome = val;
+    });
+
+    // Group balance sheet data
+    var bsByQ = {};
+    bsRows.forEach(function(r) {
+      var dt = r.date || '';
+      var type = r.type || '';
+      var val = parseFloat(r.value) || 0;
+      if (!dt) return;
+      if (!bsByQ[dt]) bsByQ[dt] = {};
+      if (type === 'Equity' || type === 'TotalEquity' || type === 'StockholderEquity') bsByQ[dt].equity = val;
+      if (type === 'TotalAssets' || type === 'Assets') bsByQ[dt].totalAssets = val;
+    });
+
+    // Calculate ROE/ROA per quarter
+    var allDates = [...new Set([...Object.keys(finByQ), ...Object.keys(bsByQ)])].sort();
+    var roeData = [];
+    var roaData = [];
+
+    allDates.forEach(function(dt) {
+      var fin = finByQ[dt] || {};
+      var bs = bsByQ[dt] || {};
+      var ni = fin.netIncome;
+      if (ni === undefined) return;
+      // Annualize: multiply by 4 for single-quarter net income
+      var niAnn = ni * 4;
+      if (bs.equity && bs.equity > 0) {
+        roeData.push({ time: dt, value: (niAnn / bs.equity * 100) });
+      }
+      if (bs.totalAssets && bs.totalAssets > 0) {
+        roaData.push({ time: dt, value: (niAnn / bs.totalAssets * 100) });
+      }
+    });
+
+    if (roeData.length < 2 && roaData.length < 2) { container.innerHTML = ''; return; }
+
+    var latestROE = roeData.length > 0 ? roeData[roeData.length - 1].value : null;
+    var latestROA = roaData.length > 0 ? roaData[roaData.length - 1].value : null;
+
+    container.innerHTML = '<div class="card">' +
+      '<div class="card-title">\u{1F4C9} ROE / ROA \u8DA8\u52E2</div>' +
+      '<div class="text-sm text-muted mb-12">\u80A1\u6771\u6B0A\u76CA\u5831\u916C\u7387 / \u8CC7\u7522\u5831\u916C\u7387\uFF08\u5E74\u5316\uFF09</div>' +
+      '<div class="margin-trend-legend">' +
+        (latestROE !== null ? '<span class="margin-legend-item"><span class="legend-dot" style="background:#00e87b;"></span>ROE ' + latestROE.toFixed(1) + '%</span>' : '') +
+        (latestROA !== null ? '<span class="margin-legend-item"><span class="legend-dot" style="background:#00b4d8;"></span>ROA ' + latestROA.toFixed(1) + '%</span>' : '') +
+      '</div>' +
+      '<div id="roe-roa-chart-box" style="height:250px;"></div>' +
+    '</div>';
+
+    var chartBox = document.getElementById('roe-roa-chart-box');
+    if (!chartBox || chartBox.clientWidth === 0) return;
+
+    var chart = LightweightCharts.createChart(chartBox, {
+      width: chartBox.clientWidth,
+      height: 250,
+      layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: 10 },
+      grid: { vertLines: { color: 'rgba(0,240,255,0.04)' }, horzLines: { color: 'rgba(0,240,255,0.04)' } },
+      timeScale: { borderColor: 'rgba(0,240,255,0.1)' },
+      rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', scaleMargins: { top: 0.1, bottom: 0.1 } },
+    });
+
+    if (roeData.length >= 2) {
+      var roeSeries = chart.addLineSeries({
+        color: '#00e87b', lineWidth: 2,
+        priceFormat: { type: 'custom', formatter: function(v) { return v.toFixed(1) + '%'; } },
+      });
+      roeSeries.setData(roeData);
+    }
+
+    if (roaData.length >= 2) {
+      var roaSeries = chart.addLineSeries({
+        color: '#00b4d8', lineWidth: 2,
+        priceFormat: { type: 'custom', formatter: function(v) { return v.toFixed(1) + '%'; } },
+      });
+      roaSeries.setData(roaData);
+    }
+
+    chart.timeScale().fitContent();
+
+    var resizeObserver = new ResizeObserver(function() {
+      if (chartBox.clientWidth > 0) chart.applyOptions({ width: chartBox.clientWidth });
+    });
+    resizeObserver.observe(chartBox);
+
+  } catch (e) {
+    console.warn('[CT] ROE/ROA chart error:', e);
+    container.innerHTML = '';
+  }
+}
+
+
+// ============================================================
+// 4: Free Cash Flow Chart (自由現金流)
+// ============================================================
+async function renderFreeCashFlowChart(code) {
+  var container = document.getElementById('stock-fcf');
+  if (!container) return;
+  container.innerHTML = '<div class="card"><div class="card-title">\u{1F4B5} \u81EA\u7531\u73FE\u91D1\u6D41</div><div class="loading-box"><div class="spinner"></div><div>\u8F09\u5165\u4E2D...</div></div></div>';
+
+  try {
+    var now = new Date();
+    var startStr = (now.getFullYear() - 5) + '-01-01';
+
+    var resp = await fetch('/api/finmind/stock?dataset=TaiwanStockCashFlowsStatement&data_id=' + encodeURIComponent(code) + '&start_date=' + startStr);
+    if (!resp.ok) { container.innerHTML = ''; return; }
+    var json = await resp.json();
+    var rows = json.data || [];
+    if (rows.length === 0) { container.innerHTML = ''; return; }
+
+    // Group by quarter
+    var byQ = {};
+    rows.forEach(function(r) {
+      var dt = r.date || '';
+      var type = r.type || '';
+      var val = parseFloat(r.value) || 0;
+      if (!dt) return;
+      if (!byQ[dt]) byQ[dt] = {};
+      if (type === 'CashFlowsFromOperatingActivities' || type === 'OperatingCashFlow') byQ[dt].opCF = val;
+      if (type === 'CashFlowsFromInvestingActivities' || type === 'InvestingCashFlow') byQ[dt].invCF = val;
+    });
+
+    var quarters = Object.keys(byQ).sort();
+    if (quarters.length > 20) quarters = quarters.slice(quarters.length - 20);
+
+    var fcfData = [];
+    var opCFData = [];
+
+    quarters.forEach(function(q) {
+      var d = byQ[q];
+      if (d.opCF !== undefined) {
+        opCFData.push({ time: q, value: d.opCF / 1000 }); // Convert to 千元 → 百萬
+        var fcf = (d.opCF || 0) + (d.invCF || 0); // InvestingCF is typically negative
+        fcfData.push({ time: q, value: fcf / 1000 });
+      }
+    });
+
+    if (fcfData.length < 2) { container.innerHTML = ''; return; }
+
+    var latestFCF = fcfData[fcfData.length - 1].value;
+
+    container.innerHTML = '<div class="card">' +
+      '<div class="card-title">\u{1F4B5} \u81EA\u7531\u73FE\u91D1\u6D41</div>' +
+      '<div class="text-sm text-muted mb-12">\u71DF\u696D\u73FE\u91D1\u6D41 + \u6295\u8CC7\u73FE\u91D1\u6D41\uFF08\u5343\u5143\uFF09</div>' +
+      '<div class="margin-trend-legend">' +
+        '<span class="margin-legend-item"><span class="legend-dot" style="background:#00e87b;"></span>FCF ' + (latestFCF >= 0 ? '+' : '') + latestFCF.toFixed(0) + '</span>' +
+      '</div>' +
+      '<div id="fcf-chart-box" style="height:220px;"></div>' +
+    '</div>';
+
+    var chartBox = document.getElementById('fcf-chart-box');
+    if (!chartBox || chartBox.clientWidth === 0) return;
+
+    var chart = LightweightCharts.createChart(chartBox, {
+      width: chartBox.clientWidth,
+      height: 220,
+      layout: { background: { color: 'transparent' }, textColor: '#8896b3', fontSize: 10 },
+      grid: { vertLines: { color: 'rgba(0,240,255,0.04)' }, horzLines: { color: 'rgba(0,240,255,0.04)' } },
+      timeScale: { borderColor: 'rgba(0,240,255,0.1)' },
+      rightPriceScale: { borderColor: 'rgba(0,240,255,0.1)', scaleMargins: { top: 0.15, bottom: 0.05 } },
+    });
+
+    var barSeries = chart.addHistogramSeries({
+      priceFormat: { type: 'custom', formatter: function(v) { return v.toFixed(0); } },
+    });
+
+    barSeries.setData(fcfData.map(function(d) {
+      var color = d.value >= 0 ? 'rgba(0,232,123,0.7)' : 'rgba(255,56,96,0.7)';
+      return { time: d.time, value: d.value, color: color };
+    }));
+
+    // Zero line
+    var zeroSeries = chart.addLineSeries({
+      color: 'rgba(136,150,179,0.3)', lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+    });
+    zeroSeries.setData(fcfData.map(function(d) { return { time: d.time, value: 0 }; }));
+
+    chart.timeScale().fitContent();
+
+    var resizeObserver = new ResizeObserver(function() {
+      if (chartBox.clientWidth > 0) chart.applyOptions({ width: chartBox.clientWidth });
+    });
+    resizeObserver.observe(chartBox);
+
+  } catch (e) {
+    console.warn('[CT] FCF chart error:', e);
+    container.innerHTML = '';
   }
 }
 
