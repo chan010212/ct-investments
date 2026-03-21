@@ -1,5 +1,5 @@
 // CT Investments — Service Worker
-const CACHE_NAME = 'ct-invest-v54';
+const CACHE_NAME = 'ct-invest-v58';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -7,6 +7,15 @@ const SHELL_ASSETS = [
   '/js/app.js',
   '/js/chart-extended.js',
   '/js/ai-scoring.js',
+  '/js/app-charts.js',
+  '/js/app-overview.js',
+  '/js/app-stock.js',
+  '/js/app-market.js',
+  '/js/app-member.js',
+  '/js/app-tools.js',
+  '/js/app-trade.js',
+  '/js/app-extra.js',
+  '/js/app-academy.js',
   '/manifest.json',
   'https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js'
 ];
