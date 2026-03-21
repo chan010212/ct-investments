@@ -838,6 +838,7 @@ function switchTab(tabName, pushHistory, restoreScroll) {
     if (typeof loadPortfolio === 'function') loadPortfolio();
     if (typeof loadDividendCalendar === 'function') loadDividendCalendar('watchlist');
   }
+  if (tabName === 'trading' && typeof initTradingTab === 'function') initTradingTab();
   if (tabName === 'compare' && typeof initCompareTab === 'function') initCompareTab();
   if (tabName === 'institutional' && typeof loadInstStreakRanking === 'function') loadInstStreakRanking();
   if (tabName === 'sectors' && typeof maybeLoadSectors === 'function') maybeLoadSectors();

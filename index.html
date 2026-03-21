@@ -60,6 +60,9 @@
       <div class="nav-item" data-tab="daytrade">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span>當沖</span>
       </div>
+      <div class="nav-item" data-tab="trading">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 17l10-10M12 7h5v5"/><path d="M22 7L12 17M12 17H7v-5"/></svg><span>交易</span>
+      </div>
       <div class="nav-item" data-tab="sectors">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 2v10l7 4"/></svg><span>題材</span>
       </div>
@@ -431,6 +434,7 @@
           <button class="btn btn-primary" onclick="analyzeStock()">開始分析</button>
           <button class="btn btn-secondary" onclick="addToWatchlistFromAnalysis()">&#x2B50; 加入關注</button>
           <button class="btn btn-secondary" onclick="openAlertModal()" title="到價提醒">&#x1F514; 提醒</button>
+          <button class="btn btn-secondary" onclick="if(typeof goTrade==='function')goTrade(document.getElementById('stock-input').value.trim())" title="下單交易">&#x1F4B0; 下單</button>
         </div>
         <div id="recent-stocks" style="display:none;"></div>
         <div id="stock-header" style="display:none;">
@@ -586,6 +590,157 @@
         <div class="card-title">&#x26A1; 當沖交易量 TOP 30</div>
         <div class="table-wrap" id="dt-rank"><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
+    </div>
+
+    <!-- ==================== 交易下單 ==================== -->
+    <div id="panel-trading" class="panel">
+
+      <!-- 連線狀態 -->
+      <div class="card" id="trade-connection-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="card-title" style="margin-bottom:0;">&#x1F4E1; 券商連線狀態</div>
+          <span class="trade-status trade-status-disconnected" id="trade-conn-status">未連線</span>
+        </div>
+        <div class="text-sm text-muted" style="margin-top:8px;" id="trade-conn-msg">尚未連接永豐 Shioaji API — 請先至設定頁面輸入 API Key</div>
+      </div>
+
+      <div class="grid-2">
+        <!-- 下單表單 -->
+        <div class="card">
+          <div class="card-title">&#x1F4DD; 委託下單</div>
+
+          <div class="trade-form">
+            <div class="trade-row">
+              <label class="trade-label">股票代號</label>
+              <div style="display:flex;gap:8px;flex:1;">
+                <input type="text" class="input" id="trade-code" placeholder="例如 2330" autocomplete="off" style="flex:1;">
+                <button class="btn btn-secondary trade-quote-btn" id="trade-quote-btn" onclick="if(typeof tradeLoadQuote==='function')tradeLoadQuote()">查詢</button>
+              </div>
+            </div>
+
+            <div id="trade-quote-info" style="display:none;" class="trade-quote-box">
+              <div class="trade-quote-name" id="trade-quote-name">--</div>
+              <div class="trade-quote-price" id="trade-quote-price">--</div>
+              <div class="trade-quote-range">
+                <span>漲停 <strong id="trade-limit-up">--</strong></span>
+                <span>跌停 <strong id="trade-limit-down">--</strong></span>
+                <span>昨收 <strong id="trade-prev-close">--</strong></span>
+              </div>
+            </div>
+
+            <div class="trade-row">
+              <label class="trade-label">買賣別</label>
+              <div class="trade-toggle-group" id="trade-action-group">
+                <button class="trade-toggle active trade-buy" data-val="buy" onclick="tradeSetAction(this)">買進</button>
+                <button class="trade-toggle trade-sell" data-val="sell" onclick="tradeSetAction(this)">賣出</button>
+              </div>
+            </div>
+
+            <div class="trade-row">
+              <label class="trade-label">價格類型</label>
+              <div class="trade-toggle-group" id="trade-price-type-group">
+                <button class="trade-toggle active" data-val="LMT" onclick="tradeSetPriceType(this)">限價</button>
+                <button class="trade-toggle" data-val="MKT" onclick="tradeSetPriceType(this)">市價</button>
+              </div>
+            </div>
+
+            <div class="trade-row" id="trade-price-row">
+              <label class="trade-label">委託價格</label>
+              <div style="display:flex;gap:6px;align-items:center;flex:1;">
+                <button class="trade-adj-btn" onclick="tradeAdjPrice(-0.5)">-</button>
+                <input type="number" class="input" id="trade-price" placeholder="0.00" step="0.01" style="flex:1;text-align:center;">
+                <button class="trade-adj-btn" onclick="tradeAdjPrice(0.5)">+</button>
+              </div>
+            </div>
+
+            <div class="trade-row">
+              <label class="trade-label">委託數量</label>
+              <div style="display:flex;gap:6px;align-items:center;flex:1;">
+                <button class="trade-adj-btn" onclick="tradeAdjQty(-1)">-</button>
+                <input type="number" class="input" id="trade-qty" value="1" min="1" style="flex:1;text-align:center;">
+                <button class="trade-adj-btn" onclick="tradeAdjQty(1)">+</button>
+                <span class="text-sm text-muted" style="white-space:nowrap;">張</span>
+              </div>
+            </div>
+
+            <div class="trade-row">
+              <label class="trade-label">委託條件</label>
+              <div class="trade-toggle-group" id="trade-order-type-group">
+                <button class="trade-toggle active" data-val="ROD" onclick="tradeSetOrderType(this)">ROD</button>
+                <button class="trade-toggle" data-val="IOC" onclick="tradeSetOrderType(this)">IOC</button>
+                <button class="trade-toggle" data-val="FOK" onclick="tradeSetOrderType(this)">FOK</button>
+              </div>
+              <span class="ct-tip" data-tip="委託條件"><i class="ct-tip-icon">?</i><span class="ct-tip-popup">ROD = 當日有效，收盤前未成交自動取消。IOC = 立即成交否則取消。FOK = 全部成交否則全部取消。</span></span>
+            </div>
+
+            <div class="trade-row" style="align-items:flex-start;">
+              <label class="trade-label">當沖</label>
+              <label class="trade-checkbox-label">
+                <input type="checkbox" id="trade-daytrade"> 現股當沖
+              </label>
+            </div>
+
+            <div class="trade-summary" id="trade-summary">
+              <div class="trade-summary-row">
+                <span>預估金額</span>
+                <strong id="trade-est-amount">--</strong>
+              </div>
+              <div class="trade-summary-row">
+                <span>手續費 (0.1425%)</span>
+                <span id="trade-est-fee">--</span>
+              </div>
+            </div>
+
+            <button class="btn trade-submit-btn" id="trade-submit-btn" onclick="if(typeof tradeSubmit==='function')tradeSubmit()">
+              <span id="trade-submit-text">買進下單</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 五檔報價 -->
+        <div class="card">
+          <div class="card-title">&#x1F4CA; 五檔報價</div>
+          <div id="trade-orderbook">
+            <div class="text-muted" style="text-align:center;padding:32px;">輸入股票代號查詢</div>
+          </div>
+
+          <div class="card-title" style="margin-top:20px;">&#x23F1; 即時成交明細</div>
+          <div id="trade-ticks" style="max-height:280px;overflow-y:auto;">
+            <div class="text-muted" style="text-align:center;padding:16px;">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 委託回報 -->
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>&#x1F4CB; 今日委託</span>
+          <button class="btn btn-secondary" style="padding:6px 14px;font-size:12px;" onclick="if(typeof tradeRefreshOrders==='function')tradeRefreshOrders()">刷新</button>
+        </div>
+        <div class="table-wrap" id="trade-orders">
+          <div class="text-muted" style="text-align:center;padding:24px;">尚未連接券商，無法顯示委託</div>
+        </div>
+      </div>
+
+      <!-- 成交回報 -->
+      <div class="card">
+        <div class="card-title">&#x2705; 今日成交</div>
+        <div class="table-wrap" id="trade-deals">
+          <div class="text-muted" style="text-align:center;padding:24px;">尚未連接券商，無法顯示成交</div>
+        </div>
+      </div>
+
+      <!-- 庫存 -->
+      <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>&#x1F4BC; 帳戶庫存</span>
+          <span class="text-sm text-muted" id="trade-inventory-time">--</span>
+        </div>
+        <div class="table-wrap" id="trade-inventory">
+          <div class="text-muted" style="text-align:center;padding:24px;">尚未連接券商，無法顯示庫存</div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ==================== 熱門題材 ==================== -->
@@ -1094,6 +1249,7 @@
 <script src="/js/app-market.js?v=1"></script>
 <script src="/js/app-member.js?v=1"></script>
 <script src="/js/app-tools.js?v=1"></script>
+<script src="/js/app-trade.js?v=1"></script>
 <script src="/js/app-extra.js?v=1"></script>
 <script src="/js/app-academy.js?v=1"></script>
 <script>
