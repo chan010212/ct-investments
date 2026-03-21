@@ -1004,6 +1004,7 @@ async function loadAlerts() {
     var data = await r.json();
     gAlerts = data.alerts || [];
     renderAlerts();
+    startAlertPolling();
   } catch (e) { /* silent */ }
 }
 
@@ -1071,7 +1072,7 @@ function checkPriceAlerts() {
       toast(msg);
       if ('Notification' in window && Notification.permission === 'granted') {
         try {
-          new Notification('CT Investments 到價提醒', { body: msg, icon: '/manifest.json' });
+          new Notification('CT Investments 到價提醒', { body: msg, data: { code: a.stock_code } });
         } catch (e) { /* silent */ }
       }
       // Mark triggered on server
@@ -1079,6 +1080,47 @@ function checkPriceAlerts() {
       renderAlerts();
     }
   });
+}
+
+// Poll server for alerts triggered server-side (works even if tab was hidden)
+var _alertPollTimer = null;
+var _alertLastCheck = null;
+
+function startAlertPolling() {
+  if (_alertPollTimer) return;
+  _alertPollTimer = setInterval(async function() {
+    if (typeof gCurrentUser === 'undefined' || !gCurrentUser) return;
+    if (!gAlerts || gAlerts.length === 0) return;
+    var active = gAlerts.filter(function(a) { return !a.triggered; });
+    if (active.length === 0) return;
+    try {
+      var since = _alertLastCheck || new Date(Date.now() - 5 * 60000).toISOString();
+      var r = await authFetch('/api/alerts/check?since=' + encodeURIComponent(since));
+      if (!r || !r.ok) return;
+      _alertLastCheck = new Date().toISOString();
+      var data = await r.json();
+      (data.triggered || []).forEach(function(t) {
+        var local = gAlerts.find(function(a) { return a.id === t.id; });
+        if (local && !local.triggered) {
+          local.triggered = 1;
+          local.triggered_at = t.triggered_at;
+          var condLabel = t.condition === 'above' ? '漲破' : '跌破';
+          var msg = t.stock_code + ' ' + (t.stock_name || '') + ' 已' + condLabel + ' ' + t.target_price;
+          if (typeof toast === 'function') toast(msg);
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('CT Investments 到價提醒', { body: msg, data: { code: t.stock_code } });
+            } catch(e) { /* silent */ }
+          }
+          renderAlerts();
+        }
+      });
+    } catch(e) { /* silent */ }
+  }, 60000);
+}
+
+function stopAlertPolling() {
+  if (_alertPollTimer) { clearInterval(_alertPollTimer); _alertPollTimer = null; }
 }
 
 // ============================================================

@@ -1,5 +1,5 @@
 // CT Investments — Service Worker
-const CACHE_NAME = 'ct-invest-v59';
+const CACHE_NAME = 'ct-invest-v60';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -61,5 +61,22 @@ self.addEventListener('fetch', e => {
       }
       return response;
     }).catch(() => caches.match(e.request))
+  );
+});
+
+// Notification click — open app and navigate to stock
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const data = e.notification.data || {};
+  const url = data.code ? '/?stock=' + data.code : '/';
+  e.waitUntil(
+    clients.matchAll({ type: 'window' }).then(list => {
+      for (const c of list) {
+        if (c.url.includes(self.location.origin) && 'focus' in c) {
+          return c.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
   );
 });
