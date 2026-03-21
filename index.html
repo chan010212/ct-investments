@@ -891,20 +891,31 @@
         <div class="card-title">&#x1F4CA; 股票比較</div>
         <div class="text-sm text-muted mb-12">輸入 2~5 檔股票代號進行比較（Free 最多 2 檔，Pro 最多 5 檔）</div>
         <div id="compare-inputs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-          <input type="text" class="input" id="cmp-1" placeholder="代號1 例如 2330" style="width:120px;" autocomplete="off">
-          <input type="text" class="input" id="cmp-2" placeholder="代號2 例如 2317" style="width:120px;" autocomplete="off">
-          <input type="text" class="input cmp-pro-input" id="cmp-3" placeholder="代號3" style="width:120px;" autocomplete="off">
-          <input type="text" class="input cmp-pro-input" id="cmp-4" placeholder="代號4" style="width:120px;" autocomplete="off">
-          <input type="text" class="input cmp-pro-input" id="cmp-5" placeholder="代號5" style="width:120px;" autocomplete="off">
+          <div class="cmp-input-wrap"><input type="text" class="input" id="cmp-1" placeholder="代號1 例如 2330" autocomplete="off"></div>
+          <div class="cmp-input-wrap"><input type="text" class="input" id="cmp-2" placeholder="代號2 例如 2317" autocomplete="off"></div>
+          <div class="cmp-input-wrap"><input type="text" class="input cmp-pro-input" id="cmp-3" placeholder="代號3" autocomplete="off"></div>
+          <div class="cmp-input-wrap"><input type="text" class="input cmp-pro-input" id="cmp-4" placeholder="代號4" autocomplete="off"></div>
+          <div class="cmp-input-wrap"><input type="text" class="input cmp-pro-input" id="cmp-5" placeholder="代號5" autocomplete="off"></div>
         </div>
-        <button class="btn btn-primary" onclick="runCompare()">開始比較</button>
+        <div class="cmp-period-bar">
+          <button class="cmp-period-btn" data-period="M1" onclick="setComparePeriod('M1')">1M</button>
+          <button class="cmp-period-btn" data-period="M3" onclick="setComparePeriod('M3')">3M</button>
+          <button class="cmp-period-btn" data-period="M6" onclick="setComparePeriod('M6')">6M</button>
+          <button class="cmp-period-btn active" data-period="Y1" onclick="setComparePeriod('Y1')">1Y</button>
+          <button class="btn btn-primary" onclick="runCompare()" style="margin-left:auto;">開始比較</button>
+        </div>
       </div>
       <div id="compare-loading" style="display:none;">
         <div class="card"><div class="skeleton skeleton-block"></div><div class="skeleton-table"><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div><div class="skeleton skeleton-table-row"></div></div></div>
       </div>
       <div id="compare-chart-card" class="card" style="display:none;">
         <div class="card-title">&#x1F4C8; 走勢疊圖（%）</div>
-        <div id="compare-chart" class="chart-box" style="height:300px;"></div>
+        <div id="compare-legend" class="cmp-legend"></div>
+        <div id="compare-chart" class="chart-box" style="height:320px;"></div>
+      </div>
+      <div id="compare-vol-card" class="card" style="display:none;">
+        <div class="card-title">&#x1F4CA; 成交量比較（相對%）</div>
+        <div id="compare-vol-chart" class="chart-box" style="height:150px;"></div>
       </div>
       <div id="compare-table-card" class="card" style="display:none;">
         <div class="card-title">&#x1F4CB; 指標比較</div>
@@ -1248,7 +1259,8 @@
 <script src="/js/app-stock.js?v=2"></script>
 <script src="/js/app-market.js?v=1"></script>
 <script src="/js/app-member.js?v=1"></script>
-<script src="/js/app-tools.js?v=1"></script>
+<script src="/js/app-tools.js?v=2"></script>
+<script src="/js/app-compare.js?v=1"></script>
 <script src="/js/app-trade.js?v=1"></script>
 <script src="/js/app-extra.js?v=1"></script>
 <script src="/js/app-academy.js?v=1"></script>
