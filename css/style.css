@@ -2808,6 +2808,12 @@
       color: rgba(255,255,255,0.9);
       text-shadow: 0 1px 2px rgba(0,0,0,0.5);
     }
+    .hm-cell-close {
+      font-size: 9px;
+      color: rgba(255,255,255,0.55);
+      text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+      margin-top: 1px;
+    }
 
     /* ===== PRICING MODAL ===== */
     .pricing-overlay {
@@ -3992,22 +3998,34 @@
       text-decoration: none;
     }
     .wl-view-all:hover { text-decoration: underline; }
-    .wl-overview-list { display: flex; flex-direction: column; gap: 6px; }
-    .wl-overview-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 12px;
-      border-radius: 8px;
-      background: rgba(255,255,255,0.03);
-      cursor: pointer;
-      transition: background 0.2s;
+    .wl-ov-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+      gap: 8px;
     }
-    .wl-overview-item:hover { background: rgba(0,240,255,0.05); }
-    .wl-overview-item .wl-ov-code { font-weight: 600; font-size: 14px; color: var(--text); }
-    .wl-overview-item .wl-ov-name { font-size: 12px; color: var(--text2); margin-left: 6px; }
-    .wl-overview-item .wl-ov-price { font-weight: 600; font-size: 14px; }
-    .wl-overview-item .wl-ov-chg { font-size: 12px; margin-left: 6px; }
+    .wl-ov-card {
+      padding: 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.03);
+      border-left: 3px solid var(--border);
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .wl-ov-card:hover { background: rgba(0,240,255,0.06); }
+    .wl-ov-card.wl-ov-up { border-left-color: var(--red); }
+    .wl-ov-card.wl-ov-down { border-left-color: var(--green); }
+    .wl-ov-card.wl-ov-flat { border-left-color: var(--text2); }
+    .wl-ov-top { display: flex; align-items: baseline; gap: 4px; margin-bottom: 4px; }
+    .wl-ov-card .wl-ov-code { font-weight: 700; font-size: 13px; color: var(--text); }
+    .wl-ov-card .wl-ov-name { font-size: 11px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wl-ov-card .wl-ov-price { font-weight: 600; font-size: 15px; font-variant-numeric: tabular-nums; }
+    .wl-ov-card .wl-ov-chg { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .wl-ov-card.wl-ov-up .wl-ov-price,
+    .wl-ov-card.wl-ov-up .wl-ov-chg { color: var(--red); }
+    .wl-ov-card.wl-ov-down .wl-ov-price,
+    .wl-ov-card.wl-ov-down .wl-ov-chg { color: var(--green); }
+    .wl-ov-card.wl-ov-flat .wl-ov-price,
+    .wl-ov-card.wl-ov-flat .wl-ov-chg { color: var(--text2); }
     .wl-overview-cta {
       text-align: center;
       padding: 16px;

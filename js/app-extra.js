@@ -272,20 +272,17 @@ function renderWatchlistOverview() {
     return;
   }
 
-  var items = wl.slice(0, 5);
-  var html = '<div class="wl-overview-list">';
+  var items = wl.slice(0, 12);
+  var html = '<div class="wl-ov-grid">';
   items.forEach(function(code) {
     var name = code, price = '-', chgNum = 0;
 
-    // 1. Try gMisCache (real-time quotes from Fugle/MIS)
     var mis = (typeof gMisCache !== 'undefined') ? gMisCache[code] : null;
     if (mis && mis.price > 0) {
       name = mis.name || (gStockDB[code] ? gStockDB[code].name : code);
       price = mis.price;
       chgNum = mis.pct || 0;
-    }
-    // 2. Fallback: gStockMap (daily close from TWSE/TPEX)
-    else if (gStockMap[code]) {
+    } else if (gStockMap[code]) {
       var m = gStockMap[code];
       var d = m.data;
       if (m.market === 'twse') {
@@ -301,30 +298,28 @@ function renderWatchlistOverview() {
         price = close > 0 ? close : '-';
         chgNum = (prev > 0 && close > 0) ? (chg / prev * 100) : 0;
       }
-    }
-    // 3. Fallback: gStockDB (name only)
-    else if (gStockDB[code]) {
+    } else if (gStockDB[code]) {
       name = gStockDB[code].name || code;
     }
-    // 4. Fallback: Yahoo cache
     if (price === '-' && gWlYahooCache[code]) {
       var yc = gWlYahooCache[code];
       price = yc.price || '-';
       chgNum = yc.pct || 0;
     }
 
-    var color = chgNum > 0 ? 'var(--red)' : chgNum < 0 ? 'var(--green)' : 'var(--text2)';
-    var sign = chgNum > 0 ? '+' : '';
+    var isUp = chgNum > 0, isDown = chgNum < 0;
+    var cls = isUp ? 'wl-ov-up' : isDown ? 'wl-ov-down' : 'wl-ov-flat';
+    var sign = isUp ? '+' : '';
     var priceStr = (typeof price === 'number') ? price.toFixed(price >= 100 ? 0 : price >= 10 ? 1 : 2) : price;
-    html += '<div class="wl-overview-item" onclick="document.getElementById(\'stock-input\').value=\'' + code + '\';switchTab(\'analysis\',true);setTimeout(analyzeStock,200);">';
-    html += '<div><span class="wl-ov-code">' + code + '</span><span class="wl-ov-name">' + name + '</span></div>';
-    html += '<div><span class="wl-ov-price" style="color:' + color + '">' + priceStr + '</span>';
-    html += '<span class="wl-ov-chg" style="color:' + color + '">' + sign + chgNum.toFixed(2) + '%</span></div>';
+    html += '<div class="wl-ov-card ' + cls + '" onclick="document.getElementById(\'stock-input\').value=\'' + code + '\';switchTab(\'analysis\',true);setTimeout(analyzeStock,200);">';
+    html += '<div class="wl-ov-top"><span class="wl-ov-code">' + code + '</span><span class="wl-ov-name">' + name + '</span></div>';
+    html += '<div class="wl-ov-price">' + priceStr + '</div>';
+    html += '<div class="wl-ov-chg">' + sign + chgNum.toFixed(2) + '%</div>';
     html += '</div>';
   });
   html += '</div>';
-  if (wl.length > 5) {
-    html += '<div style="text-align:center;margin-top:8px;font-size:12px;color:var(--text2);">還有 ' + (wl.length - 5) + ' 檔...</div>';
+  if (wl.length > 12) {
+    html += '<div style="text-align:center;margin-top:8px;font-size:12px;color:var(--text2);">還有 ' + (wl.length - 12) + ' 檔 <a class="wl-view-all" onclick="switchTab(\'watchlist\',true)">查看全部</a></div>';
   }
   content.innerHTML = html;
   card.style.display = 'block';
