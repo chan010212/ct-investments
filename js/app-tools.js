@@ -239,7 +239,7 @@ function clearScreener() {
   document.getElementById('screener-status').textContent = '';
 }
 
-// Load opinion panel (謙堂觀點)
+// Load opinion panel (觀察清單)
 async function maybeLoadOpinion() {
   if (gOpinionLoaded && gOpinionSuccess) return;
   gOpinionLoaded = true;
@@ -250,35 +250,19 @@ async function maybeLoadOpinion() {
     if (!r.ok) { gOpinionLoaded = false; return; }
     const data = await r.json();
     if (!data.picks || data.picks.length === 0) {
-      document.getElementById('opinion-container').innerHTML = '<div class="text-muted" style="text-align:center;padding:32px 0;">目前暫無觀點，敬請期待</div>';
+      document.getElementById('opinion-container').innerHTML = '<div class="text-muted" style="text-align:center;padding:32px 0;">觀察清單尚無標的</div>';
       gOpinionSuccess = true;
       return;
     }
 
-    const actionTag = {
-      buy: '<span class="tag tag-buy">買進</span>',
-      sell: '<span class="tag tag-sell">賣出</span>',
-      hold: '<span class="tag tag-hold">觀望</span>',
-      short: '<span class="tag tag-sell">放空</span>'
-    };
-
     let html = '<div class="stock-grid">';
     data.picks.forEach(p => {
-      const scoreColor = (p.score || 5) >= 7 ? 'var(--green)' : (p.score || 5) >= 5 ? 'var(--yellow)' : 'var(--red)';
       html += `<div class="stock-card" onclick="goAnalyze('${p.code}')" style="cursor:pointer;">
         <div class="sc-bar" style="background:linear-gradient(90deg,var(--purple),var(--cyan));"></div>
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
-          <div>
-            <div class="sc-code">${p.code} <span style="font-size:12px;font-weight:400;color:var(--text2);">${p.name || ''}</span></div>
-          </div>
-          <div>${actionTag[p.action] || ''}</div>
+        <div style="margin-bottom:8px;">
+          <div class="sc-code">${p.code} <span style="font-size:12px;font-weight:400;color:var(--text2);">${p.name || ''}</span></div>
         </div>
         ${p.reason ? `<div style="font-size:12px;color:#c8d0e0;margin-bottom:8px;line-height:1.5;">${p.reason}</div>` : ''}
-        <div style="display:flex;flex-wrap:wrap;gap:8px 12px;font-size:11px;border-top:1px solid var(--border);padding-top:8px;">
-          ${p.target_price ? `<span class="text-muted">目標 <span class="up" style="font-weight:600;">${fmtNum(p.target_price, 2)}</span></span>` : ''}
-          ${p.stop_loss ? `<span class="text-muted">停損 <span class="down" style="font-weight:600;">${fmtNum(p.stop_loss, 2)}</span></span>` : ''}
-          ${p.score ? `<span class="text-muted">信心 <span style="color:${scoreColor};font-weight:700;">${p.score}/10</span></span>` : ''}
-        </div>
         <div style="font-size:10px;color:var(--text2);margin-top:6px;">${p.created_at ? p.created_at.slice(0, 10) : ''}</div>
       </div>`;
     });

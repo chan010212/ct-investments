@@ -1352,7 +1352,12 @@
 
     .trade-quote-btn { padding: 8px 16px; font-size: 13px; white-space: nowrap; }
 
+    .broker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .broker-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 14px 8px; border-radius: 10px; cursor: pointer; transition: transform 0.15s, filter 0.15s; min-height: 60px; }
+    .broker-btn:hover { transform: translateY(-2px); filter: brightness(1.2); }
+
     @media (max-width: 768px) {
+      .broker-grid { grid-template-columns: repeat(2, 1fr); }
       .trade-row { flex-wrap: wrap; }
       .trade-label { width: 100%; margin-bottom: -4px; }
       .trade-quote-range { flex-wrap: wrap; gap: 8px; }
