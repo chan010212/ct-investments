@@ -358,25 +358,35 @@ function squarify(items, rect) {
 }
 
 function heatColor(pct) {
-  // Red (up) to Green (down) gradient, center = dark gray
-  var clamped = Math.max(-5, Math.min(5, pct));
-  var t = (clamped + 5) / 10; // 0=green, 0.5=neutral, 1=red
+  // Red (up) to Green (down) gradient, ±7% range for better distinction
+  var clamped = Math.max(-7, Math.min(7, pct));
+  var t = (clamped + 7) / 14; // 0=deep green, 0.5=neutral, 1=deep red
   var r, g, b;
   if (t >= 0.5) {
-    // neutral → red
     var s = (t - 0.5) * 2;
-    r = Math.round(40 + 185 * s);
-    g = Math.round(40 - 20 * s);
-    b = Math.round(50 - 20 * s);
+    r = Math.round(35 + 195 * s);
+    g = Math.round(30 - 15 * s);
+    b = Math.round(40 - 20 * s);
   } else {
-    // green → neutral
     var s = t * 2;
-    r = Math.round(10 + 30 * s);
-    g = Math.round(140 - 100 * s);
-    b = Math.round(60 - 10 * s);
+    r = Math.round(8 + 27 * s);
+    g = Math.round(160 - 130 * s);
+    b = Math.round(65 - 25 * s);
   }
   return 'rgb(' + r + ',' + g + ',' + b + ')';
 }
+
+// Approximate TWSE sector market-cap weights (2024-2025)
+var SECTOR_WEIGHTS = {
+  '半導體': 45, '金融保險': 10, '電腦週邊': 5, '通信網路': 4,
+  '其他電子': 4, '電子零組件': 3.5, '光電': 3, '塑膠': 3,
+  '鋼鐵': 2, '航運': 2, '食品': 2, '水泥': 1.8,
+  '建材營造': 1.8, '汽車': 1.5, '電子通路': 1.5, '資訊服務': 1.5,
+  '化學': 1.2, '化學生技醫療': 1.2, '生技醫療': 1.2, '貿易百貨': 1.2,
+  '電機': 1, '紡織': 0.8, '電纜': 0.6, '玻璃': 0.5,
+  '造紙': 0.4, '橡膠': 0.5, '觀光餐旅': 0.5, '油電燃氣': 0.8,
+  '綠能環保': 0.5, '數位雲端': 0.8, '運動休閒': 0.3, '居家生活': 0.3, '其他': 1
+};
 
 function renderSectorHeatmap(sectorsData) {
   var el = document.getElementById('sector-heatmap');
@@ -387,12 +397,12 @@ function renderSectorHeatmap(sectorsData) {
   }
 
   var items = sectorsData.map(function(s) {
-    return { name: s.name, pct: s.pct, value: Math.max(s.close, 1) };
+    var weight = SECTOR_WEIGHTS[s.name] || 0.5;
+    return { name: s.name, pct: s.pct, close: s.close, value: weight };
   }).sort(function(a, b) { return b.value - a.value; });
 
   var W = el.clientWidth;
   var H = el.clientHeight || 320;
-  // iOS PWA: element may not be laid out yet (display:none or not rendered), retry later
   if (W < 10) {
     setTimeout(function() { renderSectorHeatmap(sectorsData); }, 500);
     return;
@@ -409,14 +419,15 @@ function renderSectorHeatmap(sectorsData) {
     div.style.height = c.h + 'px';
     div.style.background = heatColor(c.item.pct);
 
-    var showLabel = c.w > 40 && c.h > 28;
-    var showPct = c.w > 30 && c.h > 40;
+    var showLabel = c.w > 36 && c.h > 24;
+    var showPct = c.w > 28 && c.h > 36;
+    var showClose = c.w > 60 && c.h > 52;
 
     if (showLabel) {
       var nameSpan = document.createElement('span');
       nameSpan.className = 'hm-cell-name';
       nameSpan.textContent = c.item.name;
-      if (c.w < 60) nameSpan.style.fontSize = '9px';
+      if (c.w < 55) nameSpan.style.fontSize = '9px';
       div.appendChild(nameSpan);
     }
     if (showPct) {
@@ -425,8 +436,16 @@ function renderSectorHeatmap(sectorsData) {
       pctSpan.textContent = (c.item.pct > 0 ? '+' : '') + c.item.pct.toFixed(2) + '%';
       div.appendChild(pctSpan);
     }
+    if (showClose) {
+      var closeSpan = document.createElement('span');
+      closeSpan.className = 'hm-cell-close';
+      closeSpan.textContent = c.item.close.toFixed(2);
+      div.appendChild(closeSpan);
+    }
 
-    div.title = c.item.name + '  ' + (c.item.pct > 0 ? '+' : '') + c.item.pct.toFixed(2) + '%';
+    var pctStr = (c.item.pct > 0 ? '+' : '') + c.item.pct.toFixed(2) + '%';
+    var weightStr = (SECTOR_WEIGHTS[c.item.name] || 0.5).toFixed(1) + '%';
+    div.title = c.item.name + '\n漲跌: ' + pctStr + '\n指數: ' + c.item.close.toFixed(2) + '\n市值占比: ~' + weightStr;
     el.appendChild(div);
   });
 }
