@@ -1775,6 +1775,35 @@ def _finmind_fetch(dataset, date_str):
         return {'_error': str(e)}
 
 
+def _finmind_fetch_stock(dataset, data_id, start_date):
+    """Fetch per-stock data from FinMind API (with data_id filter)."""
+    if not FINMIND_TOKEN:
+        return {'_error': 'FINMIND_TOKEN not configured'}
+    cache_key = f'finmind_{dataset}_{data_id}_{start_date}'
+    cached = api_cache_get(cache_key, FINMIND_CACHE_TTL)
+    if cached is not None:
+        return cached
+    try:
+        params = urllib.parse.urlencode({
+            'dataset': dataset,
+            'data_id': data_id,
+            'start_date': start_date,
+            'token': FINMIND_TOKEN,
+        })
+        url = f'https://api.finmindtrade.com/api/v4/data?{params}'
+        data = _api_fetch_json(url)
+        if data and data.get('status') == 200:
+            result = data.get('data', [])
+            api_cache_set(cache_key, result)
+            return result
+        msg = data.get('msg', '') if data else 'empty response'
+        print(f'[FINMIND] Bad status for {dataset}/{data_id}: {msg}')
+        return {'_error': f'FinMind API: {msg}'}
+    except Exception as e:
+        print(f'[FINMIND] Fetch error {dataset}/{data_id}/{start_date}: {e}')
+        return {'_error': str(e)}
+
+
 def _finmind_inst_aggregate(rows):
     """Aggregate FinMind TaiwanStockInstitutionalInvestorsBuySell rows.
     Returns { "2330": { f, t, d, total }, ... }
@@ -2230,6 +2259,8 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_fugle_quote()
         elif self.path.startswith('/api/fugle/batch'):
             self.handle_fugle_batch()
+        elif self.path.startswith('/api/finmind/stock'):
+            self.handle_finmind_stock()
         elif self.path.startswith('/api/finmind/inst'):
             self.handle_finmind_inst()
         elif self.path.startswith('/api/finmind/daytrade'):
@@ -3440,6 +3471,42 @@ a{{display:inline-block;margin-top:20px;padding:12px 32px;background:linear-grad
         except Exception as e:
             print(f'[EVENTS] handle_stock_events error: {e}')
             self.send_json({'events': [], 'error': str(e)})
+
+    def handle_finmind_stock(self):
+        """GET /api/finmind/stock?dataset=TaiwanStockFinancialStatements&data_id=2330&start_date=2021-01-01
+        Generic endpoint for per-stock FinMind queries.
+        Allowed datasets (whitelist to prevent abuse):
+        """
+        ALLOWED_DATASETS = {
+            'TaiwanStockFinancialStatements',
+            'TaiwanStockBalanceSheet',
+            'TaiwanStockCashFlowsStatement',
+            'TaiwanStockPER',
+            'TaiwanStockMonthRevenue',
+            'TaiwanStockDividend',
+            'TaiwanStockPrice',
+        }
+        query = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(query)
+        dataset = params.get('dataset', [''])[0]
+        data_id = params.get('data_id', [''])[0]
+        start_date = params.get('start_date', [''])[0]
+
+        if not dataset or not data_id or not start_date:
+            self.send_json({'error': 'Missing required parameters: dataset, data_id, start_date'}, 400)
+            return
+        if dataset not in ALLOWED_DATASETS:
+            self.send_json({'error': f'Dataset not allowed: {dataset}'}, 400)
+            return
+        if not FINMIND_TOKEN:
+            self.send_json({'error': 'FinMind token not configured'}, 503)
+            return
+
+        rows = _finmind_fetch_stock(dataset, data_id, start_date)
+        if isinstance(rows, dict) and '_error' in rows:
+            self.send_json({'error': rows['_error']}, 502)
+            return
+        self.send_json({'data': rows})
 
     def handle_finmind_inst(self):
         """GET /api/finmind/inst?date=2026-03-04"""

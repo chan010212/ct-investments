@@ -513,9 +513,8 @@ async function _loadRevenueHistory(code, parentEl) {
     const now = new Date();
     const startDate = new Date(now.getFullYear(), now.getMonth() - 26, 1);
     const startStr = `${startDate.getFullYear()}-${String(startDate.getMonth()+1).padStart(2,'0')}-01`;
-    const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id=${code}&start_date=${startStr}`;
-    const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
-    const resp = await fetch(proxyUrl);
+    const finApiUrl = `/api/finmind/stock?dataset=TaiwanStockMonthRevenue&data_id=${encodeURIComponent(code)}&start_date=${startStr}`;
+    const resp = await fetch(finApiUrl);
     if (!resp.ok) return;
     const json = await resp.json();
     const rows = json.data || [];
@@ -647,9 +646,8 @@ async function _loadQuarterlyHistory(code, parentEl) {
     const now = new Date();
     const startDate = new Date(now.getFullYear() - 3, 0, 1);
     const startStr = `${startDate.getFullYear()}-01-01`;
-    const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockFinancialStatements&data_id=${code}&start_date=${startStr}`;
-    const proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
-    const resp = await fetch(proxyUrl);
+    const finApiUrl = `/api/finmind/stock?dataset=TaiwanStockFinancialStatements&data_id=${encodeURIComponent(code)}&start_date=${startStr}`;
+    const resp = await fetch(finApiUrl);
     if (!resp.ok) return;
     const json = await resp.json();
     const rows = json.data || [];
