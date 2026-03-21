@@ -16,11 +16,10 @@ async function renderPERiverChart(code) {
     const now = new Date();
     const startDate = new Date(now.getFullYear() - 5, 0, 1);
     const startStr = startDate.getFullYear() + '-01-01';
-    const finUrl = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockFinancialStatements&data_id=' + code + '&start_date=' + startStr;
-    const proxyUrl = '/api/proxy?url=' + encodeURIComponent(finUrl);
+    const finApiUrl = '/api/finmind/stock?dataset=TaiwanStockFinancialStatements&data_id=' + encodeURIComponent(code) + '&start_date=' + startStr;
 
     const [finResp, histResp] = await Promise.all([
-      fetch(proxyUrl),
+      fetch(finApiUrl),
       fetch('/api/stock-history?code=' + encodeURIComponent(code))
     ]);
 
@@ -235,10 +234,9 @@ async function renderMarginTrendChart(code) {
     var now = new Date();
     var startDate = new Date(now.getFullYear() - 3, 0, 1);
     var startStr = startDate.getFullYear() + '-01-01';
-    var finUrl = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockFinancialStatements&data_id=' + code + '&start_date=' + startStr;
-    var proxyUrl = '/api/proxy?url=' + encodeURIComponent(finUrl);
+    var finApiUrl = '/api/finmind/stock?dataset=TaiwanStockFinancialStatements&data_id=' + encodeURIComponent(code) + '&start_date=' + startStr;
 
-    var resp = await fetch(proxyUrl);
+    var resp = await fetch(finApiUrl);
     if (!resp.ok) {
       container.innerHTML = '<div class="card"><div class="card-title">\u{1F4C8} \u5229\u6F64\u7387\u8DA8\u52E2\u5716</div><div class="text-muted">\u8CC7\u6599\u8F09\u5165\u5931\u6557</div></div>';
       return;
@@ -378,9 +376,8 @@ async function renderRevenueYoYChart(code) {
     var now = new Date();
     var startDate = new Date(now.getFullYear(), now.getMonth() - 26, 1);
     var startStr = startDate.getFullYear() + '-' + String(startDate.getMonth() + 1).padStart(2, '0') + '-01';
-    var url = 'https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id=' + code + '&start_date=' + startStr;
-    var proxyUrl = '/api/proxy?url=' + encodeURIComponent(url);
-    var resp = await fetch(proxyUrl);
+    var finApiUrl = '/api/finmind/stock?dataset=TaiwanStockMonthRevenue&data_id=' + encodeURIComponent(code) + '&start_date=' + startStr;
+    var resp = await fetch(finApiUrl);
     if (!resp.ok) { targetEl.innerHTML = ''; return; }
 
     var json = await resp.json();
