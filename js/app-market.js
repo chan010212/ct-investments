@@ -66,9 +66,21 @@ async function fetchYahooQuotes(symbols) {
           const meta = result?.meta;
           if (!meta) continue;
           const price = meta.regularMarketPrice || 0;
-          // Filter out null closes, then get the second-to-last valid close as prevClose
+          // Filter out null closes, then find the proper previous close
           const closes = (result?.indicators?.quote?.[0]?.close || []).filter(c => c != null);
-          const prevClose = (closes.length >= 2 ? closes[closes.length - 2] : null) || meta.chartPreviousClose || meta.previousClose || price;
+          // On non-trading days (weekends/holidays), Yahoo duplicates the last close.
+          // Detect trailing duplicates and skip them to get the real previous day's close.
+          let prevClose = null;
+          if (closes.length >= 3 && Math.abs(closes[closes.length - 1] - closes[closes.length - 2]) < 0.01) {
+            // Last two closes identical → non-trading day duplicate
+            const lastVal = closes[closes.length - 1];
+            for (let i = closes.length - 3; i >= 0; i--) {
+              if (Math.abs(closes[i] - lastVal) > 0.005) { prevClose = closes[i]; break; }
+            }
+          } else if (closes.length >= 2) {
+            prevClose = closes[closes.length - 2];
+          }
+          prevClose = prevClose || meta.chartPreviousClose || meta.previousClose || price;
           const chg = price - prevClose;
           const pct = prevClose ? (chg / prevClose) * 100 : 0;
           return {
