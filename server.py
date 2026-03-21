@@ -727,6 +727,108 @@ def _futures_poller():
             time.sleep(60)
 
 # ============================================================
+# PRICE ALERT CHECKER — background thread
+# ============================================================
+def _fetch_alert_prices(codes):
+    """Fetch current prices for alert checking. Returns {code: price}."""
+    prices = {}
+    # Try Fugle first (most reliable for intraday)
+    if FUGLE_API_KEY:
+        for code in codes:
+            try:
+                q = _fugle_quote(code)
+                if q and q.get('lastPrice'):
+                    prices[code] = float(q['lastPrice'])
+            except Exception:
+                pass
+    # Fallback: MIS API for any missing codes
+    missing = [c for c in codes if c not in prices]
+    if missing:
+        try:
+            tse_codes = []
+            otc_codes = []
+            for c in missing:
+                # Simple heuristic: 4-digit starting with 1-9 → try both
+                tse_codes.append(f'tse_{c}.tw')
+                otc_codes.append(f'otc_{c}.tw')
+            ex_ch = '|'.join(tse_codes + otc_codes)
+            url = f'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ex_ch}&json=1&delay=0'
+            req = urllib.request.Request(url, headers={'User-Agent': UA})
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(req, context=ctx, timeout=10) as resp:
+                data = json.loads(resp.read().decode())
+            for item in data.get('msgArray', []):
+                c = item.get('c', '')
+                z = item.get('z', '')  # current price
+                if c and z and z != '-':
+                    try:
+                        prices[c] = float(z)
+                    except ValueError:
+                        pass
+        except Exception as e:
+            print(f'[ALERT_CHECKER] MIS fetch error: {e}')
+    return prices
+
+
+def _price_alert_checker():
+    """Background thread: check price alerts every 60s during trading hours."""
+    while True:
+        try:
+            tw = _tw_now()
+            h, wd = tw.hour, tw.weekday()
+            is_trading = wd < 5 and ((h == 9) or (10 <= h < 13) or (h == 13 and tw.minute <= 35))
+            if not is_trading:
+                time.sleep(120)
+                continue
+
+            db = get_db()
+            try:
+                rows = db.execute(
+                    'SELECT id, user_id, stock_code, stock_name, condition, target_price '
+                    'FROM price_alerts WHERE triggered = 0'
+                ).fetchall()
+            finally:
+                db.close()
+
+            if not rows:
+                time.sleep(60)
+                continue
+
+            codes = list(set(r['stock_code'] for r in rows))
+            prices = _fetch_alert_prices(codes)
+
+            triggered_ids = []
+            for r in rows:
+                p = prices.get(r['stock_code'])
+                if p is None:
+                    continue
+                if r['condition'] == 'above' and p >= r['target_price']:
+                    triggered_ids.append(r['id'])
+                elif r['condition'] == 'below' and p <= r['target_price']:
+                    triggered_ids.append(r['id'])
+
+            if triggered_ids:
+                db = get_db()
+                try:
+                    for aid in triggered_ids:
+                        db.execute(
+                            "UPDATE price_alerts SET triggered = 1, triggered_at = datetime('now') WHERE id = ?",
+                            (aid,)
+                        )
+                    db.commit()
+                    print(f'[ALERT_CHECKER] Triggered {len(triggered_ids)} alerts')
+                finally:
+                    db.close()
+
+            time.sleep(60)
+        except Exception as e:
+            print(f'[ALERT_CHECKER] Error: {e}')
+            time.sleep(60)
+
+
+# ============================================================
 # MORNING REPORT (晨訊) — cached daily market briefing
 # ============================================================
 _mr_cache = {}          # { date_str: dict }
@@ -2172,6 +2274,8 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_inst_streak()
         elif self.path == '/api/alerts':
             self.handle_get_alerts()
+        elif self.path.startswith('/api/alerts/check'):
+            self.handle_alerts_check()
         elif self.path == '/api/portfolio':
             self.handle_get_portfolio()
         elif self.path.startswith('/api/dividends'):
@@ -2913,6 +3017,28 @@ class StockProxyHandler(http.server.SimpleHTTPRequestHandler):
             )
             db.commit()
             self.send_json({'ok': True})
+        finally:
+            db.close()
+
+    # --- Alerts Check (server-triggered) ---
+    def handle_alerts_check(self):
+        user = self.require_plan('pro')
+        if not user:
+            return
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        since = params.get('since', [''])[0]
+        if not since:
+            # Default: last 5 minutes
+            since = (_tw_now() - datetime.timedelta(minutes=5)).strftime('%Y-%m-%d %H:%M:%S')
+        db = get_db()
+        try:
+            rows = db.execute(
+                'SELECT * FROM price_alerts WHERE user_id = ? AND triggered = 1 AND triggered_at > ? '
+                'ORDER BY triggered_at DESC',
+                (user['uid'], since)
+            ).fetchall()
+            self.send_json({'triggered': [dict(r) for r in rows]})
         finally:
             db.close()
 
@@ -3715,6 +3841,7 @@ if __name__ == '__main__':
         # Start daily health check scheduler (8:00 AM Taiwan time, weekdays)
         threading.Thread(target=_healthcheck_scheduler, daemon=True).start()
         threading.Thread(target=_futures_poller, daemon=True).start()
+        threading.Thread(target=_price_alert_checker, daemon=True).start()
         server = ThreadingHTTPServer(('0.0.0.0', PORT), StockProxyHandler)
         print(f'CT Investments server started on port {PORT} (threaded)')
         print(f'  Database: {DB_PATH}')
